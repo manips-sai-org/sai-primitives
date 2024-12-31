@@ -34,10 +34,6 @@ public:
 
 	void reinitializeTasks();
 
-	std::shared_ptr<JointTask> getRedundancyCompletionTask() {
-		return _redundancy_completion_task;
-	}
-
 	std::shared_ptr<JointTask> getJointTaskByName(const std::string& task_name);
 	std::shared_ptr<MotionForceTask> getMotionForceTaskByName(const std::string& task_name);
 
@@ -45,12 +41,16 @@ public:
 		return _task_names;
 	}
 
+	Eigen::VectorXd getDynamicCompensationTorques() {
+		return _dynamic_compensation_torques;
+	}
+
 private:
     std::shared_ptr<Sai2Model::Sai2Model> _robot;
 	std::vector<std::shared_ptr<TemplateTask>> _tasks;
 	std::vector<std::string> _task_names;
-	std::shared_ptr<JointTask> _redundancy_completion_task;
 	bool _enable_gravity_compensation;
+	VectorXd _dynamic_compensation_torques;
 };
 
 } /* namespace Sai2Primitives */

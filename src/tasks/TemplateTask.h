@@ -105,6 +105,13 @@ public:
 	 */
 	const std::string& getTaskName() const { return _task_name; }
 
+	/**
+	 * @brief set task name 
+	 * 
+	 * @param task_name 
+	 */
+	const void setTaskName(const std::string& task_name) { _task_name = task_name; };
+
 private:
 	std::shared_ptr<Sai2Model::Sai2Model> _robot;
 	double _loop_timestep;

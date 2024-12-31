@@ -56,6 +56,7 @@ SingularityHandler::SingularityHandler(std::shared_ptr<Sai2Model::Sai2Model> rob
     _dq_prior = VectorXd::Zero(_dof);
     setSingularityHandlingGains(KP_TYPE_1, KV_TYPE_1, KV_TYPE_2);
     setDynamicDecouplingType(BOUNDED_INERTIA_ESTIMATES);
+	setBoundedInertiaEstimateThreshold(0.1);
     _type_1_counter = 0;
     _type_2_counter = 0;
     _type_2_direction = VectorXd::Ones(_dof);
@@ -69,6 +70,8 @@ SingularityHandler::SingularityHandler(std::shared_ptr<Sai2Model::Sai2Model> rob
     _type_2_angle_threshold = TYPE_2_ANGLE_THRESHOLD;
     _perturb_step_size = PERTURB_STEP_SIZE;
     _buffer_size = BUFFER_SIZE;
+
+    _impedance_force_torques = VectorXd::Zero(_dof);
 }
 
 void SingularityHandler::updateTaskModel(const MatrixXd& projected_jacobian, const MatrixXd& N_prec) {
@@ -133,7 +136,7 @@ void SingularityHandler::updateTaskModel(const MatrixXd& projected_jacobian, con
                 _N_ns = ns_matrices.N;
 
                 // placeholder singular task terms 
-                _task_range_s = MatrixXd::Zero(_task_rank, 1);
+                _task_range_s = MatrixXd::Zero(_task_rank, _task_rank);
                 _joint_task_range_s = MatrixXd::Zero(_dof, 1);
                 _projected_jacobian_s = MatrixXd::Zero(_task_rank, _dof);
                 _Lambda_s = MatrixXd::Zero(_task_rank, _task_rank);
@@ -165,17 +168,17 @@ void SingularityHandler::updateTaskModel(const MatrixXd& projected_jacobian, con
         }
 
         case IMPEDANCE: {
-            _Lambda_ns_modified.setIdentity();
-            _Lambda_s_modified.setIdentity();
-            _Lambda_joint_s_modified.setIdentity();
+            _Lambda_ns_modified = MatrixXd::Identity(_task_range_ns.cols(), _task_range_ns.cols());
+            _Lambda_s_modified = MatrixXd::Identity(_task_range_s.cols(), _task_range_s.cols());
+            _Lambda_joint_s_modified = MatrixXd::Identity(_joint_task_range_s.cols(), _joint_task_range_s.cols());
             break;
         }
 
         case BOUNDED_INERTIA_ESTIMATES: {
             MatrixXd M_BIE = _robot->M();
             for (int i = 0; i < _robot->dof(); i++) {
-                if (M_BIE(i, i) < 0.1) {
-                    M_BIE(i, i) = 0.1;
+                if (M_BIE(i, i) < _bie_threshold) {
+                    M_BIE(i, i) = _bie_threshold;
                 }
             }
             MatrixXd M_inv_BIE = M_BIE.inverse();
@@ -203,7 +206,7 @@ void SingularityHandler::updateTaskModel(const MatrixXd& projected_jacobian, con
             }
 
             // joint strategy lambda 
-            if (_task_range_s.norm() != 0) {
+            if (_task_range_s.norm() != 0 && _enforce_handling_strategy) {
                 MatrixXd Lambda_inv_BIE = 
                     _posture_projected_jacobian * 
                     M_inv_BIE * 
@@ -303,8 +306,15 @@ VectorXd SingularityHandler::computeTorques(const VectorXd& unit_mass_force, con
         }
     }
 
+    _impedance_force_torques = _projected_jacobian_ns.transpose() * _task_range_ns.transpose() * force_related_terms;
+    _singular_task_torques = VectorXd::Zero(_dof);
+    _joint_strategy_torques = VectorXd::Zero(_dof);
+
     if (_singularity_types.size() == 0) {
         return _projected_jacobian_ns.transpose() * (_Lambda_ns_modified * _task_range_ns.transpose() * unit_mass_force + \
+                    _task_range_ns.transpose() * force_related_terms);
+    } else if (_dynamic_decoupling_type == IMPEDANCE) {
+        return _projected_jacobian_ns.transpose() * (_task_range_ns.transpose() * unit_mass_force + \
                     _task_range_ns.transpose() * force_related_terms);
     } else {
         VectorXd tau_ns = VectorXd::Zero(_dof);
@@ -349,6 +359,8 @@ VectorXd SingularityHandler::computeTorques(const VectorXd& unit_mass_force, con
         // combine non-singular torques and blended singular torques with joint strategy torques
         _singular_task_torques = _projected_jacobian_s.transpose() * (_Lambda_s_modified * _task_range_s.transpose() * unit_mass_force + \
                                             _task_range_s.transpose() * force_related_terms);
+
+        _impedance_force_torques += _projected_jacobian_s.transpose() * _task_range_s.transpose() * force_related_terms;
 
         for (int i = 0; i < _dof; ++i) {
             if (isnan(_singular_task_torques(i))) {

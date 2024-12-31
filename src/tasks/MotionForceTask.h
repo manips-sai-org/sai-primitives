@@ -42,6 +42,7 @@ public:
 	struct DefaultParameters {
 		static constexpr DynamicDecouplingType dynamic_decoupling_type =
 			DynamicDecouplingType::BOUNDED_INERTIA_ESTIMATES;
+		static constexpr double bie_threshold = 0.1;
 		static constexpr double kp_pos = 100.0;
 		static constexpr double kv_pos = 20.0;
 		static constexpr double ki_pos = 0.0;
@@ -659,8 +660,6 @@ public:
 
 	// -------- singularity handling methods --------
 
-	// -------- singularity handling methods --------
-
 	/**
 	 * @brief 	Set the Dynamic Decoupling Type. See the definition of the
 	 * DynamicDecouplingType enum for more details
@@ -669,6 +668,24 @@ public:
 	 */
 	void setDynamicDecouplingType(const DynamicDecouplingType type) {
 		_singularity_handler->setDynamicDecouplingType(type);
+	}
+
+	/**
+	 * @brief Set the threshold for the bounded inertia estimate
+	 * 
+	 * @param threshold threshold value 
+	 */
+	void setBoundedInertiaEstimateThreshold(const double threshold) {
+		_singularity_handler->setBoundedInertiaEstimateThreshold(threshold);
+	}
+
+	/**
+	 * @brief Get the threshold for the bounded inertia estimate
+	 * 
+	 * @return double threshold value 
+	 */
+	double getBoundedInertiaEstimateThreshold() {
+		return _singularity_handler->getBoundedInertiaEstimateThreshold();
 	}
 
     /**
@@ -729,25 +746,94 @@ public:
 		_singularity_handler->setSingularityHandlingGains(kp_type_1, kv_type_1, kv_type_2);
 	}
 
+	/**
+	 * @brief Set the Singularity Handling Params object
+	 * 
+	 * @param s_abs_tol 
+	 * @param type_1_tol 
+	 * @param type_2_torque_ratio 
+	 * @param type_2_angle_threshold 
+	 * @param perturb_step_size 
+	 * @param buffer_size 
+	 */
+	void setSingularityHandlingParams(const double& s_abs_tol,
+										const double& type_1_tol,
+										const double& type_2_torque_ratio,
+										const double& type_2_angle_threshold,
+										const double& perturb_step_size,
+										const int& buffer_size) {
+		_singularity_handler->setSingularityHandlingParams(s_abs_tol,
+															type_1_tol,
+															type_2_torque_ratio,
+															type_2_angle_threshold,
+															perturb_step_size,
+															buffer_size);
+	}
+		
 	// -------- getters for model parameters --------
 	VectorXd getImpedanceForces() {
 		return _impedance_force;
+	}
+
+	VectorXd getImpedanceForceTorques() {
+		return _singularity_handler->getImpedanceForceTorques();
 	}
 
 	VectorXd getUnitControlForces() {
 		return _unit_mass_force;
 	}
 
-	MatrixXd getProjectedJacobian() {
-		return _singularity_handler->getProjectedJacobian();
+	MatrixXd getNonSingularJacobian() {
+		return _singularity_handler->getNonSingularJacobian();
 	}
 
-	MatrixXd getLambdaMatrix() {
-		return _singularity_handler->getLambda();
+	MatrixXd getNonSingularLambda() {
+		return _singularity_handler->getNonSingularLambda();
 	}
 
 	MatrixXd getNonSingularTaskRange() {
-		return _singularity_handler->getTaskRange();
+		return _singularity_handler->getNonSingularTaskRange();
+	}
+
+	MatrixXd getJointSingularityHandlingTorques() {
+		return _singularity_handler->getJointSingularityHandlingTorques();
+	}
+
+	MatrixXd getSingularJacobian() {
+		return _singularity_handler->getSingularJacobian();
+	}
+
+	MatrixXd getSingularLambda() {
+		return _singularity_handler->getSingularLambda();
+	}
+
+	MatrixXd getSingularTaskRange() {
+		return _singularity_handler->getSingularTaskRange();
+	}
+
+	double getBlendingCoefficient() {
+		return _singularity_handler->getBlendingCoefficient();
+	}
+
+	// -------- override step computation ----------
+	void enableManualStepPositionError() {
+		_use_user_step_position_flag = true;
+	}
+	void disableManualStepPositionError() {
+		_use_user_step_position_flag = false;
+	}
+	void setStepPositionError(const Vector3d& user_step_position_error) {
+		_user_step_position_error = user_step_position_error;
+	}
+
+	void enableManualStepOrientationError() {
+		_use_user_step_orientation_flag = true;
+	}
+	void disableManualStepOrientationError() {
+		_use_user_step_orientation_flag = false;
+	}
+	void setStepOrientationError(const Vector3d& user_step_orientation_error) {
+		_user_step_orientation_error = user_step_orientation_error;
 	}
 
 private:
@@ -885,6 +971,12 @@ private:
 
 	// singularity handler
 	std::unique_ptr<SingularityHandler> _singularity_handler;
+
+	// manual stepping
+	bool _use_user_step_position_flag;
+	bool _use_user_step_orientation_flag;
+	Vector3d _user_step_position_error;
+	Vector3d _user_step_orientation_error;
 };
 
 } /* namespace Sai2Primitives */

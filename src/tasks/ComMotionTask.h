@@ -569,23 +569,23 @@ public:
 		_singularity_handler->setSingularityHandlingBounds(s_min, s_max);
 	}
 
-	// -------- getters for model parameters --------
+	// // -------- getters for model parameters --------
 
-	VectorXd getUnitControlForces() {
-		return _unit_mass_force;
-	}
+	// VectorXd getUnitControlForces() {
+	// 	return _unit_mass_force;
+	// }
 
-	MatrixXd getProjectedJacobian() {
-		return _singularity_handler->getProjectedJacobian();
-	}
+	// MatrixXd getProjectedJacobian() {
+	// 	return _singularity_handler->getProjectedJacobian();
+	// }
 
-	MatrixXd getLambdaMatrix() {
-		return _singularity_handler->getLambda();
-	}
+	// MatrixXd getLambdaMatrix() {
+	// 	return _singularity_handler->getLambda();
+	// }
 
-	MatrixXd getNonSingularTaskRange() {
-		return _singularity_handler->getTaskRange();
-	}
+	// MatrixXd getNonSingularTaskRange() {
+	// 	return _singularity_handler->getTaskRange();
+	// }
 
 private:
 	/**

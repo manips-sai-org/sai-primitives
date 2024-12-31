@@ -15,6 +15,7 @@
 #include "Sai2Simulation.h"
 #include "tasks/JointTask.h"
 #include "tasks/MotionForceTask.h"
+#include "tasks/JointHandler.h"
 #include "timer/LoopTimer.h"
 #include "logger/Logger.h"
 bool fSimulationRunning = false;
@@ -109,6 +110,9 @@ void control(shared_ptr<Sai2Model::Sai2Model> robot,
 	int dof = robot->dof();
 	MatrixXd N_prec = MatrixXd::Identity(dof, dof);
 
+	// joint handler 
+	auto joint_handler = make_unique<Sai2Primitives::JointHandler>(robot);
+
 	// Position plus orientation task
 	string link_name = "end-effector";
 	Vector3d pos_in_link = Vector3d(0.0, 0.0, 0.07);
@@ -127,18 +131,9 @@ void control(shared_ptr<Sai2Model::Sai2Model> robot,
 	// 	controlled_directions_rotation);
 	// motion_force_task->setSingularityGains(20, 20);
 
-    // motion_force_task->disableInternalOtg();
-    // motion_force_task->enableVelocitySaturation();
+    motion_force_task->disableInternalOtg();
+    motion_force_task->enableVelocitySaturation();
 	VectorXd motion_force_task_torques = VectorXd::Zero(dof);
-
-	// test 
-	vector<std::shared_ptr<Sai2Primitives::MotionForceTask>> test_vector;
-	test_vector.push_back(make_shared<Sai2Primitives::MotionForceTask>(
-		robot, link_name, compliant_frame));
-	test_vector.push_back(make_shared<Sai2Primitives::MotionForceTask>(
-		robot, link_name, compliant_frame));
-	test_vector.push_back(make_shared<Sai2Primitives::MotionForceTask>(
-		robot, link_name, compliant_frame));
 
 	// no gains setting here, using the default task values
 	const Matrix3d initial_orientation = robot->rotation(link_name);
@@ -218,8 +213,14 @@ void control(shared_ptr<Sai2Model::Sai2Model> robot,
 		//------ compute the final torques
 		{
 			lock_guard<mutex> lock(mutex_torques);
-			control_torques = motion_force_task_torques + joint_task_torques;
+			control_torques = joint_handler->computeTorques(motion_force_task_torques + joint_task_torques);
+			// control_torques = motion_force_task_torques + joint_task_torques;
 		}
+
+		// MatrixXd Jc = MatrixXd::Zero(1, robot->dof());
+		// Jc(0) = 1;
+		// MatrixXd force_projection = Jc * robot->dynConsistentInverseJacobian(Jc);
+		// std::cout << force_projection.transpose() << "\n";
 
 		// -------------------------------------------
 		if (timer.elapsedCycles() % 500 == 0) {

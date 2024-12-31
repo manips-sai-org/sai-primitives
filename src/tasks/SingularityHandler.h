@@ -78,6 +78,17 @@ public:
         _dynamic_decoupling_type = type;
     }
 
+	void setBoundedInertiaEstimateThreshold(const double& threshold) {
+		if(threshold < 0){
+			_bie_threshold = 0;
+		}
+		_bie_threshold = threshold;
+	}
+
+	double getBoundedInertiaEstimateThreshold() {
+		return _bie_threshold;
+	}
+
     /**
      * @brief Get the nullspace 
      * 
@@ -172,18 +183,45 @@ public:
         _buffer_size = buffer_size;
     }
 
-    // ------- getters for model quantities -------- 
-
-    MatrixXd getProjectedJacobian() {
+    /**
+     * @brief Getters 
+     * 
+     */
+    MatrixXd getNonSingularJacobian() {
         return _projected_jacobian_ns;
     }
 
-    MatrixXd getTaskRange() {
+    VectorXd getImpedanceForceTorques() {
+        return _impedance_force_torques;
+    }
+
+    MatrixXd getNonSingularLambda() {
+        return _Lambda_ns;
+    }
+
+    MatrixXd getNonSingularTaskRange() {
         return _task_range_ns;
     }
 
-    MatrixXd getLambda() {
-        return _Lambda_ns;
+    VectorXd getJointSingularityHandlingTorques() {
+        // return _alpha * _singular_task_torques + (1 - _alpha) * _joint_strategy_torques;
+        return (1 - _alpha) * _joint_strategy_torques;
+    }
+
+    double getBlendingCoefficient() {
+        return _alpha;
+    }
+
+    MatrixXd getSingularJacobian() {
+        return _projected_jacobian_s;
+    }
+
+    MatrixXd getSingularTaskRange() {
+        return _task_range_s;
+    }
+
+    MatrixXd getSingularLambda() {
+        return _Lambda_s;
     }
 
 private:
@@ -200,6 +238,7 @@ private:
     // singularity setup
     std::shared_ptr<Sai2Model::Sai2Model> _robot;
     DynamicDecouplingType _dynamic_decoupling_type;
+	double _bie_threshold;
     std::string _link_name;
     Affine3d _compliant_frame;
     int _task_rank;
@@ -247,6 +286,7 @@ private:
     
     VectorXd _singular_task_torques;
     VectorXd _joint_strategy_torques;
+    VectorXd _impedance_force_torques;
 };
 
 }  // namespace

@@ -195,7 +195,11 @@ void MotionForceTask::initialSetup() {
 																_compliant_frame,
 																_pos_range + _ori_range);
 	setSingularityHandlingBounds(6e-3, 6e-2); 
-	setDynamicDecouplingType(BOUNDED_INERTIA_ESTIMATES);
+	setDynamicDecouplingType(DefaultParameters::dynamic_decoupling_type);
+	setBoundedInertiaEstimateThreshold(DefaultParameters::bie_threshold);
+
+	_use_user_step_position_flag = false;
+	_use_user_step_orientation_flag = false;
 
 	reInitializeTask();	
 }
@@ -400,9 +404,15 @@ VectorXd MotionForceTask::computeTorques() {
 	}
 
 	// linear motion
+	// position error
+	Vector3d step_position_error = _current_position - _desired_position;
+	if (_use_user_step_position_flag) {
+		step_position_error = _user_step_position_error;
+	}
+
 	// update integrated error for I term
 	_integrated_position_error += sigma_position *
-								  (_current_position - _desired_position) *
+								  (step_position_error) *
 								  getLoopTimestep();
 
 	// final contribution
@@ -410,7 +420,7 @@ VectorXd MotionForceTask::computeTorques() {
 		const Matrix3d kv_pos_inv = Sai2Model::computePseudoInverse(_kv_pos);
 		_desired_linear_velocity =
 			-_kp_pos * kv_pos_inv * sigma_position *
-				(_current_position - _desired_position) -
+				(step_position_error) -
 			_ki_pos * kv_pos_inv * _integrated_position_error;
 		if (_desired_linear_velocity.norm() > _linear_saturation_velocity) {
 			_desired_linear_velocity *=
@@ -424,7 +434,7 @@ VectorXd MotionForceTask::computeTorques() {
 		position_related_force =
 			sigma_position *
 			(_desired_linear_acceleration -
-			 _kp_pos * (_current_position - _desired_position) -
+			 _kp_pos * (step_position_error) -
 			 _kv_pos * (_current_linear_velocity - _desired_linear_velocity) -
 			 _ki_pos * _integrated_position_error);
 	}
@@ -434,6 +444,10 @@ VectorXd MotionForceTask::computeTorques() {
 	Vector3d step_orientation_error =
 		sigma_orientation *
 		Sai2Model::orientationError(_desired_orientation, _current_orientation);
+
+	if (_use_user_step_orientation_flag) {
+		step_orientation_error = _user_step_orientation_error;
+	}
 
 	// update integrated error for I term
 	_integrated_orientation_error += step_orientation_error * getLoopTimestep();
@@ -468,6 +482,10 @@ VectorXd MotionForceTask::computeTorques() {
 	position_orientation_contribution.head(3) = position_related_force;
 	position_orientation_contribution.tail(3) = orientation_related_force;
 
+	// add feedback force to impedance
+	_impedance_force.setZero();
+	_impedance_force += force_moment_contribution;  
+
 	_unit_mass_force = position_orientation_contribution;
 
 	VectorXd feedforward_force_moment = VectorXd::Zero(6);
@@ -482,7 +500,9 @@ VectorXd MotionForceTask::computeTorques() {
 	_linear_force_control =
 		force_feedback_related_force + feedforward_force_moment.head(3);
 	_linear_motion_control = position_related_force;
-	_impedance_force = force_moment_contribution + feedforward_force_moment;
+
+	// add feedforward force to impedance
+	_impedance_force += feedforward_force_moment;  
 
 	// compute torque through singularity handler 
 	task_joint_torques = _singularity_handler->computeTorques(_unit_mass_force, force_moment_contribution + feedforward_force_moment);
