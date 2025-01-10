@@ -61,6 +61,7 @@ public:
 		setMaxVelocity(max_velocity * VectorXd::Ones(_dim));
 	}
 
+	/// @brief getter for the maximum velocity
 	VectorXd getMaxVelocity() const { return _input.max_velocity; }
 
 	/**
@@ -79,6 +80,7 @@ public:
 		setMaxAcceleration(max_acceleration * VectorXd::Ones(_dim));
 	}
 
+	/// @brief getter for the maximum acceleration
 	VectorXd getMaxAcceleration() const { return _input.max_acceleration; }
 
 	/**
@@ -99,6 +101,7 @@ public:
 		setMaxJerk(max_jerk * VectorXd::Ones(_dim));
 	}
 
+	/// @brief getter for the maximum jerk
 	VectorXd getMaxJerk() const { return _input.max_jerk; }
 
 	/**
@@ -107,6 +110,7 @@ public:
 	 */
 	void disableJerkLimits();
 
+	/// @brief getter for the jerk limit enabled
 	bool getJerkLimitEnabled() const;
 
 	/**
@@ -164,16 +168,23 @@ public:
 	bool isGoalReached() const { return _goal_reached; }
 
 private:
+	/// @brief dimension of the joint space
 	int _dim;
-
+	/// @brief flag to know if the goal state is reached
 	bool _goal_reached = false;
+	/// @brief latest result of the ruckig trajectory generator
 	int _result_value = Result::Finished;
 
+	/// @brief the goal position as an Eigen vector
 	VectorXd _goal_position_eigen;
+	/// @brief the goal velocity as an Eigen vector
 	VectorXd _goal_velocity_eigen;
 
+	/// @brief the ruckig trajectory generator
 	std::unique_ptr<Ruckig<DynamicDOFs, EigenVector>> _otg;
+	/// @brief the input parameter for the ruckig trajectory generator
 	InputParameter<DynamicDOFs, EigenVector> _input {0};
+	/// @brief the output parameter for the ruckig trajectory generator
 	OutputParameter<DynamicDOFs, EigenVector> _output {0};
 };
 

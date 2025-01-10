@@ -43,5 +43,14 @@ cd build/examples/01-joint_control
 ./01-joint_control
 ```
 
+## Documentation
+The documentation can also be accessed online at the following [link](https://manips-sai-org.github.io/sai-primitives/)
+
+It can also be generated locally with doxygen:
+```
+cd docs
+doxygen
+```
+
 ## License
 Currently pending licensing. PLEASE DO NOT DISTRIBUTE.
