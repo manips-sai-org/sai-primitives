@@ -1,5 +1,5 @@
 var searchData=
 [
-  ['jointlimitavoidancetask_0',['JointLimitAvoidanceTask',['../classSaiPrimitives_1_1JointLimitAvoidanceTask.html',1,'SaiPrimitives']]],
-  ['jointtask_1',['jointtask',['../classSaiPrimitives_1_1JointTask.html',1,'SaiPrimitives::JointTask'],['../classSaiPrimitives_1_1JointTask.html#a1e5f966aee530e1d102776b3665304c2',1,'SaiPrimitives::JointTask::JointTask(std::shared_ptr&lt; SaiModel::SaiModel &gt; &amp;robot, const std::string &amp;task_name=&quot;joint_task&quot;, const double loop_timestep=0.001)'],['../classSaiPrimitives_1_1JointTask.html#a7a2cde40324637c286facb0b32fbe232',1,'SaiPrimitives::JointTask::JointTask(std::shared_ptr&lt; SaiModel::SaiModel &gt; &amp;robot, const MatrixXd &amp;joint_selection_matrix, const std::string &amp;task_name=&quot;partial_joint_task&quot;, const double loop_timestep=0.001)']]]
+  ['instructions_0',['Build instructions',['../index.html#autotoc_md2',1,'']]],
+  ['isgoalreached_1',['isgoalreached',['../classSaiPrimitives_1_1OTG__6dof__cartesian.html#a52cb56316d1370c41e9aa4361ddffc47',1,'SaiPrimitives::OTG_6dof_cartesian::isGoalReached()'],['../classSaiPrimitives_1_1OTG__joints.html#a19940cfa8020833d358734e76e7eff65',1,'SaiPrimitives::OTG_joints::isGoalReached()']]]
 ];

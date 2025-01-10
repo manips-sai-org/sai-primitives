@@ -5,7 +5,7 @@
 <meta http-equiv="X-UA-Compatible" content="IE=11"/>
 <meta name="generator" content="Doxygen 1.9.8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
-<title>Sai Primitives: Main Page</title>
+<title>Sai Primitives: sai-primitives</title>
 <link href="tabs.css" rel="stylesheet" type="text/css"/>
 <script type="text/javascript" src="jquery.js"></script>
 <script type="text/javascript" src="dynsections.js"></script>
@@ -68,10 +68,52 @@ $(function() {
 </div>
 </div>
 
-<div class="header">
-  <div class="headertitle"><div class="title">Sai Primitives Documentation</div></div>
+<div><div class="header">
+  <div class="headertitle"><div class="title">sai-primitives </div></div>
 </div><!--header-->
 <div class="contents">
+<div class="textblock"><p><a class="anchor" id="md__2home_2runner_2work_2sai-primitives_2sai-primitives_2README"></a>This is a control library that provides an implementation of basic tasks and controllers for a torque controlled robot. It uses the Operatinal Space framework. It offers the possibility to be used with the <a href="https://ruckig.com/">Ruckig</a> for trajectory generation (community version).</p>
+<p>Robot controllers can be defined using different tasks:</p><ul>
+<li>The MotionForce task is a cartesian control task, defined on a robot and a compliant frame:<ul>
+<li>It can be full 6dof (translation and rotation) or a subset of the cartesian motions (for example a planar transation and 1 rotation in that plane)</li>
+<li>It can be set to use operational space control or impedance control</li>
+<li>Any direction (defined in robot base frame or compliant frame) can be parametrized to perform force control instead of motion control</li>
+<li>Force control can be open loop or closed loop with passivity based stabilization (<a href="https://ieeexplore.ieee.org/abstract/document/7989050">https://ieeexplore.ieee.org/abstract/document/7989050</a>, <a href="https://ieeexplore.ieee.org/abstract/document/8206036">https://ieeexplore.ieee.org/abstract/document/8206036</a>)</li>
+</ul>
+</li>
+<li>The joint task implements PD control to control the joint positions of a torque controlled robot:<ul>
+<li>It can be full or defined on a subset of the joints</li>
+<li>It can be parametrixed to use dynamic decoupling or not</li>
+</ul>
+</li>
+</ul>
+<p>The robot controller then takes a list of tasks and implements a hierarchical controller using all the tasks to compute the robot control torques</p>
+<h1><a class="anchor" id="autotoc_md1"></a>
+Dependencies</h1>
+<p>sai-primitives depends on sai-model, Eigen3 and Ruckig.</p>
+<p>The examples depend on additional libraries : sai-simulation, sai-graphics, sai-common.</p>
+<h1><a class="anchor" id="autotoc_md2"></a>
+Build instructions</h1>
+<p>First build ruckig: </p><div class="fragment"><div class="line">cd ruckig</div>
+<div class="line">mkdir build &amp;&amp; cd build</div>
+<div class="line">cmake .. &amp;&amp; make -j4</div>
+<div class="line">cd ../..</div>
+</div><!-- fragment --><p> Next, build sai-primitives </p><div class="fragment"><div class="line">mkdir build</div>
+<div class="line">cd build</div>
+<div class="line">cmake .. &amp;&amp; make -j4</div>
+</div><!-- fragment --><h1><a class="anchor" id="autotoc_md3"></a>
+Run the examples</h1>
+<p>Remember that you need sai-simulation, sai-graphics and sai-common in order to compile and run the examples. Go to build/examples/desired_example and run the example. For example 1 : </p><div class="fragment"><div class="line">cd build/examples/01-joint_control</div>
+<div class="line">./01-joint_control</div>
+</div><!-- fragment --><h1><a class="anchor" id="autotoc_md4"></a>
+Documentation</h1>
+<p>The documentation can also be accessed online at the following <a href="https://manips-sai-org.github.io/sai-primitives/">link</a></p>
+<p>It can also be generated locally with doxygen: </p><div class="fragment"><div class="line">cd docs</div>
+<div class="line">doxygen</div>
+</div><!-- fragment --><h1><a class="anchor" id="autotoc_md5"></a>
+License</h1>
+<p>Currently pending licensing. PLEASE DO NOT DISTRIBUTE. </p>
+</div></div><!-- PageDoc -->
 </div><!-- contents -->
 <!-- start footer part -->
 <hr class="footer"/><address class="footer"><small>
