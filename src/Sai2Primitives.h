@@ -2,6 +2,7 @@
 #include "tasks/MotionForceTask.h"
 #include "tasks/ComMotionTask.h"
 #include "tasks/TemplateTask.h"
+#include "tasks/JointHandler.h"
 
 #include "POPCBilateralTeleoperation.h"
 #include "RobotController.h"

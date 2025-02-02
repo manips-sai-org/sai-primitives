@@ -53,7 +53,7 @@ public:
      * @param projected_jacobian Projected jacobian from motion force task
      * @param N_prec Nullspace of preceding tasks from motion force task
      */
-    void updateTaskModel(const MatrixXd& projected_jacobian, const MatrixXd& N_prec);
+    void updateTaskModel(MatrixXd& projected_jacobian, const MatrixXd& N_prec, const bool& is_floating = false);
 
     /**
      * @brief Computes the torques from the singularity handling. If the projected jacobian isn't classified singular, then
@@ -196,7 +196,7 @@ public:
     }
 
     MatrixXd getNonSingularLambda() {
-        return _Lambda_ns;
+        return _Lambda_ns_modified;
     }
 
     MatrixXd getNonSingularTaskRange() {
@@ -204,7 +204,6 @@ public:
     }
 
     VectorXd getJointSingularityHandlingTorques() {
-        // return _alpha * _singular_task_torques + (1 - _alpha) * _joint_strategy_torques;
         return (1 - _alpha) * _joint_strategy_torques;
     }
 
@@ -221,7 +220,7 @@ public:
     }
 
     MatrixXd getSingularLambda() {
-        return _Lambda_s;
+        return _Lambda_s_modified;
     }
 
 private:

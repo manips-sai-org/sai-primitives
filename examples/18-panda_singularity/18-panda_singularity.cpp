@@ -213,8 +213,8 @@ void control(shared_ptr<Sai2Model::Sai2Model> robot,
 		//------ compute the final torques
 		{
 			lock_guard<mutex> lock(mutex_torques);
-			control_torques = joint_handler->computeTorques(motion_force_task_torques + joint_task_torques);
-			// control_torques = motion_force_task_torques + joint_task_torques;
+			// control_torques = joint_handler->computeTorques(motion_force_task_torques + joint_task_torques);
+			control_torques = motion_force_task_torques + joint_task_torques;
 		}
 
 		// MatrixXd Jc = MatrixXd::Zero(1, robot->dof());

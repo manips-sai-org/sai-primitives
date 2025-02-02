@@ -200,6 +200,7 @@ void MotionForceTask::initialSetup() {
 
 	_use_user_step_position_flag = false;
 	_use_user_step_orientation_flag = false;
+	_is_floating = false;
 
 	reInitializeTask();	
 }
@@ -264,9 +265,17 @@ void MotionForceTask::updateTaskModel(const MatrixXd& N_prec) {
 	_jacobian = _partial_task_projection *
 				getConstRobotModel()->JWorldFrame(
 					_link_name, _compliant_frame.translation());
+	// if (_is_floating) {
+		// _jacobian.leftCols(3).setZero();
+		// _jacobian.block(0, 0, 3, 3).setZero();
+		// _jacobian.leftCols(3).setZero();
+	// }
 	_projected_jacobian = _jacobian * _N_prec;
-
-	_singularity_handler->updateTaskModel(_projected_jacobian, _N_prec);
+	// std::cout << "projected jac: \n" << _projected_jacobian << "\n";
+	// if (_is_floating) {
+		// _projected_jacobian.leftCols(3).setZero();
+	// }
+	_singularity_handler->updateTaskModel(_projected_jacobian, _N_prec, _is_floating);
 	_N = _singularity_handler->getNullspace();  
 
 }
@@ -276,7 +285,8 @@ VectorXd MotionForceTask::computeTorques() {
 	_jacobian = _partial_task_projection *
 				getConstRobotModel()->JWorldFrame(
 					_link_name, _compliant_frame.translation());
-	_projected_jacobian = _jacobian * _N_prec;
+	// _projected_jacobian = _jacobian * _N_prec;
+	_projected_jacobian = _jacobian;
 
 	// update controller state
 	_current_position = getConstRobotModel()->positionInWorld(
@@ -419,7 +429,7 @@ VectorXd MotionForceTask::computeTorques() {
 	if (_use_velocity_saturation_flag) {
 		const Matrix3d kv_pos_inv = Sai2Model::computePseudoInverse(_kv_pos);
 		_desired_linear_velocity =
-			-_kp_pos * kv_pos_inv * sigma_position *
+			-_kp_pos * kv_pos_inv * sigma_position * 
 				(step_position_error) -
 			_ki_pos * kv_pos_inv * _integrated_position_error;
 		if (_desired_linear_velocity.norm() > _linear_saturation_velocity) {

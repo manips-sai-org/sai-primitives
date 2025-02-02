@@ -20,12 +20,20 @@ int getSign(double value) {
 
 JointHandler::JointHandler(std::shared_ptr<Sai2Model::Sai2Model> robot,
                            const bool& verbose,
+                           const bool& truncation_flag,
+                           const bool& is_floating,
                            const double& pos_zone_1,
                            const double& pos_zone_2,
                            const double& vel_zone_1,
                            const double& vel_zone_2,
                            const double& kv,
-                           const double& gamma) : _robot(robot), _verbose(verbose) {
+                           const double& gamma,
+                           const std::vector<int>& joint_selection) : 
+                           _robot(robot), 
+                           _verbose(verbose), 
+                           _is_floating(is_floating), 
+                           _truncation_flag(truncation_flag),
+                           _joint_selection(joint_selection) {
 
     // initialize variables
     _dof = _robot->dof();
@@ -43,8 +51,8 @@ JointHandler::JointHandler(std::shared_ptr<Sai2Model::Sai2Model> robot,
     // default zone 1 and zone threshold at 0.6 and 0.8 rad/s
     _pos_zone_1_threshold = (pos_zone_1 * M_PI / 180) * VectorXd::Ones(_dof);
     _pos_zone_2_threshold = (pos_zone_2 * M_PI / 180) * VectorXd::Ones(_dof);
-    _vel_zone_1_threshold = vel_zone_1 * VectorXd::Ones(_dof);
-    _vel_zone_2_threshold = vel_zone_2 * VectorXd::Ones(_dof);
+    _vel_zone_1_threshold = (vel_zone_1 * M_PI / 180) * VectorXd::Ones(_dof);
+    _vel_zone_2_threshold = (vel_zone_2 * M_PI / 180) * VectorXd::Ones(_dof);
 
     // get joint limits from robot 
     auto joint_limits = _robot->jointLimits();
@@ -75,39 +83,62 @@ JointHandler::JointHandler(std::shared_ptr<Sai2Model::Sai2Model> robot,
                                "Maximum Soft Position",
                                "Maximum Hard Position"};
 
+    _enable_limit_flag = true;
 }
 
-VectorXd JointHandler::computeTorques(const VectorXd& torques) {
+/**
+ * @brief Update task model. Compute the constrained joint jacobian, blending coefficients 
+ * 
+ */
+void JointHandler::updateTaskModel(const MatrixXd& N_prec) {
     
+    _N_prec = N_prec;
+    // if (_truncation_flag) {
+    //     _blending_matrix = MatrixXd::Identity(_dof, _dof);
+    // } else {
+    //     _blending_matrix = MatrixXd::Zero(_dof, _dof);  // add the nullspace 
+    // }
+
+    // get values 
     VectorXd q = _robot->q();
     VectorXd dq = _robot->dq();
 
     // check each joint for state (position is priority over velocity)
     _joint_state.setZero();
     std::vector<double> alpha = {};
+    int offset = 0;
+    if (_is_floating) {
+        offset = 6;
+    }
 
-    for (int i = 0; i < _dof; ++i) {
+    for (int i = 0 + offset; i < _dof; ++i) {
 
-        // // velocity zone check
-        // if (std::abs(dq(i)) > _dq_abs_max(i) - _vel_zone_2_threshold(i)) {
-        //     double dq_zone_lower = _dq_abs_max(i) - _vel_zone_2_threshold(i);
-        //     double dq_zone_upper = _dq_abs_max(i);
-        //     alpha.push_back(std::clamp((std::abs(dq(i)) - dq_zone_lower) / (dq_zone_upper - dq_zone_lower), 0.0, 1.0));
-        //     if (getSign(dq(i)) > 0) {
-        //         _joint_state(i) = MAX_HARD_VEL;
-        //     } else {
-        //         _joint_state(i) = MIN_HARD_VEL;
-        //     }
-        // } else if (std::abs(dq(i)) > _dq_abs_max(i) - _vel_zone_1_threshold(i)) {
-        //     double dq_zone_lower = _dq_abs_max(i) - _vel_zone_1_threshold(i);
-        //     double dq_zone_upper = _dq_abs_max(i) - _vel_zone_2_threshold(i);
-        //     alpha.push_back(std::clamp((std::abs(dq(i)) - dq_zone_lower) / (dq_zone_upper - dq_zone_lower), 0.0, 1.0));
-        //     if (getSign(dq(i)) > 0) {
-        //         _joint_state(i) = MAX_SOFT_VEL;
-        //     } else {
-        //         _joint_state(i) = MIN_SOFT_VEL;
-        //     }
-        // }
+        if (_joint_selection.size() != 0) {
+            if (std::find(_joint_selection.begin(), _joint_selection.end(), i) == _joint_selection.end()) {
+                continue;
+            }
+        }
+
+        // velocity zone check
+        if (std::abs(dq(i)) > _dq_abs_max(i) - _vel_zone_2_threshold(i)) {
+            double dq_zone_lower = _dq_abs_max(i) - _vel_zone_2_threshold(i);
+            double dq_zone_upper = _dq_abs_max(i);
+            alpha.push_back(std::clamp((std::abs(dq(i)) - dq_zone_lower) / (dq_zone_upper - dq_zone_lower), 0.0, 1.0));
+            if (getSign(dq(i)) > 0) {
+                _joint_state(i) = MAX_HARD_VEL;
+            } else {
+                _joint_state(i) = MIN_HARD_VEL;
+            }
+        } else if (std::abs(dq(i)) > _dq_abs_max(i) - _vel_zone_1_threshold(i)) {
+            double dq_zone_lower = _dq_abs_max(i) - _vel_zone_1_threshold(i);
+            double dq_zone_upper = _dq_abs_max(i) - _vel_zone_2_threshold(i);
+            alpha.push_back(std::clamp((std::abs(dq(i)) - dq_zone_lower) / (dq_zone_upper - dq_zone_lower), 0.0, 1.0));
+            if (getSign(dq(i)) > 0) {
+                _joint_state(i) = MAX_SOFT_VEL;
+            } else {
+                _joint_state(i) = MIN_SOFT_VEL;
+            }
+        }
             
         // position zone check
         if (getSign(q(i)) > 0) {
@@ -136,6 +167,13 @@ VectorXd JointHandler::computeTorques(const VectorXd& torques) {
             }
         }
     }
+
+    // // set alpha to the smallest value 
+    // // Find the smallest element
+    // double min_val = *std::min_element(alpha.begin(), alpha.end());
+
+    // // Set all elements to the smallest value
+    // std::fill(alpha.begin(), alpha.end(), min_val);
     
     // form constraint-space op-space terms
     int num_con = 0;
@@ -145,11 +183,14 @@ VectorXd JointHandler::computeTorques(const VectorXd& torques) {
         }
     }
 
-    if (num_con == 0) {
-        return torques;
-
+    if (num_con == 0 || !_enable_limit_flag) {
+        _blending_coefficients = alpha;
+        _non_task_safety_torques = VectorXd::Zero(_dof);
+        _Jc = MatrixXd::Zero(1, _dof);
+        _Nc = MatrixXd::Identity(_dof, _dof);
+        _blending_matrix = MatrixXd::Zero(_dof, _dof);
+        return;
     } else {
-
         // verbose
         if (_verbose) {
             std::cout << "---\n";
@@ -169,80 +210,166 @@ VectorXd JointHandler::computeTorques(const VectorXd& torques) {
             // alphas
             std::cout << "alpha\n";
             for (auto val : alpha) {
-                std::cout << val << "\n";
+                std::cout << val << ", ";
             }
         }
 
         // Vector to store the indices of non-zero elements
         std::vector<int> non_zero_indices;
+        _blending_matrix = MatrixXd::Zero(num_con, _dof);
 
         // Iterate over the non-zero elements and store their indices
+        int cnt = 0;
         for (int i = 0; i < _joint_state.size(); ++i) {
             if (_joint_state[i] != SAFE) {
                 non_zero_indices.push_back(i);
+                if (_joint_state[i] == MAX_HARD_POS || _joint_state[i] == MIN_HARD_POS) {
+                    _blending_matrix(cnt, i) = std::pow((1 - alpha[cnt]), 2);
+                    cnt++;
+                } else if (_joint_state[i] == MAX_HARD_VEL || _joint_state[i] == MIN_HARD_VEL) {
+                    _blending_matrix(cnt, i) = 0;
+                    cnt++;
+                } else if (_joint_state[i] == MAX_SOFT_VEL || _joint_state[i] == MIN_SOFT_VEL) {
+                    _blending_matrix(cnt, i) = 1 - alpha[cnt];
+                    cnt++;
+                } else if (_joint_state[i] == MAX_SOFT_POS || _joint_state[i] == MIN_SOFT_POS) {
+                    _blending_matrix(cnt, i) = 1;
+                    cnt++;
+                }
             }
         }
-        MatrixXd Jc = MatrixXd::Zero(num_con, _dof);
+        _Jc = MatrixXd::Zero(num_con, _dof);
         for (int i = 0; i < num_con; ++i) {
-            Jc(i, non_zero_indices[i]) = 1;
+            _Jc(i, non_zero_indices[i]) = 1;
         }
+        // _blending_matrix = _blending_matrix * _Jc;
+        _projected_jacobian = _Jc * _N_prec;
 
-        Sai2Model::OpSpaceMatrices con_matrices = _robot->operationalSpaceMatrices(Jc);
-        MatrixXd Lambda_c = con_matrices.Lambda;
-        MatrixXd Jbar_c = con_matrices.Jbar;
-        MatrixXd N_c = con_matrices.N;
+        // decomposition 
+        _current_task_range = Sai2Model::matrixRangeBasis(_projected_jacobian);
+        // _current_task_range.setIdentity();
 
+        // if (_is_floating) {
+        //     MatrixXd U = MatrixXd::Zero(6, _dof);
+        //     U.block(0, 0, 6, 6).setIdentity();
+        //     MatrixXd N_float = _robot->nullspaceMatrix(U);
+        //     Jc *= N_float;
+        // }
+
+        Sai2Model::OpSpaceMatrices con_matrices = _robot->operationalSpaceMatrices(_current_task_range.transpose() * _projected_jacobian);
+        // Sai2Model::OpSpaceMatrices con_matrices = _robot->operationalSpaceMatrices(_projected_jacobian);
+        _Lambda_c = con_matrices.Lambda;
+        // MatrixXd Jbar_c = con_matrices.Jbar;
+        // _Nc = con_matrices.N;
+        _Nc = con_matrices.N;
+        _blending_coefficients = alpha;
+        _blending_matrix = (_current_task_range.transpose() * _projected_jacobian).transpose() * _current_task_range.transpose() * \
+                                _blending_matrix * (MatrixXd::Identity(_dof, _dof) - _Nc.transpose());  // blending the torque into the constraint space from the total torques
+        // _blending_matrix = (_projected_jacobian).transpose() * \
+                                // _blending_matrix * (MatrixXd::Identity(_dof, _dof) - _Nc.transpose());  // blending the torque into the constraint space from the total torques
+        if (_truncation_flag) {
+
+        }
+    }
+}
+
+VectorXd JointHandler::computeTorques(const VectorXd& torques) {
+    
+    // kinematics 
+    VectorXd q = _robot->q();
+    VectorXd dq = _robot->dq();
+    
+    // form constraint-space op-space terms
+    int num_con = 0;
+    for (int i = 0; i < _dof; ++i) {
+        if (_joint_state(i) != SAFE) {
+            num_con++;
+        }
+    }
+
+    if (num_con == 0 || !_enable_limit_flag) {
+        return torques;
+    } else {        
+
+        VectorXd projected_torques_in_constraint = (MatrixXd::Identity(_dof, _dof) - _Nc.transpose()) * torques;
+        VectorXd projected_torques_not_in_constraint = torques - projected_torques_in_constraint;        
+
+        VectorXd element_wise_non_task_safety_torques = VectorXd::Zero(num_con);
+        VectorXd element_wise_projected_task_torques = VectorXd::Zero(num_con);
         VectorXd safety_torques = VectorXd::Zero(num_con);
         VectorXd unit_mass_torques = VectorXd::Zero(num_con);  // stores the unit-mass torques from constraint strategy
-        VectorXd original_torques = torques;
+        VectorXd truncated_torques = torques;
 
         // joint handling for constrained joints 
         int cnt = 0;
         for (int i = 0; i < _dof; ++i) {
+
+            if (_joint_state[i] != SAFE && _truncation_flag) {
+                projected_torques_not_in_constraint(i) = 0;
+            }
+
             if (_joint_state(i) == MIN_SOFT_VEL) {
-                safety_torques(cnt) = (1 - alpha[cnt]) * torques(i);
-                original_torques(i) = 0;
+                element_wise_projected_task_torques(cnt) = (1 - _blending_coefficients[cnt]) * projected_torques_in_constraint(i);
+                // safety_torques(cnt) = (1 - _blending_coefficients[cnt]) * torques(i);
+                truncated_torques(i) = 0;
                 cnt++;
 
             } else if (_joint_state(i) == MIN_HARD_VEL) {
-                safety_torques(cnt) = _vel_gamma(i) * std::pow(alpha[cnt], 4) * _tau_abs_max(i);
-                original_torques(i) = 0;
+                element_wise_non_task_safety_torques(cnt) = _vel_gamma(i) * std::pow(_blending_coefficients[cnt], 4) * _tau_abs_max(i);
+                // _non_task_safety_torques(i) = _vel_gamma(i) * std::pow(_blending_coefficients[cnt], 4) * _tau_abs_max(i);
+                // safety_torques(cnt) = _vel_gamma(i) * std::pow(_blending_coefficients[cnt], 4) * _tau_abs_max(i);
+                // element_wise_non_task_safety_torques(cnt) = _vel_gamma(i) * std::pow(_blending_coefficients[cnt], 4) * _tau_abs_max(i);
+                truncated_torques(i) = 0;
                 cnt++;
 
             } else if (_joint_state(i) == MAX_SOFT_VEL) {
-                safety_torques(cnt) = (1 - alpha[cnt]) * torques(i);
-                original_torques(i) = 0;
+                element_wise_projected_task_torques(cnt) = (1 - _blending_coefficients[cnt]) * projected_torques_in_constraint(i);
+                // safety_torques(cnt) = (1 - _blending_coefficients[cnt]) * torques(i);
+                truncated_torques(i) = 0;
                 cnt++;
 
             } else if (_joint_state(i) == MAX_HARD_VEL) {
-                safety_torques(cnt) = - _vel_gamma(i) * std::pow(alpha[cnt], 4) * _tau_abs_max(i);
-                original_torques(i) = 0;
+                element_wise_non_task_safety_torques(cnt) = - _vel_gamma(i) * std::pow(_blending_coefficients[cnt], 4) * _tau_abs_max(i);
+                // _non_task_safety_torques(i) = - _vel_gamma(i) * std::pow(_blending_coefficients[cnt], 4) * _tau_abs_max(i);
+                // safety_torques(cnt) = - _vel_gamma(i) * std::pow(_blending_coefficients[cnt], 4) * _tau_abs_max(i);
+                // element_wise_non_task_safety_torques(cnt) = - _vel_gamma(i) * std::pow(_blending_coefficients[cnt], 4) * _tau_abs_max(i);
+                truncated_torques(i) = 0;
                 cnt++;
 
             } else if (_joint_state(i) == MIN_SOFT_POS) {
-                safety_torques(cnt) = torques(i);
-                unit_mass_torques(cnt) = - std::pow(alpha[cnt], 2) * _kv_pos_limit(i) * dq(i);
-                original_torques(i) = 0;
+                // _non_task_safety_torques(i) = - 0 * std::pow(_blending_coefficients[cnt], 2) * _kv_pos_limit(i) * dq(i);
+                // safety_torques(cnt) = torques(i);
+                element_wise_projected_task_torques(cnt) = projected_torques_in_constraint(i);
+                unit_mass_torques(cnt) = - std::pow(_blending_coefficients[cnt], 2) * _kv_pos_limit(i) * dq(i);
+                truncated_torques(i) = 0;
                 cnt++;
 
             } else if (_joint_state(i) == MIN_HARD_POS) {
-                safety_torques(cnt) = std::pow(1 - alpha[cnt], 2) * torques(i) + \
-                                        std::pow(alpha[cnt], 2) * _tau_abs_max(i);
+                // _non_task_safety_torques(i) = std::pow(_blending_coefficients[cnt], 2) * _tau_abs_max(i);
+                // safety_torques(cnt) = std::pow(1 - _blending_coefficients[cnt], 2) * torques(i) + \
+                                        std::pow(_blending_coefficients[cnt], 2) * _tau_abs_max(i);
+                element_wise_non_task_safety_torques(cnt) = std::pow(_blending_coefficients[cnt], 2) * _tau_abs_max(i);
+                element_wise_projected_task_torques(cnt) = std::pow(1 - _blending_coefficients[cnt], 2) * projected_torques_in_constraint(i);
                 unit_mass_torques(cnt) = - _kv_pos_limit(i) * dq(i);
-                original_torques(i) = 0;
+                truncated_torques(i) = 0;
                 cnt++;
 
             } else if (_joint_state(i) == MAX_SOFT_POS) {
-                safety_torques(cnt) = torques(i);
-                unit_mass_torques(cnt) = - std::pow(alpha[cnt], 2) * _kv_pos_limit(i) * dq(i);
-                original_torques(i) = 0;
+                // _non_task_safety_torques(i) = - 0 * std::pow(_blending_coefficients[cnt], 2) * _kv_pos_limit(i) * dq(i);
+                // safety_torques(cnt) = torques(i);
+                element_wise_projected_task_torques(cnt) = projected_torques_in_constraint(i);
+                unit_mass_torques(cnt) = - std::pow(_blending_coefficients[cnt], 2) * _kv_pos_limit(i) * dq(i);
+                truncated_torques(i) = 0;
                 cnt++;
 
             } else if (_joint_state(i) == MAX_HARD_POS) {
-                safety_torques(cnt) = std::pow(1 - alpha[cnt], 2) * torques(i) + \
-                                        (- 1.0) * std::pow(alpha[cnt], 2) * _tau_abs_max(i);
+                // _non_task_safety_torques(i) = (- 1.0) * std::pow(_blending_coefficients[cnt], 2) * _tau_abs_max(i);
+                // safety_torques(cnt) = std::pow(1 - _blending_coefficients[cnt], 2) * torques(i) + \
+                                        (- 1.0) * std::pow(_blending_coefficients[cnt], 2) * _tau_abs_max(i);
+                element_wise_non_task_safety_torques(cnt) = (- 1.0) * std::pow(_blending_coefficients[cnt], 2) * _tau_abs_max(i);
+                element_wise_projected_task_torques(cnt) = std::pow(1 - _blending_coefficients[cnt], 2) * projected_torques_in_constraint(i);
                 unit_mass_torques(cnt) = - _kv_pos_limit(i) * dq(i);
-                original_torques(i) = 0;
+                truncated_torques(i) = 0;
                 cnt++;
 
             } else {
@@ -251,11 +378,55 @@ VectorXd JointHandler::computeTorques(const VectorXd& torques) {
         }
         
         // compute constrained torques
-        // std::cout << "unit mass torques: \n" << Jc.transpose() * Lambda_c * unit_mass_torques << "\n";
-        // VectorXd total_torques = \
-        //     Jc.transpose() * (safety_torques + Lambda_c * unit_mass_torques) + N_c.transpose() * torques;
-        VectorXd total_torques = \
-            Jc.transpose() * (safety_torques + Lambda_c * unit_mass_torques) + original_torques;
+        VectorXd total_torques = VectorXd::Zero(_dof);
+
+        total_torques = (_current_task_range.transpose() * _projected_jacobian).transpose() * _Lambda_c * _current_task_range.transpose() * unit_mass_torques * 0;
+        total_torques += (_current_task_range.transpose() * _projected_jacobian).transpose() * _current_task_range.transpose() * \
+                            (element_wise_projected_task_torques + element_wise_non_task_safety_torques * 1);
+        // total_torques += _projected_jacobian.transpose() * _Lambda_c * (element_wise_projected_task_torques + element_wise_non_task_safety_torques * 1);
+        // std::cout << "torques before adding other values: \n" << total_torques.transpose() << "\n";
+        total_torques += projected_torques_not_in_constraint;
+
+        _non_task_safety_torques = (_current_task_range.transpose() * _projected_jacobian).transpose() * _current_task_range.transpose() * element_wise_non_task_safety_torques;
+        _non_task_safety_torques += (_current_task_range.transpose() * _projected_jacobian).transpose() * _Lambda_c * _current_task_range.transpose() * unit_mass_torques * 0;
+        
+        // total_torques = _projected_jacobian.transpose() * _Lambda_c * unit_mass_torques * 1;
+        // total_torques += _projected_jacobian.transpose() * \
+        //                     (element_wise_projected_task_torques + element_wise_non_task_safety_torques * 1);
+        // // total_torques += _projected_jacobian.transpose() * _Lambda_c * (element_wise_projected_task_torques + element_wise_non_task_safety_torques * 1);
+        // // std::cout << "torques before adding other values: \n" << total_torques.transpose() << "\n";
+        // total_torques += projected_torques_not_in_constraint;
+
+        // _non_task_safety_torques = (_projected_jacobian).transpose() * element_wise_non_task_safety_torques;
+        // _non_task_safety_torques += (_projected_jacobian).transpose() * _Lambda_c * unit_mass_torques;
+
+        // if (_truncation_flag) {
+        //     total_torques = (_current_task_range.transpose() * _projected_jacobian).transpose() * (safety_torques + _Lambda_c * unit_mass_torques) + truncated_torques;
+        //     // _non_task_safety_torques = _N_prec.transpose()  * _non_task_safety_torques;
+        //     _non_task_safety_torques += _Jc.transpose() * _Lambda_c * unit_mass_torques;
+        //     // total_torques = Jc.transpose() * (safety_torques + unit_mass_torques) + truncated_torques;
+        // } else {
+
+        //     total_torques = (_current_task_range.transpose() * _projected_jacobian).transpose() * _Lambda_c * _current_task_range.transpose() * unit_mass_torques * 1;
+        //     total_torques += (_current_task_range.transpose() * _projected_jacobian).transpose() * _current_task_range.transpose() * \
+        //                         (element_wise_projected_task_torques + element_wise_non_task_safety_torques * 1);
+        //     // total_torques += _projected_jacobian.transpose() * _Lambda_c * (element_wise_projected_task_torques + element_wise_non_task_safety_torques * 1);
+        //     // std::cout << "torques before adding other values: \n" << total_torques.transpose() << "\n";
+        //     total_torques += projected_torques_not_in_constraint;
+
+        //     _non_task_safety_torques = (_current_task_range.transpose() * _projected_jacobian).transpose() * _current_task_range.transpose() * element_wise_non_task_safety_torques;
+        //     _non_task_safety_torques += (_current_task_range.transpose() * _projected_jacobian).transpose() * _Lambda_c * _current_task_range.transpose() * unit_mass_torques;
+            
+        //     // total_torques = _projected_jacobian.transpose() * _Lambda_c * unit_mass_torques * 1;
+        //     // total_torques += _projected_jacobian.transpose() * \
+        //     //                     (element_wise_projected_task_torques + element_wise_non_task_safety_torques * 1);
+        //     // // total_torques += _projected_jacobian.transpose() * _Lambda_c * (element_wise_projected_task_torques + element_wise_non_task_safety_torques * 1);
+        //     // // std::cout << "torques before adding other values: \n" << total_torques.transpose() << "\n";
+        //     // total_torques += projected_torques_not_in_constraint;
+
+        //     // _non_task_safety_torques = (_projected_jacobian).transpose() * element_wise_non_task_safety_torques;
+        //     // _non_task_safety_torques += (_projected_jacobian).transpose() * _Lambda_c * unit_mass_torques;
+        // }
 
         // torque saturation    
         for (int i = 0; i < _dof; ++i) {

@@ -74,17 +74,53 @@ SingularityHandler::SingularityHandler(std::shared_ptr<Sai2Model::Sai2Model> rob
     _impedance_force_torques = VectorXd::Zero(_dof);
 }
 
-void SingularityHandler::updateTaskModel(const MatrixXd& projected_jacobian, const MatrixXd& N_prec) {
+void SingularityHandler::updateTaskModel(MatrixXd& projected_jacobian, const MatrixXd& N_prec, const bool& is_floating) {
     
+    // if (is_floating) {
+        // projected_jacobian.block(0, 0, 3, 3).setZero();
+    // }
+
     // task range decomposition
+    // MatrixXd projected_jacobian = jacobian * N_prec;  // actually used in control
     JacobiSVD<MatrixXd> J_svd(projected_jacobian, ComputeThinU | ComputeThinV);
     _svd_U = J_svd.matrixU();
     _svd_s = J_svd.singularValues();
     _svd_V = J_svd.matrixV();
 
+    // if (is_floating) {
+    //     MatrixXd J_floating = MatrixXd::Zero(3, _dof);
+    //     // J_floating.block(0, 0, 3, 3).setIdentity();
+    //     J_floating.block(0, 0, 3, 3).setIdentity();
+    //     MatrixXd N_floating = _robot->nullspaceMatrix(J_floating);
+    //     // std::cout << "N floating\n: " << N_floating << "\n";
+    //     JacobiSVD<MatrixXd> J_svd(projected_jacobian * N_floating, ComputeThinU | ComputeThinV);
+    //     _svd_U = J_svd.matrixU();
+    //     _svd_s = J_svd.singularValues();
+    //     _svd_V = J_svd.matrixV();
+    //     projected_jacobian *= N_floating;
+    // }
+
+    // task range decomposition on just the non-floating joints to get alpha if is floating
+    // use the singular values of this jacobian, but use the other task range 
+    // if (is_floating) {
+    //     MatrixXd nonfloating_projected_jacobian = jacobian * N_prec;
+    //     nonfloating_projected_jacobian.leftCols(3).setZero();
+    //     // nonfloating_projected_jacobian *= N_prec;
+    //     JacobiSVD<MatrixXd> J_svd(nonfloating_projected_jacobian, ComputeThinU | ComputeThinV);
+    //     _svd_U = J_svd.matrixU();
+    //     _svd_s = J_svd.singularValues();
+    //     _svd_V = J_svd.matrixV();
+    //     projected_jacobian = nonfloating_projected_jacobian;
+    // }
+
     if (_svd_s(0) < _s_abs_tol) {
+        std::cout << "WARNING: fully singular task\n";
         // fully singular task
         _alpha = 0;
+
+        // if (is_floating) {
+        //     projected_jacobian.leftCols(3) *= _alpha;
+        // }
 
         // placeholder non-singular terms 
         _task_range_ns = MatrixXd::Zero(_task_rank, 1);
@@ -105,6 +141,10 @@ void SingularityHandler::updateTaskModel(const MatrixXd& projected_jacobian, con
             if (inv_condition_number < _s_max) {
                 // task enters singularity blending region
                 _alpha = std::clamp((inv_condition_number - _s_min) / (_s_max - _s_min), 0., 1.);
+
+                // if (is_floating) {
+                //     projected_jacobian.leftCols(3) *= _alpha;
+                // }
 
                 // non-singular task
                 _task_range_ns = _svd_U.leftCols(i);

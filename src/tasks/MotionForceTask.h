@@ -769,6 +769,25 @@ public:
 															perturb_step_size,
 															buffer_size);
 	}
+
+	/**
+	 * @brief Set the Floating object
+	 * 
+	 * @param is_floating 
+	 */
+	void setFloating(const bool& is_floating) {
+		_is_floating = is_floating;
+	}
+
+	/**
+	 * @brief Get the Floating object
+	 * 
+	 * @return true 
+	 * @return false 
+	 */
+	bool getFloating() {
+		return _is_floating;
+	}
 		
 	// -------- getters for model parameters --------
 	VectorXd getImpedanceForces() {
@@ -977,6 +996,7 @@ private:
 	bool _use_user_step_orientation_flag;
 	Vector3d _user_step_position_error;
 	Vector3d _user_step_orientation_error;
+	bool _is_floating;
 };
 
 } /* namespace Sai2Primitives */
