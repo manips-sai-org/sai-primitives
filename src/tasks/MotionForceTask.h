@@ -210,6 +210,20 @@ public:
 		return _N * _N_prec;
 	}
 
+	Affine3d getCurrentPose() {
+		Affine3d current_pose;
+		current_pose.translation() = _current_position;
+		current_pose.linear() = _current_orientation;
+		return current_pose;
+	}
+
+	Affine3d getGoalPose() {
+		Affine3d goal_pose;
+		goal_pose.translation() = _goal_position;
+		goal_pose.linear() = _goal_orientation;
+		return goal_pose;
+	}
+
 	void setGoalPosition(const Vector3d& goal_position) {
 		_goal_position = goal_position;
 	}

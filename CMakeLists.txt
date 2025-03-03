@@ -5,7 +5,7 @@ set(PROJECT_VERSION 0.1.0)
 
 option(BUILD_EXAMPLES "Build examples" ON)
 
-set(CMAKE_CXX_FLAGS "-std=c++17 -I/usr/include -I/usr/local/include -fPIC -O2")
+set(CMAKE_CXX_FLAGS "-std=c++17 -I/usr/include -I/usr/local/include -fPIC -O2 -w")
 if(${CMAKE_SYSTEM_NAME} MATCHES Darwin)
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -I/opt/homebrew/include")
 endif()
@@ -38,6 +38,14 @@ find_library(
   PATHS ${RUCKIG_LOCAL_DIR}/build
   NO_DEFAULT_PATH)
 
+# include openGJK for collision detection 
+set(OPENGJK_LOCAL_DIR ${PROJECT_SOURCE_DIR}/openGJK)
+set(OPENGJK_INCLUDE_DIR ${OPENGJK_LOCAL_DIR}/include/openGJK)
+set(OPENGJK_LIBRARIES ${PROJECT_SOURCE_DIR}/openGJK/build/libopengjk_ce.dylib)
+
+# yaml-cpp
+find_package(yaml-cpp REQUIRED)
+
 # add tasks
 set(CONTROLLERS_SOURCE
     ${PROJECT_SOURCE_DIR}/src/RobotController.cpp
@@ -45,6 +53,7 @@ set(CONTROLLERS_SOURCE
     ${PROJECT_SOURCE_DIR}/src/tasks/JointTask.cpp
     ${PROJECT_SOURCE_DIR}/src/tasks/SingularityHandler.cpp
     ${PROJECT_SOURCE_DIR}/src/tasks/JointHandler.cpp
+    ${PROJECT_SOURCE_DIR}/src/tasks/SelfCollision.cpp
     ${PROJECT_SOURCE_DIR}/src/HapticDeviceController.cpp
     ${PROJECT_SOURCE_DIR}/src/POPCBilateralTeleoperation.cpp)
 
@@ -58,20 +67,22 @@ set(HELPER_MODULES_SOURCE
 
 # add header files
 set(SAI2-PRIMITIVES_INCLUDE_DIRS ${PROJECT_SOURCE_DIR}/src
-                                 ${RUCKIG_LOCAL_DIR}/include/)
+                                 ${RUCKIG_LOCAL_DIR}/include/
+                                 ${OPENGJK_LOCAL_DIR}/include/)
 
 # Add the include directory to the include paths
 include_directories(
 	${SAI2-PRIMITIVES_INCLUDE_DIRS}
 	${EIGEN3_INCLUDE_DIR}
 	${SAI2-MODEL_INCLUDE_DIRS}
-	${RUCKIG_INCLUDE_DIR})
+	${RUCKIG_INCLUDE_DIR}
+  ${OPENGJK_INCLUDE_DIR})
 
 # Create the library
 add_library(sai2-primitives STATIC ${CONTROLLERS_SOURCE}
                                    ${HELPER_MODULES_SOURCE})
 
-set(SAI2-PRIMITIVES_LIBRARIES sai2-primitives ${RUCKIG_LIBRARIES})
+set(SAI2-PRIMITIVES_LIBRARIES sai2-primitives ${RUCKIG_LIBRARIES} ${OPENGJK_LIBRARIES} yaml-cpp::yaml-cpp)
 
 set(SAI2-PRIMITIVES_DEFINITIONS ${PROJECT_DEFINITIONS})
 
