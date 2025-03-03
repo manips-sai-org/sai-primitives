@@ -55,8 +55,10 @@ public:
 		static constexpr double ki_moment = 1.3;
 		static constexpr double kff_force = 0.95;
 		static constexpr double kff_moment = 0.95;
-		static constexpr double max_force_control_feedback_output = 20.0;
-		static constexpr double max_moment_control_feedback_output = 10.0;
+		// static constexpr double max_force_control_feedback_output = 20.0;
+		// static constexpr double max_moment_control_feedback_output = 10.0;
+		static constexpr double max_force_control_feedback_output = 1000.0;
+		static constexpr double max_moment_control_feedback_output = 1000.0;
 		static constexpr bool closed_loop_force_control = false;
 		static constexpr bool closed_loop_moment_control = false;
 		static constexpr int force_space_dimension = 0;
@@ -72,6 +74,7 @@ public:
 		static constexpr bool internal_otg_jerk_limited = false;
 		static constexpr double otg_max_linear_jerk = 10.0;
 		static constexpr double otg_max_angular_jerk = 10.0 * M_PI;
+		static constexpr double force_to_velocity_scaling = (0.1 / 10);  // 0.1 ms for 10 N desired 
 	};
 
 	//------------------------------------------------
@@ -564,7 +567,8 @@ public:
 	 */
 	bool parametrizeForceMotionSpaces(
 		const int force_space_dimension,
-		const Vector3d& force_or_motion_single_axis = Vector3d::Zero());
+		const Vector3d& force_or_motion_single_axis = Vector3d::Zero(),
+		const bool reset_override = false);
 
 	int getForceSpaceDimension() const { return _force_space_dimension; }
 	Vector3d getForceMotionSingleAxis() const { return _force_or_motion_axis; }
@@ -590,7 +594,8 @@ public:
 	 */
 	bool parametrizeMomentRotMotionSpaces(
 		const int moment_space_dimension,
-		const Vector3d& moment_or_rot_motion_single_axis = Vector3d::Zero());
+		const Vector3d& moment_or_rot_motion_single_axis = Vector3d::Zero(),
+		const bool reset_override = false);
 
 	int getMomentSpaceDimension() const { return _moment_space_dimension; }
 	Vector3d getMomentRotMotionSingleAxis() const {
@@ -617,6 +622,23 @@ public:
 	 */
 	void enablePassivity() { _POPC_force->enable(); }
 	void disablePassivity() { _POPC_force->disable(); }
+
+	/**
+	 * @brief 		Enables or disables zero moment crossing detection 
+	 */
+	void enableZeroForceCrossing() { _zero_force_crossing_flag = true; }
+	void enableZeroMomentCrossing() { _zero_moment_crossing_flag = true; }
+	void disableZeroForceCrossing() { _zero_force_crossing_flag = false; }
+	void disableZeroMomentCrossing() { _zero_moment_crossing_flag = false; }
+
+	/**
+	 * @brief 		Set velocity or force control in force space directions
+	 */
+	void enableForceControlInForceSpace() { _force_control_in_force_space_flag = true; }
+	void enableVelocityControlInForceSpace() { _force_control_in_force_space_flag = false; }
+	bool getEnableVelocityControlInForceSpace() { return _force_control_in_force_space_flag; }
+	Vector3d getDesiredLinearVelocityFromForce() { return _desired_linear_velocity_from_force; }
+	void setForceVelocityScaling(const double& scale) {	_force_to_velocity_scaling = scale;	}
 
 	// ------- helper methods -------
 
@@ -739,6 +761,62 @@ public:
 									 const double& kv_type_2) {
 		_singularity_handler->setSingularityHandlingGains(kp_type_1, kv_type_1,
 														  kv_type_2);
+	}
+
+	/**
+	 * @brief Update control point 
+	 */
+	void setControlPoint(const Vector3d& control_point) {
+		_compliant_frame.translation() = control_point;
+	}
+
+	/**
+	 * @brief Reset integrated moment error by index 
+	 */
+	void resetIntegratorsAngularByIndex(const int i) {
+		_integrated_moment_error(i) = 0;
+	}
+
+	void enableForceControlTaskDamping() {
+		_task_space_force_damping_flag = true;
+	}
+
+	void disableForceControlTaskDamping() {
+		_task_space_force_damping_flag = false;
+	}
+
+	void enableMomentControlTaskDamping() {
+		_task_space_moment_damping_flag = true;
+	}
+
+	void disableMomentControlTaskDamping() {
+		_task_space_moment_damping_flag = false;
+	}
+
+	void setForceControlDeadband(const double& force_deadband) {
+		_enable_force_control_deadband = true;
+		_force_control_deadband = force_deadband;
+	}
+
+	void setMomentControlDeadband(const double& moment_deadband) {
+		_enable_moment_control_deadband = true;
+		_moment_control_deadband = moment_deadband;
+	}
+
+	void enableForceSensorCompensation() {
+		_enable_force_sensor_compensation = true;
+	}
+
+	void disableForceSensorCompensation() {
+		_enable_force_sensor_compensation = false;
+	}
+
+	void enableForceInertiaShaping() {
+		_singularity_handler->enableForceInertiaShaping();
+	}
+
+	void disableForceInertiaShaping() {
+		_singularity_handler->enableForceInertiaShaping();
 	}
 
 private:
@@ -871,6 +949,24 @@ private:
 	Matrix<double, 6, 6> _partial_task_projection;
 
 	VectorXd _unit_mass_force;
+
+	// flags 
+	bool _zero_force_crossing_flag;
+	bool _zero_moment_crossing_flag;
+	Vector3d _prev_force_error;
+	Vector3d _prev_moment_error;
+
+	bool _task_space_force_damping_flag;
+	bool _task_space_moment_damping_flag;
+	bool _enable_force_control_deadband;
+	double _force_control_deadband;
+	bool _enable_moment_control_deadband;
+	double _moment_control_deadband;
+	bool _enable_force_sensor_compensation;
+
+	bool _force_control_in_force_space_flag;
+	double _force_to_velocity_scaling; 
+	Vector3d _desired_linear_velocity_from_force;
 
 	// singularity handler
 	std::unique_ptr<SingularityHandler> _singularity_handler;

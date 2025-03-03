@@ -387,6 +387,21 @@ public:
 		_integrated_position_error.setZero();
 	}
 
+	/**
+	 * @brief   Reset integrator error by index 
+	 */
+	void resetIntegratorsByIndex(const int i) {
+		_integrated_position_error(i) = 0;
+	}
+
+	/**
+	 * @brief   Projected current error 
+	 */
+	VectorXd getCurrentError() {
+		// return _current_task_range.transpose() * (_current_position - _goal_position);
+		return _current_position - _goal_position;
+	}
+
 	//-----------------------------------------------
 	//         Member variables
 	//-----------------------------------------------

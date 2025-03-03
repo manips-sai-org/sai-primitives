@@ -198,6 +198,17 @@ void MotionForceTask::initialSetup() {
 	setDynamicDecouplingType(DefaultParameters::dynamic_decoupling_type);
 	setBoundedInertiaEstimateThreshold(DefaultParameters::bie_threshold);
 
+	_zero_force_crossing_flag = false;
+	_zero_moment_crossing_flag = false;
+	_prev_force_error = Vector3d::Zero();
+	_prev_moment_error = Vector3d::Zero();
+	_task_space_force_damping_flag = false;
+	_task_space_moment_damping_flag = false;
+	_enable_moment_control_deadband = false;
+	_enable_force_sensor_compensation = false;
+	_force_control_in_force_space_flag = true; 
+	_force_to_velocity_scaling = DefaultParameters::force_to_velocity_scaling;
+
 	reInitializeTask();
 }
 
@@ -308,6 +319,9 @@ VectorXd MotionForceTask::computeTorques() {
 	Vector3d moment_feedback_related_force = Vector3d::Zero();
 	Vector3d orientation_related_force = Vector3d::Zero();
 
+	Vector3d force_related_damping = Vector3d::Zero();
+	Vector3d moment_related_damping = Vector3d::Zero();
+
 	Matrix3d kp_pos =
 		_current_orientation * _kp_pos * _current_orientation.transpose();
 	Matrix3d kv_pos =
@@ -317,16 +331,45 @@ VectorXd MotionForceTask::computeTorques() {
 
 	// force related terms
 	if (_closed_loop_force_control) {
+
+		Vector3d curr_force_error = _sensed_force_control_world_frame - goal_force;
+
+		// zero crossing detection for integral 
+		if (_zero_force_crossing_flag) {
+			for (int i = 0; i < 3; ++i) {
+				if (_prev_force_error(i) * curr_force_error(i) < 0) {
+					_integrated_force_error(i) = 0;
+				}
+			}
+		}
+
+		_prev_force_error = curr_force_error;
+
 		// update the integrated error
 		_integrated_force_error +=
 			sigma_force * (_sensed_force_control_world_frame - goal_force) *
 			getLoopTimestep();
 
+		// // compute deadband saturation for kp term
+		// if (_enable_force_control_deadband) {
+		// 	for (int i = 0; i < 3; ++i) {
+		// 		if (std::abs(curr_force_error(i)) > _force_control_deadband) {
+		// 			curr_force_error(i) = 0;
+		// 		}
+		// 	}
+		// }
+
 		// compute the feedback term and saturate it
+		// Vector3d force_feedback_term =
+		// 	sigma_force *
+		// 	(-_kp_force * (_sensed_force_control_world_frame - goal_force) -
+		// 	 _ki_force * _integrated_force_error);
+
 		Vector3d force_feedback_term =
 			sigma_force *
-			(-_kp_force * (_sensed_force_control_world_frame - goal_force) -
+			(-_kp_force * curr_force_error -
 			 _ki_force * _integrated_force_error);
+
 		if (force_feedback_term.norm() > _max_force_control_feedback_output) {
 			force_feedback_term *=
 				_max_force_control_feedback_output / force_feedback_term.norm();
@@ -339,23 +382,61 @@ VectorXd MotionForceTask::computeTorques() {
 				sigma_force * _sensed_force_control_world_frame,
 				sigma_force * force_feedback_term,
 				sigma_force * _current_linear_velocity, _kv_force, _kff_force);
+
+		// compute damping to be used in task space if enabled
+		if (_task_space_force_damping_flag) {
+			force_related_damping = sigma_force * (-_kv_force * _current_linear_velocity);
+		}
+
 	} else	// open loop force control
 	{
-		force_feedback_related_force =
-			sigma_force * (-_kv_force * _current_linear_velocity);
+		if (_task_space_force_damping_flag) {
+			force_related_damping =
+				sigma_force * (-_kv_force * _current_linear_velocity);
+		} else {
+			force_feedback_related_force =
+				sigma_force * (-_kv_force * _current_linear_velocity);
+		}
 	}
 
 	// moment related terms
 	if (_closed_loop_moment_control) {
+
+		Vector3d curr_moment_error = _sensed_moment_control_world_frame - goal_moment;
+
+		// zero crossing detection for integral 
+		if (_zero_moment_crossing_flag) {
+			for (int i = 0; i < 3; ++i) {
+				if (_prev_moment_error(i) * curr_moment_error(i) < 0) {
+					_integrated_moment_error(i) = 0;
+				}
+			}
+		}
+
+		_prev_moment_error = curr_moment_error;
+
 		// update the integrated error
 		_integrated_moment_error +=
 			sigma_moment * (_sensed_moment_control_world_frame - goal_moment) *
 			getLoopTimestep();
 
+		// // enable deadband for kp term 
+		// if (_enable_moment_control_deadband) {
+		// 	for (int i = 0; i < 3; ++i) {
+		// 		if (std::abs(curr_moment_error(i)) < _moment_control_deadband)
+		// 		curr_moment_error(i) = 0;
+		// 	}
+		// }
+
 		// compute the feedback term
+		// Vector3d moment_feedback_term =
+		// 	sigma_moment *
+		// 	(-_kp_moment * (_sensed_moment_control_world_frame - goal_moment) -
+		// 	 _ki_moment * _integrated_moment_error);
+
 		Vector3d moment_feedback_term =
 			sigma_moment *
-			(-_kp_moment * (_sensed_moment_control_world_frame - goal_moment) -
+			(-_kp_moment * curr_moment_error -
 			 _ki_moment * _integrated_moment_error);
 
 		// saturate the feedback term
@@ -365,13 +446,26 @@ VectorXd MotionForceTask::computeTorques() {
 		}
 
 		// compute the final contribution
-		moment_feedback_related_force =
-			sigma_moment *
-			(moment_feedback_term - _kv_moment * _current_angular_velocity);
+		if (_task_space_moment_damping_flag) {
+			moment_related_damping =
+				sigma_moment * (-_kv_moment * _current_angular_velocity);
+
+			moment_feedback_related_force =
+				sigma_moment * moment_feedback_term;
+		} else {
+			moment_feedback_related_force =
+				sigma_moment *
+				(moment_feedback_term - _kv_moment * _current_angular_velocity);
+		}
 	} else	// open loop moment control
 	{
-		moment_feedback_related_force =
-			sigma_moment * (-_kv_moment * _current_angular_velocity);
+		if (_task_space_moment_damping_flag) {
+			moment_related_damping =
+				sigma_moment * (-_kv_moment * _current_angular_velocity);
+		} else {
+			moment_feedback_related_force =
+				sigma_moment * (-_kv_moment * _current_angular_velocity);
+		}
 	}
 
 	// motion related terms
@@ -470,8 +564,25 @@ VectorXd MotionForceTask::computeTorques() {
 	_unit_mass_force = position_orientation_contribution;
 
 	VectorXd feedforward_force_moment = VectorXd::Zero(6);
-	feedforward_force_moment.head(3) = sigma_force * goal_force;
-	feedforward_force_moment.tail(3) = sigma_moment * goal_moment;
+	if (_enable_force_sensor_compensation) {
+		feedforward_force_moment.head(3) = sigma_force * (- _sensed_force_control_world_frame + goal_force);
+		feedforward_force_moment.tail(3) = sigma_moment * (- _sensed_moment_control_world_frame + goal_moment);
+		// feedforward_force_moment.head(3) = sigma_force * (_sensed_force_control_world_frame);
+		// feedforward_force_moment.tail(3) = sigma_moment * (_sensed_moment_control_world_frame);
+	} else {
+		feedforward_force_moment.head(3) = sigma_force * goal_force;
+		feedforward_force_moment.tail(3) = sigma_moment * goal_moment;
+
+		if (!_force_control_in_force_space_flag) {
+			// change force related damping to velocity following 
+			_desired_linear_velocity_from_force = _force_to_velocity_scaling * goal_force;
+			feedforward_force_moment.head(3).setZero();
+			force_feedback_related_force.setZero();
+			force_related_damping = sigma_force * (- kv_pos * (_current_linear_velocity - _desired_linear_velocity_from_force));
+		} else {
+			_desired_linear_velocity_from_force.setZero();
+		}
+	}
 
 	if (_closed_loop_force_control) {
 		feedforward_force_moment.head(3) *= _kff_force;
@@ -483,8 +594,12 @@ VectorXd MotionForceTask::computeTorques() {
 	_linear_motion_control = position_related_force;
 
 	// compute torque through singularity handler
+	VectorXd force_moment_related_damping(6);
+	force_moment_related_damping.head(3) = force_related_damping;
+	force_moment_related_damping.tail(3) = moment_related_damping;
+
 	task_joint_torques = _singularity_handler->computeTorques(
-		_unit_mass_force, force_moment_contribution + feedforward_force_moment);
+		_unit_mass_force, force_moment_contribution + feedforward_force_moment, force_moment_related_damping);
 
 	return task_joint_torques;
 }
@@ -810,7 +925,8 @@ void MotionForceTask::updateSensedForceAndMoment(
 
 bool MotionForceTask::parametrizeForceMotionSpaces(
 	const int force_space_dimension,
-	const Vector3d& force_or_motion_single_axis) {
+	const Vector3d& force_or_motion_single_axis,
+	const bool reset_override) {
 	if (force_space_dimension < 0 || force_space_dimension > 3) {
 		throw invalid_argument(
 			"Force space dimension should be between 0 and 3 in "
@@ -828,7 +944,7 @@ bool MotionForceTask::parametrizeForceMotionSpaces(
 							 _force_or_motion_axis);
 		_force_or_motion_axis = force_or_motion_single_axis.normalized();
 	}
-	if (reset) {
+	if (reset && !reset_override) {
 		_goal_position = _current_position;
 		_goal_linear_velocity.setZero();
 		_goal_linear_acceleration.setZero();
@@ -840,7 +956,8 @@ bool MotionForceTask::parametrizeForceMotionSpaces(
 
 bool MotionForceTask::parametrizeMomentRotMotionSpaces(
 	const int moment_space_dimension,
-	const Vector3d& moment_or_rot_motion_single_axis) {
+	const Vector3d& moment_or_rot_motion_single_axis,
+	const bool reset_override) {
 	if (moment_space_dimension < 0 || moment_space_dimension > 3) {
 		throw invalid_argument(
 			"Moment space dimension should be between 0 and 3 in "
@@ -860,7 +977,7 @@ bool MotionForceTask::parametrizeMomentRotMotionSpaces(
 		_moment_or_rotmotion_axis =
 			moment_or_rot_motion_single_axis.normalized();
 	}
-	if (reset) {
+	if (reset && !reset_override) {
 		_goal_orientation = _current_orientation;
 		_goal_angular_velocity.setZero();
 		_goal_angular_acceleration.setZero();

@@ -70,6 +70,9 @@ SingularityHandler::SingularityHandler(std::shared_ptr<Sai2Model::Sai2Model> rob
     _type_2_angle_threshold = TYPE_2_ANGLE_THRESHOLD;
     _perturb_step_size = PERTURB_STEP_SIZE;
     _buffer_size = BUFFER_SIZE;
+
+    // flags
+    _enable_force_inertia_shaping = false;
 }
 
 void SingularityHandler::updateTaskModel(const MatrixXd& projected_jacobian, const MatrixXd& N_prec) {
@@ -294,7 +297,7 @@ void SingularityHandler::classifySingularity(const MatrixXd& singular_task_range
 
 }
 
-VectorXd SingularityHandler::computeTorques(const VectorXd& unit_mass_force, const VectorXd& force_related_terms) {
+VectorXd SingularityHandler::computeTorques(const VectorXd& unit_mass_force, const VectorXd& force_related_terms, const VectorXd& force_related_damping) {
     if (_verbose) {
         if (_singularity_types.size() != 0) {
             for (auto type : _singularity_types) {
@@ -305,8 +308,13 @@ VectorXd SingularityHandler::computeTorques(const VectorXd& unit_mass_force, con
     }
 
     if (_singularity_types.size() == 0) {
-        return _projected_jacobian_ns.transpose() * (_Lambda_ns_modified * _task_range_ns.transpose() * unit_mass_force + \
-                    _task_range_ns.transpose() * force_related_terms);
+        if (_enable_force_inertia_shaping) {
+            return _projected_jacobian_ns.transpose() * (_Lambda_ns_modified * _task_range_ns.transpose() * (unit_mass_force + force_related_damping) + \
+                    _Lambda_ns_modified * _task_range_ns.transpose() * force_related_terms);    
+        } else {
+            return _projected_jacobian_ns.transpose() * (_Lambda_ns_modified * _task_range_ns.transpose() * (unit_mass_force + force_related_damping) + \
+                        _task_range_ns.transpose() * force_related_terms);
+        }
     } else if (_dynamic_decoupling_type == IMPEDANCE) {
         return _projected_jacobian_ns.transpose() * (_task_range_ns.transpose() * unit_mass_force + \
                     _task_range_ns.transpose() * force_related_terms);
@@ -317,8 +325,13 @@ VectorXd SingularityHandler::computeTorques(const VectorXd& unit_mass_force, con
         if (_task_range_ns.norm() == 0) {
             return tau_ns;  // pass through task if fully singular 
         } else {
-            tau_ns = _projected_jacobian_ns.transpose() * (_Lambda_ns_modified * _task_range_ns.transpose() * unit_mass_force + \
-                        _task_range_ns.transpose() * force_related_terms);
+            if (_enable_force_inertia_shaping) {
+                tau_ns = _projected_jacobian_ns.transpose() * (_Lambda_ns_modified * _task_range_ns.transpose() * (unit_mass_force + force_related_damping) + \
+                            _Lambda_ns_modified * _task_range_ns.transpose() * force_related_terms);
+            } else {
+                tau_ns = _projected_jacobian_ns.transpose() * (_Lambda_ns_modified * _task_range_ns.transpose() * (unit_mass_force + force_related_damping) + \
+                            _task_range_ns.transpose() * force_related_terms);
+            }
             if (!_enforce_handling_strategy) {
                 return tau_ns;
             }
@@ -351,8 +364,13 @@ VectorXd SingularityHandler::computeTorques(const VectorXd& unit_mass_force, con
         }
 
         // combine non-singular torques and blended singular torques with joint strategy torques
-        _singular_task_torques = _projected_jacobian_s.transpose() * (_Lambda_s_modified * _task_range_s.transpose() * unit_mass_force + \
-                                            _task_range_s.transpose() * force_related_terms);
+        if (_enable_force_inertia_shaping) {
+            _singular_task_torques = _projected_jacobian_s.transpose() * (_Lambda_s_modified * _task_range_s.transpose() * (unit_mass_force + force_related_damping) + \
+                                                _Lambda_s_modified * _task_range_s.transpose() * force_related_terms);
+        } else {
+            _singular_task_torques = _projected_jacobian_s.transpose() * (_Lambda_s_modified * _task_range_s.transpose() * (unit_mass_force + force_related_damping) + \
+                                                _task_range_s.transpose() * force_related_terms);
+        }
 
         for (int i = 0; i < _dof; ++i) {
             if (isnan(_singular_task_torques(i))) {

@@ -67,7 +67,7 @@ public:
      * @param force_related_terms Desired forces from motion force task
      * @return VectorXd Torque vector 
      */
-    VectorXd computeTorques(const VectorXd& unit_mass_force, const VectorXd& force_related_terms);
+    VectorXd computeTorques(const VectorXd& unit_mass_force, const VectorXd& force_related_terms, const VectorXd& force_related_damping);
 
     /**
      * @brief Set the dynamic decoupling type 
@@ -183,6 +183,14 @@ public:
         _buffer_size = buffer_size;
     }
 
+    void enableForceInertiaShaping() {
+        _enable_force_inertia_shaping = true;
+    }
+
+    void disableForceInertiaShaping() {
+        _enable_force_inertia_shaping = false;
+    }
+
 private:
 
     /**
@@ -245,6 +253,9 @@ private:
     
     VectorXd _singular_task_torques;
     VectorXd _joint_strategy_torques;
+
+    // flags
+    bool _enable_force_inertia_shaping;
 };
 
 }  // namespace
