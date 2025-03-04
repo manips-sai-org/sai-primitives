@@ -1,9 +1,16 @@
 set(EXAMPLE_NAME 97-self_collision)
 # create an executable
 ADD_EXECUTABLE (${EXAMPLE_NAME} ${EXAMPLE_NAME}.cpp)
+ADD_EXECUTABLE (97-self_collision_real 97-self_collision_real.cpp)
 
 # and link the library against the executable
 TARGET_LINK_LIBRARIES (${EXAMPLE_NAME}
 	${SAI2-PRIMITIVES_LIBRARIES}
 	${SAI2-PRIMITIVES_EXAMPLES_COMMON_LIBRARIES}
 	)
+
+TARGET_LINK_LIBRARIES (97-self_collision_real
+	${SAI2-PRIMITIVES_LIBRARIES}
+	${SAI2-PRIMITIVES_EXAMPLES_COMMON_LIBRARIES}
+	)
+

@@ -5,7 +5,7 @@ set(PROJECT_VERSION 0.1.0)
 
 option(BUILD_EXAMPLES "Build examples" ON)
 
-set(CMAKE_CXX_FLAGS "-std=c++17 -I/usr/include -I/usr/local/include -fPIC -O2 -w")
+set(CMAKE_CXX_FLAGS "-std=c++17 -I/usr/include -I/usr/local/include -fPIC -O2")
 if(${CMAKE_SYSTEM_NAME} MATCHES Darwin)
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -I/opt/homebrew/include")
 endif()
@@ -41,7 +41,7 @@ find_library(
 # include openGJK for collision detection 
 set(OPENGJK_LOCAL_DIR ${PROJECT_SOURCE_DIR}/openGJK)
 set(OPENGJK_INCLUDE_DIR ${OPENGJK_LOCAL_DIR}/include/openGJK)
-set(OPENGJK_LIBRARIES ${PROJECT_SOURCE_DIR}/openGJK/build/libopengjk_ce.dylib)
+set(OPENGJK_LIBRARIES ${PROJECT_SOURCE_DIR}/openGJK/build/libopengjk_ce.so)
 
 # yaml-cpp
 find_package(yaml-cpp REQUIRED)

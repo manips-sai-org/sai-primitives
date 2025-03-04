@@ -32,8 +32,10 @@ public:
     SelfCollision(std::shared_ptr<Sai2Model::Sai2Model> robot,
                   const std::string& mesh_yaml,
                   const bool& verbose = true,
-                  const double& distance_zone_1 = 0.05,
-                  const double& distance_zone_2 = 0.02);
+                  const double& distance_zone_1 = 0.15,
+                  const double& distance_zone_2 = 0.1);
+                //   const double& distance_zone_1 = 0.05,
+                //   const double& distance_zone_2 = 0.02);
 
     int readMeshFile(const char* inputfile, gkFloat*** pts, int* out);
 
@@ -46,6 +48,17 @@ public:
 
     void disableCollisionFlag() {
         _enable_limit_flag = false;
+    }
+
+    /*
+        Collision information
+    */
+    std::vector<std::pair<Vector3d, Vector3d>> getCollisionPoints() {
+        return _mesh_pair_body_points;
+    }
+
+    std::vector<SelfCollisionState> getCollisionStates() {
+        return _mesh_pair_flag;
     }
 
     // void setJointSelection(const std::vector<int>& joint_selection) {
@@ -127,6 +140,7 @@ private:
     std::vector<double> _mesh_pair_distance;
     std::vector<Vector3d> _mesh_pair_constraint_direction;
     std::vector<MatrixXd> _mesh_pair_projected_jacobian;
+    std::vector<std::pair<Vector3d, Vector3d>> _mesh_pair_body_points;
 
     // task models
     std::vector<MatrixXd> _projected_jacobians;

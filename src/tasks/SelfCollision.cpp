@@ -83,6 +83,7 @@ SelfCollision::SelfCollision(std::shared_ptr<Sai2Model::Sai2Model> robot,
         mesh_names: ["a.dat", "b.dat", ...]
         pairs: [(0, 1), (1, 2), ...]
     */
+    std::cout << "Loading yaml file\n";
     YAML::Node config = YAML::LoadFile(mesh_yaml);
 
     // Read link_names
@@ -140,6 +141,7 @@ SelfCollision::SelfCollision(std::shared_ptr<Sai2Model::Sai2Model> robot,
         _mesh_pair_distance.push_back(std::numeric_limits<double>::infinity());
         _mesh_pair_constraint_direction.push_back(Vector3d::Zero());
         _mesh_pair_projected_jacobian.push_back(MatrixXd::Zero(1, 1));
+        _mesh_pair_body_points.push_back(std::make_pair(Vector3d::Zero(), Vector3d::Zero()));
     }
 
     for (int i = 0; i < _n_meshes; ++i) {
@@ -194,6 +196,10 @@ void SelfCollision::updateTaskModel(const MatrixXd& N_prec) {
     // update robot mesh transforms 
     for (int i = 0; i < _n_meshes; ++i) {
         _T_meshes[i] = _robot->transform(_link_names[i]);
+        if (i == _n_meshes - 1) {
+            Matrix3d rot_in_link = AngleAxisd(-M_PI / 4, Vector3d::UnitZ()).toRotationMatrix();
+            _T_meshes[i] = _robot->transform(_link_names[i], Vector3d(0, 0, -0.107), rot_in_link);
+        }
 
         // debug transforms
         // std::cout << _link_names[i] << "\n";
@@ -240,6 +246,9 @@ void SelfCollision::updateTaskModel(const MatrixXd& N_prec) {
 
         Vector3d body_a_pos_in_link = _T_meshes[mesh_a_id].inverse() * Vector3d(s.witnesses[0][0], s.witnesses[0][1], s.witnesses[0][2]);
         Vector3d body_b_pos_in_link = _T_meshes[mesh_b_id].inverse() * Vector3d(s.witnesses[1][0], s.witnesses[1][1], s.witnesses[1][2]);
+
+        _mesh_pair_body_points[i] = std::make_pair( Vector3d(s.witnesses[0][0], s.witnesses[0][1], s.witnesses[0][2]), \
+                                                    Vector3d(s.witnesses[1][0], s.witnesses[1][1], s.witnesses[1][2]) );
 
         if (distance < _distance_zone_2) {
             // zone 2

@@ -1,7 +1,7 @@
 # Self-collilsion config
 collision_config:
   link_names: ["link0", "link1", "link2", "link3", "link4", "link5", "link6", "link7", "end-effector"]
-  mesh_prefix: /Users/william/sai2/core/sai2-primitives/openGJK/utils/panda_meshes/
+  mesh_prefix: /home/william/OpenSai/core/sai2-primitives/openGJK/utils/panda_meshes/
   mesh_names: ["link0.dat", "link1.dat", "link2.dat", "link3.dat", "link4.dat", "link5.dat", "link6.dat", "link7.dat", "hand.dat"]
   pairs: 
     # - (0, 2)
@@ -30,5 +30,5 @@ collision_config:
     # - (4, 7)
     - [4, 8]
     # - (5, 7)
-    - [5, 8]
-    - [6, 8]
+    # - [5, 8]
+    # - [6, 8]
