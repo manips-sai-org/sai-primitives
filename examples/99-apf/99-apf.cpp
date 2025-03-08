@@ -1,5 +1,9 @@
 /*
- * Example of singularity handling by smoothing Lambda in/out of singularities.
+ * Example of apf comparison.
+ * - normal apf and in/out task
+ * - apf in nullspace and in/out task
+ * - apf in nullspace with task
+ * - apf in nullspace with leaky task
  */
 
 #include <math.h>
@@ -110,7 +114,7 @@ void control(shared_ptr<Sai2Model::Sai2Model> robot,
 	int dof = robot->dof();
 	MatrixXd N_prec = MatrixXd::Identity(dof, dof);
 
-	// joint handler 
+	// joint handler
 	auto joint_handler = make_unique<Sai2Primitives::JointHandler>(robot);
 
 	// Position plus orientation task
@@ -132,7 +136,7 @@ void control(shared_ptr<Sai2Model::Sai2Model> robot,
 	// motion_force_task->setSingularityGains(20, 20);
 
     motion_force_task->disableInternalOtg();
-    motion_force_task->enableVelocitySaturation(M_PI);
+    motion_force_task->enableVelocitySaturation(0.2);
 	VectorXd motion_force_task_torques = VectorXd::Zero(dof);
 
 	// no gains setting here, using the default task values
@@ -143,37 +147,44 @@ void control(shared_ptr<Sai2Model::Sai2Model> robot,
 	// using default gains and interpolation settings
 	auto joint_task = make_unique<Sai2Primitives::JointTask>(robot);
     joint_task->disableInternalOtg();
-    joint_task->enableVelocitySaturation(M_PI);
+    joint_task->enableVelocitySaturation(2 * M_PI);
     joint_task->setGains(100, 20);
 	VectorXd joint_task_torques = VectorXd::Zero(dof);
 
 	VectorXd initial_q = robot->q();
     joint_task->setGoalPosition(initial_q);
 
-    // apf joint limits 
+    // apf joint limits
     auto joint_limits = robot->jointLimits();
     VectorXd q_min(robot->dof()), q_max(robot->dof());
     int cnt = 0;
     for (auto limit : joint_limits) {
-        q_min(cnt) = limit.position_lower + 0.5;
-        q_max(cnt) = limit.position_upper - 0.5;
+        q_min(cnt) = limit.position_lower + 0.4;
+        q_max(cnt) = limit.position_upper - 0.4;
         cnt++;
     }
+    // double eta = 0.5;
     double eta = 0.5;
+    // double eta = 10.0;
     VectorXd q_init = robot->q();
     VectorXd q_delta = VectorXd::Zero(robot->dof());
     q_delta(5) = 5;
+	double sign_switch = 1;
+	VectorXd q_oscillation = VectorXd::Zero(robot->dof());
 
-    // desired position offsets 
-    vector<Vector3d> desired_offsets {Vector3d(2, 0, 0), Vector3d(0, 0, 0), 
-                                      Vector3d(0, 2, 0), Vector3d(0, 0, 0), 
+    // desired position offsets
+    // vector<Vector3d> desired_offsets {Vector3d(2, 0, 0), Vector3d(0, 0, 0),
+    //                                   Vector3d(0, 2, 0), Vector3d(0, 0, 0),
+    //                                   Vector3d(0, -2, 0), Vector3d(0, 0, 0),
+    //                                   Vector3d(0, 0, 2), Vector3d(0, 0, 0)};
+	vector<Vector3d> desired_offsets {Vector3d(0, 2, 0), Vector3d(0, 0, 0),
                                       Vector3d(0, -2, 0), Vector3d(0, 0, 0),
                                       Vector3d(0, 0, 2), Vector3d(0, 0, 0)};
     // vector<Vector3d> desired_offsets {Vector3d(2, 0, 0)};
 	double t_initial = 2;
-	vector<double> t_wait {5, 5};
-    // double t_wait = 10;  // wait between switching desired positions 
-	// double t_reset_wait = 5;  // wait when resetting position 
+	vector<double> t_wait {7, 7};
+    // double t_wait = 10;  // wait between switching desired positions
+	// double t_reset_wait = 5;  // wait when resetting position
     double prev_time = 0;
     // int cnt = 6 * 1;
 	cnt = 0;
@@ -183,8 +194,12 @@ void control(shared_ptr<Sai2Model::Sai2Model> robot,
 	Sai2Common::Logger logger("joints", false);
 	VectorXd svalues = VectorXd::Zero(6);
     VectorXd robot_q = robot->q();
+	VectorXd robot_dq = robot->dq();
+	VectorXd robot_torque = VectorXd::Zero(robot->dof());
 	// logger.addToLog(svalues, "svalues");
     logger.addToLog(robot_q, "robot_q");
+	logger.addToLog(robot_dq, "robot_dq");
+	logger.addToLog(robot_torque, "robot_torque");
 	logger.start();
 
 	// create a loop timer
@@ -201,26 +216,31 @@ void control(shared_ptr<Sai2Model::Sai2Model> robot,
 		robot->updateModel();
 
         robot_q = robot->q();
+		robot_dq = robot->dq();
 
 		// update tasks model. Order is important to define the hierarchy
 		N_prec = MatrixXd::Identity(dof, dof);
+		joint_handler->updateTaskModel(N_prec);
 		{
 			lock_guard<mutex> lock(mutex_robot);
-			motion_force_task->updateTaskModel(N_prec);
+			// motion_force_task->updateTaskModel(N_prec);
 		}
-		N_prec = motion_force_task->getTaskAndPreviousNullspace();
+		// N_prec = motion_force_task->getTaskAndPreviousNullspace();
 		// after each task, need to update the nullspace
 		// of the previous tasks in order to garantee
 		// the dynamic consistency
 
-		joint_task->updateTaskModel(N_prec);
-
-        joint_task->updateTaskModel(MatrixXd::Identity(robot->dof(), robot->dof()));
+		double freq = 0.2;
+		// q_oscillation(0) = 0.2 * sin(2 * M_PI * freq * time);
+		// q_oscillation(1) = 0.2 * sin(2 * M_PI * freq * time);
+		// q_oscillation(5) = 0.1 * sin(2 * M_PI * freq * time);
 
 		// -------- set task goals and compute control torques
-		// position: move to workspace extents 
+		// position: move to workspace extents
         if (time - prev_time > t_wait[cnt % 2]) {
             motion_force_task->setGoalPosition(initial_position + desired_offsets[cnt]);
+			sign_switch *= -1;
+			q_delta(5) = sign_switch * 5;
             cnt++;
             prev_time = time;
             if (cnt == max_cnt) cnt = max_cnt - 1;
@@ -228,32 +248,97 @@ void control(shared_ptr<Sai2Model::Sai2Model> robot,
         motion_force_task->setGoalLinearVelocity(Vector3d::Zero());
         motion_force_task->setGoalLinearAcceleration(Vector3d::Zero());
 
-        joint_task->setGoalPosition(q_init + q_delta);
+        joint_task->setGoalPosition(q_init + q_delta + q_oscillation);
 
-		// compute torques for the different tasks
-		motion_force_task_torques = motion_force_task->computeTorques();
-		joint_task_torques = joint_task->computeTorques();
-
-        // compute apf torques 
+        // compute apf torques
         VectorXd apf_force = VectorXd::Zero(robot->dof());
+		VectorXd custom_apf_force = VectorXd::Zero(robot->dof());
+		MatrixXd J_c = MatrixXd::Zero(1, robot->dof());
+		VectorXd apf_damping_force = VectorXd::Zero(robot->dof());
+		MatrixXd selection = MatrixXd::Zero(robot->dof(), robot->dof());
+		double zone_width = 0.16;
+		double alpha = 0;
+		bool constraint_flag = false;
         for (int i = 0; i < robot->dof(); ++i) {
-            // if (i == 3) {
+            if (i == 5) {
                 double rho_lower = robot->q()(i) - q_min(i);
                 double rho_upper = q_max(i) - robot->q()(i);
-                if (rho_lower < 0.08) {
-                    apf_force(i) = eta * std::abs(((1 / rho_lower) - (1 / 0.08))) * (1 / (rho_lower * rho_lower));
-                } else if (rho_upper < -0.08) {
-                    apf_force(i) = - eta * std::abs(((1 / rho_upper) - (1 / (-0.08)))) * (1 / (rho_upper * rho_upper));
+                if (rho_lower < zone_width) {
+                    apf_force(i) = eta * std::abs(((1 / rho_lower) - (1 / zone_width))) * (1 / (rho_lower * rho_lower));
+					J_c(0, i) = 1;
+					alpha = std::clamp(std::abs((robot->q()(i) - q_min(i) - zone_width) / zone_width), 0.0, 1.0);
+					// alpha = std::clamp(std::abs(zone_width / rho_lower), 0.0, 1.0);
+					// alpha = std::clamp(std::abs((robot->q()(i) - q_min(i)) / zone_width), 0.0, 1.0);
+					// std::cout << "alpha lower: " << alpha << "\n";
+					// alpha = std::abs(rho_lower / 0.08);
+					custom_apf_force(i) = 12. * alpha * alpha;
+					constraint_flag = true;
+					selection(i, i) = 1;
+                } else if (rho_upper < -zone_width) {
+                    apf_force(i) = - eta * std::abs(((1 / rho_upper) - (1 / (zone_width)))) * (1 / (rho_upper * rho_upper));
+					J_c(0, i) = 1;
+					alpha = std::clamp(std::abs((robot->q()(i) - q_max(i) - zone_width) / zone_width), 0.0, 1.0);
+					// alpha = std::clamp(std::abs(rho_upper / zone_width), 0.0, 1.0);
+					// alpha = std::clamp(std::abs((robot->q()(i) - q_max(i)) / zone_width), 0.0, 1.0);
+					// std::cout << "value: " << std::abs(zone_width / rho_upper) << "\n";
+					// std::cout << "alpha upper: " << alpha << "\n";
+					// alpha = std::abs(rho_upper / 0.08);
+					custom_apf_force(i) = -12. * alpha * alpha;
+					constraint_flag = true;
+					selection(i, i) = 1;
                 }
-            // }
+            }
         }
         // std::cout << "apf force: " << apf_force.transpose() << "\n";
+
+        joint_task->updateTaskModel(MatrixXd::Identity(robot->dof(), robot->dof()));  // original
+		VectorXd joint_task_torques_without_nullspace = joint_task->computeTorques();
+
+		// if (J_c.sum() != 0) {
+		if (constraint_flag) {
+			// std::cout << "truncation\n";
+			joint_task->updateTaskModel(robot->nullspaceMatrix(J_c));  // nullspace of constraint
+		} else {
+	        joint_task->updateTaskModel(MatrixXd::Identity(robot->dof(), robot->dof()));  // original
+		}
+
+		// compute torques for the different tasks
+		// motion_force_task_torques = motion_force_task->computeTorques();
+		joint_task_torques = joint_task->computeTorques();
+		VectorXd leaky_torque = VectorXd::Zero(robot->dof());
+		// if (J_c.sum() != 0) {
+		if (constraint_flag) {
+			leaky_torque = (std::pow(1 - alpha, 2)) * J_c.transpose() * robot->dynConsistentInverseJacobian(J_c).transpose() * joint_task_torques_without_nullspace;
+			// leaky_torque = (std::pow(alpha, 2)) * joint_task_torques_without_nullspace;
+			apf_damping_force = - 20 * robot->M() * robot->dq();
+			for (int i = 0; i < robot->dof(); ++i) {
+				if (J_c(0, i) != 1) {
+					// leaky_torque(i) = 0;
+					apf_damping_force(i) = 0;
+				}
+			}
+		}
 
 		//------ compute the final torques
 		{
 			lock_guard<mutex> lock(mutex_torques);
 			// control_torques = joint_handler->computeTorques(motion_force_task_torques + joint_task_torques);
-			control_torques = joint_task_torques + apf_force;
+			// control_torques = motion_force_task_torques + joint_task_torques + apf_force;
+			// control_torques = joint_task_torques + J_c.transpose() * robot->M() * apf_force;
+			// control_torques = joint_task_torques + custom_apf_force + leaky_torque + apf_damping_force;  // proposed method 
+			// control_torques = joint_task_torques + J_c.transpose() * selection * robot->M() * apf_force + leaky_torque;
+			// control_torques = joint_task_torques_without_nullspace + J_c.transpose() * selection * robot->M() * apf_force + apf_damping_force;  // normal method
+			// control_torques = joint_task_torques + J_c.transpose() * selection * robot->M() * apf_force + 1 * apf_damping_force;  // truncation
+			// control_torques = joint_task_torques + custom_apf_force + apf_damping_force;  // truncation with custom apf 
+			// control_torques = joint_task_torques;
+			control_torques = joint_handler->computeTorques(joint_task_torques_without_nullspace);
+			robot_torque = control_torques;
+			// control_torques = joint_task_torques_without_nullspace;
+			// saturate control torques
+			// std::cout << "apf forces: " << apf_force.transpose() << "\n";
+			// std::cout << "control torques: " << control_torques.transpose() << "\n";
+			// std::cout << "alpha: " << alpha << "\n";
+			// std::cout << "custom apf force: " << custom_apf_force.transpose() << "\n";
 		}
 
 		// MatrixXd Jc = MatrixXd::Zero(1, robot->dof());
@@ -283,7 +368,7 @@ void simulation(shared_ptr<Sai2Model::Sai2Model> robot,
 				shared_ptr<Sai2Simulation::Sai2Simulation> sim) {
 	fSimulationRunning = true;
 
-	// sim->disableJointLimits(robot_name);
+	sim->disableJointLimits(robot_name);
 
 	// create a timer
 	double sim_freq = 2000;

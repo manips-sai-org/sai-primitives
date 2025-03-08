@@ -70,11 +70,13 @@ SelfCollision::SelfCollision(std::shared_ptr<Sai2Model::Sai2Model> robot,
                              const std::string& mesh_yaml,
                              const bool& verbose,
                              const double& distance_zone_1,
-                             const double& distance_zone_2) : 
+                             const double& distance_zone_2,
+                             const double& f_thresh) : 
                              _robot(robot),
                              _verbose(verbose),
                              _distance_zone_1(distance_zone_1),
-                             _distance_zone_2(distance_zone_2) {
+                             _distance_zone_2(distance_zone_2),
+                             _F_thresh(f_thresh) {
 
     // parse yaml file (mesh filenames (.dat files), and candidate pairs)
     /*
@@ -145,6 +147,7 @@ SelfCollision::SelfCollision(std::shared_ptr<Sai2Model::Sai2Model> robot,
     for (int i = 0; i < _n_meshes; ++i) {
         _T_meshes.push_back(Affine3d::Identity());
     }
+
 }
 
 int SelfCollision::readMeshFile(const char* inputfile, gkFloat*** pts, int* out) {
@@ -285,14 +288,19 @@ VectorXd SelfCollision::computeTorques(const VectorXd& torques) {
 
                 // task elements 
                 double alpha = std::clamp((_mesh_pair_distance[i] - _distance_zone_2) / (_distance_zone_1 - _distance_zone_2), 0.0, 1.0);
+                Vector3d constraint_direction = _mesh_pair_constraint_direction[i];
                 MatrixXd projected_jacobian = _mesh_pair_projected_jacobian[i] * _N_prec;
                 double task_inertia = _robot->taskInertiaMatrix(projected_jacobian)(0);
                 VectorXd task_force_along_constraint = _robot->dynConsistentInverseJacobian(projected_jacobian).transpose() * torques;
 
                 // constraint force
-                double unit_mass_constraint_force = - (std::pow(1 - alpha, 2) * _kv * projected_jacobian * _robot->dq())(0);
+                // double unit_mass_constraint_force = - (std::pow(1 - alpha, 2) * _kv * projected_jacobian * _robot->dq())(0);
+                double unit_mass_constraint_force = - (_kv * projected_jacobian * _robot->dq())(0);
                 self_collision_torques += projected_jacobian.transpose() * task_inertia * unit_mass_constraint_force;
-                self_collision_torques += projected_jacobian.transpose() * task_force_along_constraint;
+
+                if (task_force_along_constraint.dot(constraint_direction) > _F_thresh) {
+                    self_collision_torques += projected_jacobian.transpose() * task_force_along_constraint;
+                }
 
                 // nullspace 
                 _N_prec = _robot->nullspaceMatrix(projected_jacobian) * _N_prec;
@@ -306,14 +314,19 @@ VectorXd SelfCollision::computeTorques(const VectorXd& torques) {
 
                 // task elements 
                 double alpha = std::clamp(_mesh_pair_distance[i] / _distance_zone_2, 0.0, 1.0);
+                Vector3d constraint_direction = _mesh_pair_constraint_direction[i];
                 MatrixXd projected_jacobian = _mesh_pair_projected_jacobian[i] * _N_prec;
                 double task_inertia = _robot->taskInertiaMatrix(projected_jacobian)(0);
-                double task_force_along_constraint = (_robot->dynConsistentInverseJacobian(projected_jacobian).transpose() * torques)(0);
+                VectorXd task_force_along_constraint = _robot->dynConsistentInverseJacobian(projected_jacobian).transpose() * torques;
 
                 // constraint force 
                 self_collision_torques += projected_jacobian.transpose() * task_inertia * (- _kv * projected_jacobian * _robot->dq());
-                self_collision_torques += projected_jacobian.transpose() * \
-                                                (std::pow(1 - alpha, 2) * _F_max + std::pow(alpha, 2) * task_force_along_constraint);
+                // self_collision_torques += projected_jacobian.transpose() * \
+                                                // (std::pow(1 - alpha, 2) * _F_max + std::pow(alpha, 2) * task_force_along_constraint);
+
+                if (task_force_along_constraint.dot(constraint_direction) > _F_thresh) {
+                    self_collision_torques += self_collision_torques += projected_jacobian.transpose() * task_force_along_constraint;
+                }
 
                 // nullspace 
                 _N_prec = _robot->nullspaceMatrix(projected_jacobian) * _N_prec;

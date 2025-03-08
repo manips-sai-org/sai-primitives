@@ -33,7 +33,8 @@ public:
                   const std::string& mesh_yaml,
                   const bool& verbose = true,
                   const double& distance_zone_1 = 0.05,
-                  const double& distance_zone_2 = 0.02);
+                  const double& distance_zone_2 = 0.02,
+                  const double& f_thresh = 1);
 
     int readMeshFile(const char* inputfile, gkFloat*** pts, int* out);
 
@@ -133,6 +134,7 @@ private:
     MatrixXd _N_prec;
     double _kv;
     double _F_max;
+    double _F_thresh;
     // double _F_max;
 
     // safety
