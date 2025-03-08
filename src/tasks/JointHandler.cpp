@@ -100,6 +100,8 @@ JointHandler::JointHandler(std::shared_ptr<Sai2Model::Sai2Model> robot,
     _blending_coefficients = VectorXd::Zero(robot->dof());
     _vel_blending_coefficients = VectorXd::Zero(robot->dof());
     _num_con = 0;
+
+    _enable_vel_limits = false;
 }
 
 /**
@@ -160,28 +162,30 @@ void JointHandler::updateTaskModel(const MatrixXd& N_prec) {
         /*
             Velocity limits check 
         */
-        if (std::abs(dq(i)) > _dq_abs_max(i) - _vel_zone_2_threshold(i)) {
-            double dq_zone_lower = _dq_abs_max(i) - _vel_zone_2_threshold(i);
-            double dq_zone_upper = _dq_abs_max(i);
-            _vel_blending_coefficients(i) = std::clamp((std::abs(dq(i)) - dq_zone_lower) / (dq_zone_upper - dq_zone_lower), 0.0, 1.0);
-            // vel_alpha.push_back(std::clamp((std::abs(dq(i)) - dq_zone_lower) / (dq_zone_upper - dq_zone_lower), 0.0, 1.0));
-            if (getSign(dq(i)) > 0) {
-                _joint_vel_state(i) = MAX_HARD_VEL;
+        if (_enable_vel_limits) {
+            if (std::abs(dq(i)) > _dq_abs_max(i) - _vel_zone_2_threshold(i)) {
+                double dq_zone_lower = _dq_abs_max(i) - _vel_zone_2_threshold(i);
+                double dq_zone_upper = _dq_abs_max(i);
+                _vel_blending_coefficients(i) = std::clamp((std::abs(dq(i)) - dq_zone_lower) / (dq_zone_upper - dq_zone_lower), 0.0, 1.0);
+                // vel_alpha.push_back(std::clamp((std::abs(dq(i)) - dq_zone_lower) / (dq_zone_upper - dq_zone_lower), 0.0, 1.0));
+                if (getSign(dq(i)) > 0) {
+                    _joint_vel_state(i) = MAX_HARD_VEL;
+                } else {
+                    _joint_vel_state(i) = MIN_HARD_VEL;
+                }
+            } else if (std::abs(dq(i)) > _dq_abs_max(i) - _vel_zone_1_threshold(i)) {
+                double dq_zone_lower = _dq_abs_max(i) - _vel_zone_1_threshold(i);
+                double dq_zone_upper = _dq_abs_max(i) - _vel_zone_2_threshold(i);
+                _vel_blending_coefficients(i) = std::clamp((std::abs(dq(i)) - dq_zone_lower) / (dq_zone_upper - dq_zone_lower), 0.0, 1.0);
+                // vel_alpha.push_back(std::clamp((std::abs(dq(i)) - dq_zone_lower) / (dq_zone_upper - dq_zone_lower), 0.0, 1.0));
+                if (getSign(dq(i)) > 0) {
+                    _joint_vel_state(i) = MAX_SOFT_VEL;
+                } else {
+                    _joint_vel_state(i) = MIN_SOFT_VEL;
+                }
             } else {
-                _joint_vel_state(i) = MIN_HARD_VEL;
+                _joint_vel_state(i) = SAFE;
             }
-        } else if (std::abs(dq(i)) > _dq_abs_max(i) - _vel_zone_1_threshold(i)) {
-            double dq_zone_lower = _dq_abs_max(i) - _vel_zone_1_threshold(i);
-            double dq_zone_upper = _dq_abs_max(i) - _vel_zone_2_threshold(i);
-            _vel_blending_coefficients(i) = std::clamp((std::abs(dq(i)) - dq_zone_lower) / (dq_zone_upper - dq_zone_lower), 0.0, 1.0);
-            // vel_alpha.push_back(std::clamp((std::abs(dq(i)) - dq_zone_lower) / (dq_zone_upper - dq_zone_lower), 0.0, 1.0));
-            if (getSign(dq(i)) > 0) {
-                _joint_vel_state(i) = MAX_SOFT_VEL;
-            } else {
-                _joint_vel_state(i) = MIN_SOFT_VEL;
-            }
-        } else {
-            _joint_vel_state(i) = SAFE;
         }
 
         /*
@@ -225,38 +229,6 @@ void JointHandler::updateTaskModel(const MatrixXd& N_prec) {
             _joint_state(i) = SAFE;
         }
 
-        // // position zones 
-        // if (q(i) > _q_max(i) - _pos_zone_2_threshold(i)) {
-        //     // apf 
-        //     _joint_state(i) = MAX_HARD_POS;
-        //     double q_zone_lower = _q_max(i) - _pos_zone_2_threshold(i);
-        //     double q_zone_upper = _q_max(i);
-        //     alpha.push_back(std::clamp((q(i) - q_zone_lower) / (q_zone_upper - q_zone_lower), 0.0, 1.0));
-
-        // } else if (q(i) > _q_max(i) - _pos_zone_1_threshold(i)) {
-        //     // velocity damping region 
-        //     _joint_state(i) = MAX_SOFT_POS;
-        //     double q_zone_lower = _q_max(i) - _pos_zone_1_threshold(i);
-        //     double q_zone_upper = _q_max(i) - _pos_zone_2_threshold(i);
-        //     alpha.push_back(std::clamp((q(i) - q_zone_lower) / (q_zone_upper - q_zone_lower), 0.0, 1.0));
-
-        // } else if (q(i) < _q_min(i) + _pos_zone_2_threshold(i)) {
-        //     // apf
-        //     _joint_state(i) = MIN_HARD_POS;
-        //     double q_zone_lower = _q_min(i) + _pos_zone_2_threshold(i);
-        //     double q_zone_upper = _q_min(i);
-        //     alpha.push_back(std::clamp((q(i) - q_zone_lower) / (q_zone_upper - q_zone_lower), 0.0, 1.0));
-
-        // } else if (q(i) < _q_min(i) + _pos_zone_1_threshold(i)) {
-        //     // velocity damping region
-        //     _joint_state(i) = MIN_SOFT_POS;
-        //     double q_zone_lower = _q_min(i) + _pos_zone_1_threshold(i);
-        //     double q_zone_upper = _q_min(i) + _pos_zone_2_threshold(i);
-        //     alpha.push_back(std::clamp((q(i) - q_zone_lower) / (q_zone_upper - q_zone_lower), 0.0, 1.0));
-
-        // } else {
-        //     _joint_state(i) = SAFE;
-        // }
     }
 
     // // set alpha to the smallest value 
@@ -375,11 +347,11 @@ VectorXd JointHandler::computeTorques(const VectorXd& torques) {
 
     // torque saturation
     VectorXd saturated_torques = torques;
-    // for (int i = 0; i < _dof; ++i) {
-        // if (std::abs(saturated_torques(i)) > _tau_abs_max(i)) {
-            // saturated_torques(i) = getSign(saturated_torques(i)) * _tau_abs_max(i);
-        // }
-    // }
+    for (int i = 0; i < _dof; ++i) {
+        if (std::abs(saturated_torques(i)) > _tau_abs_max(i)) {
+            saturated_torques(i) = getSign(saturated_torques(i)) * _tau_abs_max(i);
+        }
+    }
 
     if (_num_con == 0 || !_enable_limit_flag) {
         return saturated_torques;
@@ -425,7 +397,7 @@ VectorXd JointHandler::computeTorques(const VectorXd& torques) {
                 if (projected_torques_in_constraint(i) > _tau_thresh) {
                     con_task_torques(cnt) = projected_torques_in_constraint(i);
                     _joint_state(i) = SAFE;
-                    // con_unit_damping_torques(cnt) = 0;
+                    con_unit_damping_torques(cnt) = 0;
                     // _var_pos_zone_1_threshold(i) = _pos_zone_1_threshold(i);
                     // con_unit_damping_torques(cnt) = - std::pow(_blending_coefficients[cnt], 2) * _kv_pos_limit(i) * dq(i);
                 }
@@ -442,7 +414,7 @@ VectorXd JointHandler::computeTorques(const VectorXd& torques) {
                 if (projected_torques_in_constraint(i) > _tau_thresh) {
                     con_task_torques(cnt) = projected_torques_in_constraint(i);
                     _joint_state(i) = SAFE;
-                    // con_unit_damping_torques(cnt) = 0;
+                    con_unit_damping_torques(cnt) = 0;
                     // _var_pos_zone_1_threshold(i) = _pos_zone_1_threshold(i);
                     // con_unit_damping_torques(cnt) = - std::pow(_blending_coefficients[cnt], 2) * _kv_pos_limit(i) * dq(i);
                 } 
@@ -458,7 +430,7 @@ VectorXd JointHandler::computeTorques(const VectorXd& torques) {
                 if (projected_torques_in_constraint(i) < - _tau_thresh) {
                     con_task_torques(cnt) = projected_torques_in_constraint(i);
                     _joint_state(i) = SAFE;
-                    // con_unit_damping_torques(cnt) = 0;
+                    con_unit_damping_torques(cnt) = 0;
                     // _var_pos_zone_1_threshold(i) = _pos_zone_1_threshold(i);
                     // con_unit_damping_torques(cnt) = - std::pow(_blending_coefficients[cnt], 2) * _kv_pos_limit(i) * dq(i);
                 } 
@@ -474,7 +446,7 @@ VectorXd JointHandler::computeTorques(const VectorXd& torques) {
                 if (projected_torques_in_constraint(i) < - _tau_thresh) {
                     con_task_torques(cnt) = projected_torques_in_constraint(i);
                     _joint_state(i) = SAFE;
-                    // con_unit_damping_torques(cnt) = 0;
+                    con_unit_damping_torques(cnt) = 0;
                     // _var_pos_zone_1_threshold(i) = _pos_zone_1_threshold(i);
                     // con_unit_damping_torques(cnt) = - std::pow(_blending_coefficients[cnt], 2) * _kv_pos_limit(i) * dq(i);
                 } 
@@ -485,7 +457,7 @@ VectorXd JointHandler::computeTorques(const VectorXd& torques) {
             /*
                 Velocity handling (only if position is safe or leaving constraints) 
             */
-            if (_joint_state(i) == SAFE) {
+            if (_joint_state(i) == SAFE && _enable_vel_limits) {
                 if (_joint_vel_state(i) == MIN_SOFT_VEL) {
 
                     // double dq_des = - _dq_abs_max(i) + _vel_zone_1_threshold(i);

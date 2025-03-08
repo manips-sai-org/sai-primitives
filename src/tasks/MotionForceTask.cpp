@@ -493,7 +493,7 @@ VectorXd MotionForceTask::computeTorques() {
 	position_orientation_contribution.tail(3) = orientation_related_force;
 
 	// add feedback force to impedance
-	_impedance_force.setZero();
+	_impedance_force = VectorXd::Zero(6);
 	_impedance_force += force_moment_contribution;  
 
 	_unit_mass_force = position_orientation_contribution;

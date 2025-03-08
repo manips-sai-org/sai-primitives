@@ -55,6 +55,14 @@ public:
         _enable_limit_flag = false;
     }
 
+    void enableVelLimits() {
+        _enable_vel_limits = true;
+    }
+
+    void disableVelLimits() {
+        _enable_vel_limits = false;
+    }
+
     void setJointSelection(const std::vector<int>& joint_selection) {
         _joint_selection = joint_selection;
     }
@@ -120,6 +128,10 @@ public:
         return result;
     }
 
+    std::pair<VectorXi, VectorXi> getJointState() {
+        return std::make_pair(_joint_state, _joint_vel_state);
+    }
+
 private:
 
     std::shared_ptr<Sai2Model::Sai2Model> _robot;
@@ -150,6 +162,8 @@ private:
     double _t_delta;
     VectorXd _pos_entry_velocities;
     VectorXd _vel_entry_velocities;
+
+    bool _enable_vel_limits;
 
     // verbose output 
     std::vector<std::string> _constraint_description;

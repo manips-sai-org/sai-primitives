@@ -151,9 +151,9 @@ void control(shared_ptr<Sai2Model::Sai2Model> robot,
 	auto joint_task = make_unique<Sai2Primitives::JointTask>(robot);
     joint_task->disableInternalOtg();
     // joint_task->enableVelocitySaturation(1.5 * M_PI);
-    joint_task->enableVelocitySaturation(1.0 * M_PI);
+    joint_task->enableVelocitySaturation(1.0);
     joint_task->setGains(200, 20);
-	// joint_task->setDynamicDecouplingType(Sai2Primitives::FULL_DYNAMIC_DECOUPLING);
+	joint_task->setDynamicDecouplingType(Sai2Primitives::FULL_DYNAMIC_DECOUPLING);
 	VectorXd joint_task_torques = VectorXd::Zero(dof);
 
 	VectorXd initial_q = robot->q();
@@ -172,9 +172,10 @@ void control(shared_ptr<Sai2Model::Sai2Model> robot,
     double eta = 0.5;
     // double eta = 10.0;
     VectorXd q_init = robot->q();
+	q_init(5) = M_PI / 2;
     VectorXd q_delta = VectorXd::Zero(robot->dof());
 	q_delta(3) = 5;
-    q_delta(5) = 5;
+    // q_delta(5) = 5;
 	double sign_switch = 1;
 	VectorXd q_oscillation = VectorXd::Zero(robot->dof());
 
@@ -188,7 +189,7 @@ void control(shared_ptr<Sai2Model::Sai2Model> robot,
                                       Vector3d(0, 0, 2), Vector3d(0, 0, 0)};
     // vector<Vector3d> desired_offsets {Vector3d(2, 0, 0)};
 	double t_initial = 2;
-	vector<double> t_wait {7, 7};
+	vector<double> t_wait {5, 5};
     // double t_wait = 10;  // wait between switching desired positions
 	// double t_reset_wait = 5;  // wait when resetting position
     double prev_time = 0;
@@ -202,14 +203,17 @@ void control(shared_ptr<Sai2Model::Sai2Model> robot,
     VectorXd robot_q = robot->q();
 	VectorXd robot_dq = robot->dq();
 	VectorXd robot_torque = VectorXd::Zero(robot->dof());
+	VectorXi joint_pos_state = VectorXi::Zero(robot->dof());
+	VectorXi joint_vel_state = VectorXi::Zero(robot->dof());
 	// VectorXd joint_task_torques = VectorXd::Zero(robot->dof());
 	int constraint_flag = 0;
 	// logger.addToLog(svalues, "svalues");
     logger.addToLog(robot_q, "robot_q");
 	logger.addToLog(robot_dq, "robot_dq");
 	logger.addToLog(robot_torque, "robot_torque");
-	logger.addToLog(constraint_flag, "constraint_flag");
-	logger.start();
+	logger.addToLog(joint_pos_state, "joint_pos_state");
+	logger.addToLog(joint_vel_state, "joint_vel_state");
+	logger.start(1000);
 
 	// create a loop timer
 	double control_freq = 1000;
@@ -223,6 +227,9 @@ void control(shared_ptr<Sai2Model::Sai2Model> robot,
 		robot->setQ(sim->getJointPositions(robot_name));
 		robot->setDq(sim->getJointVelocities(robot_name));
 		robot->updateModel();
+		// MatrixXd M = robot->M();
+		// M.bottomRightCorner(3, 3) += 0.15 * Matrix3d::Identity();
+		// robot->updateModel(M);
 
         robot_q = robot->q();
 		robot_dq = robot->dq();
@@ -251,7 +258,7 @@ void control(shared_ptr<Sai2Model::Sai2Model> robot,
             // motion_force_task->setGoalPosition(initial_position + desired_offsets[cnt]);
 			sign_switch *= -1;
 			q_delta(3) = sign_switch * 5;
-			q_delta(5) = - sign_switch * 5;
+			// q_delta(5) = - sign_switch * 5;
             cnt++;
             prev_time = time;
             if (cnt == max_cnt) cnt = max_cnt - 1;
@@ -343,8 +350,7 @@ void control(shared_ptr<Sai2Model::Sai2Model> robot,
 			// control_torques = joint_task_torques + J_c.transpose() * selection * robot->M() * apf_force + 1 * apf_damping_force;  // truncation
 			// control_torques = joint_task_torques + custom_apf_force + apf_damping_force;  // truncation with custom apf 
 			// control_torques = joint_task_torques;
-			control_torques = joint_handler->computeTorques(joint_task_torques) + robot->coriolisForce();
-			robot_torque = control_torques;
+			control_torques = joint_handler->computeTorques(joint_task_torques) + 1 * robot->coriolisForce();
 			// control_torques = joint_task_torques_without_nullspace;
 			// saturate control torques
 			// std::cout << "apf forces: " << apf_force.transpose() << "\n";
@@ -352,6 +358,12 @@ void control(shared_ptr<Sai2Model::Sai2Model> robot,
 			// std::cout << "alpha: " << alpha << "\n";
 			// std::cout << "custom apf force: " << custom_apf_force.transpose() << "\n";
 		}
+		robot_torque = control_torques;
+
+		// log joint state 
+		auto joint_states = joint_handler->getJointState();
+		joint_pos_state = joint_states.first;
+		joint_vel_state = joint_states.second;
 
 		// MatrixXd Jc = MatrixXd::Zero(1, robot->dof());
 		// Jc(0) = 1;
