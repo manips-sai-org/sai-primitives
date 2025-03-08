@@ -33,7 +33,8 @@ public:
                   const std::string& mesh_yaml,
                   const bool& verbose = true,
                   const double& distance_zone_1 = 0.15,
-                  const double& distance_zone_2 = 0.1);
+                  const double& distance_zone_2 = 0.1,
+                  const double& f_thresh = 1);
                 //   const double& distance_zone_1 = 0.05,
                 //   const double& distance_zone_2 = 0.02);
 
@@ -148,6 +149,7 @@ private:
     double _kv;
     double _F_max;
     // double _F_max;
+    double _F_thresh;
 
     // safety
     double _distance_zone_1, _distance_zone_2;
