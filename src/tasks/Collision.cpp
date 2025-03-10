@@ -1,5 +1,5 @@
 /**
- * @file SelfCollision.cpp
+ * @file Collision.cpp
  * @author William Chong (wmchong@stanford.edu)
  * @brief 
  * @version 0.1
@@ -9,7 +9,7 @@
  * 
  */
 
-#include "SelfCollision.h"
+#include "Collision.h"
 
 namespace Sai2Primitives {
 
@@ -66,7 +66,7 @@ vector<Vector3d> readDatFile(const string& filename) {
     return points;
 }
 
-SelfCollision::SelfCollision(std::shared_ptr<Sai2Model::Sai2Model> robot,
+Collision::Collision(std::shared_ptr<Sai2Model::Sai2Model> robot,
                              const std::string& mesh_yaml,
                              const bool& verbose,
                              const double& distance_zone_1,
@@ -100,11 +100,17 @@ SelfCollision::SelfCollision(std::shared_ptr<Sai2Model::Sai2Model> robot,
         mesh_fnames.push_back(mesh_prefix + name.as<std::string>());
     }
 
-    // Read pairs
-    std::vector<std::pair<int, int>> pairs;
-    for (const auto& pair : config["collision_config"]["pairs"]) {
-        pairs.push_back(std::make_pair(pair[0].as<int>(), pair[1].as<int>()));
+    // Read object mesh name 
+    std::vector<std::string> object_mesh_fnames;
+    for (const auto& name : config["collision_config"]["object_mesh_names"]) {
+        object_mesh_fnames.push_back(mesh_prefix + name.as<std::string>());
     }
+
+    // // Read pairs
+    // std::vector<std::pair<int, int>> pairs;
+    // for (const auto& pair : config["collision_config"]["pairs"]) {
+    //     pairs.push_back(std::make_pair(pair[0].as<int>(), pair[1].as<int>()));
+    // }
     
     // load into meshes 
     for (auto mesh : mesh_fnames) {
@@ -130,30 +136,81 @@ SelfCollision::SelfCollision(std::shared_ptr<Sai2Model::Sai2Model> robot,
         _bodies_centered.push_back(pts);
     }
 
+    // load objects into meshes
+    _n_objects = 0;
+    for (auto mesh : object_mesh_fnames) {
+        std::cout << "Reading file: " << mesh << "\n";
+        int nvrtx;
+        gkFloat(**vrtx) = NULL;
+        if (readMeshFile(mesh.c_str(), &vrtx, &nvrtx)) {
+            throw std::runtime_error("Invalid mesh file read");
+        }
+        gkPolytope bd;
+        bd.coord = vrtx;
+        bd.numpoints = nvrtx;
+        _object_bodies_polytope.push_back(bd);
+
+        std::vector<Vector3d> pts = readDatFile(mesh);
+
+        // create std::pair<int, std::vector<Vector3d>> object 
+        // std::vector<Vector3d> pts;
+        // for (int i = 0; i < nvrtx; ++i) {
+            // pts.push_back(Vector3d(vrtx[i][0], vrtx[i][1], vrtx[i][2]));
+        // }
+        _object_bodies.push_back(pts);
+        _object_bodies_centered.push_back(pts);
+        _n_objects++;
+    }
+
     // safety settings 
     _link_names = link_names;
-    _candidate_meshes = pairs;
-    _n_collision_checks = pairs.size();
+    // _candidate_meshes = pairs;
+    _n_meshes = _link_names.size();
+    _n_collision_checks = _n_meshes * _n_objects;
     _F_max = 100;
     _kv = 10;
-    _n_meshes = _link_names.size();
 
     for (int i = 0; i < _n_collision_checks; ++i) {
-        _mesh_pair_flag.push_back(SAFE_COLLISION);
+        _mesh_pair_flag.push_back(SAFE_OBJECT_COLLISION);
         _mesh_pair_distance.push_back(std::numeric_limits<double>::infinity());
         _mesh_pair_constraint_direction.push_back(Vector3d::Zero());
         _mesh_pair_projected_jacobian.push_back(MatrixXd::Zero(1, 1));
         _mesh_pair_body_points.push_back(std::make_pair(Vector3d::Zero(), Vector3d::Zero()));
-        _mesh_pair_linear_jacobian_a.push_back(MatrixXd::Zero(1, 1));
-        _mesh_pair_linear_jacobian_b.push_back(MatrixXd::Zero(1, 1));
+        // _mesh_pair_linear_jacobian_a.push_back(MatrixXd::Zero(1, 1));
+        // _mesh_pair_linear_jacobian_b.push_back(MatrixXd::Zero(1, 1));
     }
 
     for (int i = 0; i < _n_meshes; ++i) {
         _T_meshes.push_back(Affine3d::Identity());
     }
+
+    for (int i = 0; i < _n_objects; ++i) {
+        _T_object_meshes.push_back(Affine3d::Identity());
+    }
+
+    if (_verbose) {
+        std::cout << "Number of objects: " << _n_objects << "\n";
+        std::cout << "Number of robot links: " << _n_meshes << "\n";
+        std::cout << "Number of collision checks: " << _n_collision_checks << "\n";
+    }
 }
 
-int SelfCollision::readMeshFile(const char* inputfile, gkFloat*** pts, int* out) {
+void Collision::setObjectTransform(const Affine3d object_transform, const int ind) {
+    _T_object_meshes[ind] = object_transform;
+
+    // update object meshes 
+    for (int j = 0; j < _object_bodies[ind].size(); ++j) {
+        _object_bodies_centered[ind][j] = _T_object_meshes[ind] * _object_bodies[ind][j];
+    } 
+
+    // transfer to polytope
+    gkPolytope bd;
+    bd.coord = convertToDoublePointer(_object_bodies_centered[ind]);
+    bd.numpoints = _object_bodies[ind].size();
+    _object_bodies_polytope[ind] = bd;
+}
+
+int Collision::readMeshFile(const char* inputfile, gkFloat*** pts, int* out) {
 
     int npoints = 0;
     int idx = 0;
@@ -192,7 +249,7 @@ int SelfCollision::readMeshFile(const char* inputfile, gkFloat*** pts, int* out)
     return 0;
 }
 
-void SelfCollision::updateTaskModel(const MatrixXd& N_prec) {
+void Collision::updateTaskModel(const MatrixXd& N_prec) {
 
     // push forward 
     _N_prec = N_prec;
@@ -221,66 +278,70 @@ void SelfCollision::updateTaskModel(const MatrixXd& N_prec) {
         
     }
 
-    // compute constraint jacobians from the mesh checks
-    int i = 0;
-    for (auto mesh_pairs : _candidate_meshes) {
-        gkSimplex s;
-        s.nvrtx = 0;
-        int mesh_a_id = mesh_pairs.first;
-        int mesh_b_id = mesh_pairs.second;
+    // compute constraint jacobians from the mesh checks (all external objects -> all robot links)
+    for (int i = 0; i < _n_objects; ++i) {
+        for (int j = 0; j < _n_meshes; ++j) {
 
-        double distance = compute_minimum_distance(_bodies_polytope[mesh_a_id], _bodies_polytope[mesh_b_id], &s);
-        if (isnan(distance)) {
-            // throw runtime_error("NAN distance");
-            distance = -1;
-            std::cout << "nan distance\n";
-        }
+            gkSimplex s;
+            s.nvrtx = 0;
+            int mesh_a_id = i;  // object 
+            int mesh_b_id = j;  // robot mesh 
+
+            double distance = compute_minimum_distance(_object_bodies_polytope[mesh_a_id], _bodies_polytope[mesh_b_id], &s);
+            if (isnan(distance)) {
+                // throw runtime_error("NAN distance");
+                distance = -1;
+                std::cout << "nan distance\n";
+            }
         
-        // // DEBUG 
-        // std::cout << "pair: " << mesh_a_id << ", " << mesh_b_id << "\n";
-        // std::cout << "distance: " << distance << "\n";
+            // // DEBUG 
+            // std::cout << "pair: " << mesh_a_id << ", " << mesh_b_id << "\n";
+            // std::cout << "distance: " << distance << "\n";
 
-        Vector3d constraint_direction = (Vector3d(s.witnesses[1][0], s.witnesses[1][1], s.witnesses[1][2]) - \
-                                            Vector3d(s.witnesses[0][0], s.witnesses[0][1], s.witnesses[0][2])).normalized();
+            Vector3d constraint_direction = (Vector3d(s.witnesses[1][0], s.witnesses[1][1], s.witnesses[1][2]) - \
+                                                Vector3d(s.witnesses[0][0], s.witnesses[0][1], s.witnesses[0][2])).normalized();
 
-        // Vector3d body_a_pos_in_link = _T_meshes[mesh_a_id].linear().transpose() * Vector3d(s.witnesses[0][0], s.witnesses[0][1], s.witnesses[0][2]) - \
-                                            // _T_meshes[mesh_a_id].linear().transpose() * _T_meshes[mesh_a_id].translation();
+            Vector3d robot_pos_in_link = _T_meshes[mesh_b_id].inverse() * Vector3d(s.witnesses[1][0], s.witnesses[1][1], s.witnesses[1][2]);
 
-        // Vector3d body_b_pos_in_link = _T_meshes[mesh_b_id].linear().transpose() * Vector3d(s.witnesses[1][0], s.witnesses[1][1], s.witnesses[1][2]) - \
-                                            // _T_meshes[mesh_b_id].linear().transpose() * _T_meshes[mesh_b_id].translation();     
+            // Vector3d body_a_pos_in_link = _T_meshes[mesh_a_id].linear().transpose() * Vector3d(s.witnesses[0][0], s.witnesses[0][1], s.witnesses[0][2]) - \
+                                                // _T_meshes[mesh_a_id].linear().transpose() * _T_meshes[mesh_a_id].translation();
 
-        Vector3d body_a_pos_in_link = _T_meshes[mesh_a_id].inverse() * Vector3d(s.witnesses[0][0], s.witnesses[0][1], s.witnesses[0][2]);
-        Vector3d body_b_pos_in_link = _T_meshes[mesh_b_id].inverse() * Vector3d(s.witnesses[1][0], s.witnesses[1][1], s.witnesses[1][2]);
+            // Vector3d body_b_pos_in_link = _T_meshes[mesh_b_id].linear().transpose() * Vector3d(s.witnesses[1][0], s.witnesses[1][1], s.witnesses[1][2]) - \
+                                                // _T_meshes[mesh_b_id].linear().transpose() * _T_meshes[mesh_b_id].translation();     
 
-        _mesh_pair_body_points[i] = std::make_pair( Vector3d(s.witnesses[0][0], s.witnesses[0][1], s.witnesses[0][2]), \
-                                                    Vector3d(s.witnesses[1][0], s.witnesses[1][1], s.witnesses[1][2]) );
+            // Vector3d body_a_pos_in_link = _T_meshes[mesh_a_id].inverse() * Vector3d(s.witnesses[0][0], s.witnesses[0][1], s.witnesses[0][2]);
+            // Vector3d body_b_pos_in_link = _T_meshes[mesh_b_id].inverse() * Vector3d(s.witnesses[1][0], s.witnesses[1][1], s.witnesses[1][2]);
 
-        // collect information 
-        _mesh_pair_distance[i] = distance;
-        _mesh_pair_constraint_direction[i] = constraint_direction;
-        // _mesh_pair_projected_jacobian[i] = constraint_direction.transpose() * \
-        //     (_robot->Jv(_link_names[mesh_b_id], body_b_pos_in_link) - _robot->Jv(_link_names[mesh_a_id], body_a_pos_in_link)) * _N_prec;
-        _mesh_pair_projected_jacobian[i] = 
-            (_robot->Jv(_link_names[mesh_b_id], body_b_pos_in_link) - _robot->Jv(_link_names[mesh_a_id], body_a_pos_in_link)) * _N_prec;
-        _mesh_pair_linear_jacobian_a[i] = _robot->Jv(_link_names[mesh_a_id], body_a_pos_in_link) * _N_prec;
-        _mesh_pair_linear_jacobian_b[i] = _robot->Jv(_link_names[mesh_b_id], body_b_pos_in_link) * _N_prec;
+            _mesh_pair_body_points[i * _n_objects + j] = std::make_pair( Vector3d(s.witnesses[0][0], s.witnesses[0][1], s.witnesses[0][2]), \
+                                                        Vector3d(s.witnesses[1][0], s.witnesses[1][1], s.witnesses[1][2]) );
 
-        if (distance < _distance_zone_2) {
-            // zone 2
-            _mesh_pair_flag[i] = ZONE_2_COLLISION;
-        } else if (distance < _distance_zone_1) {
-            // zone 1
-            _mesh_pair_flag[i] = ZONE_1_COLLISION;
-        } else {
-            // _mesh_pair_flag[i] = SAFE_COLLISION;  // only register safe collision when exiting zone 1 collision 
+            // collect information 
+            _mesh_pair_distance[i * _n_objects + j] = distance;
+            _mesh_pair_constraint_direction[i * _n_objects + j] = constraint_direction;
+            _mesh_pair_projected_jacobian[i * _n_objects + j] = _robot->Jv(_link_names[mesh_b_id], robot_pos_in_link) * _N_prec;
+            // _mesh_pair_projected_jacobian[i] = constraint_direction.transpose() * \
+            //     (_robot->Jv(_link_names[mesh_b_id], body_b_pos_in_link) - _robot->Jv(_link_names[mesh_a_id], body_a_pos_in_link)) * _N_prec;
+            // _mesh_pair_projected_jacobian[i] = 
+                // (_robot->Jv(_link_names[mesh_b_id], body_b_pos_in_link) - _robot->Jv(_link_names[mesh_a_id], body_a_pos_in_link)) * _N_prec;
+            // _mesh_pair_linear_jacobian_a[i] = _robot->Jv(_link_names[mesh_a_id], body_a_pos_in_link) * _N_prec;
+            // _mesh_pair_linear_jacobian_b[i] = _robot->Jv(_link_names[mesh_b_id], body_b_pos_in_link) * _N_prec;
 
+            if (distance < _distance_zone_2) {
+                // zone 2
+                _mesh_pair_flag[i * _n_objects + j] = ZONE_2_OBJECT_COLLISION;
+            } else if (distance < _distance_zone_1) {
+                // zone 1
+                _mesh_pair_flag[i * _n_objects + j] = ZONE_1_OBJECT_COLLISION;
+            } else {
+                // _mesh_pair_flag[i] = SAFE_OBJECT_COLLISION;  // only register safe collision when exiting zone 1 collision 
+
+            }
         }
-        i++;
     }
    
 }
 
-VectorXd SelfCollision::computeTorques(const VectorXd& torques, const bool constraint_only) {
+VectorXd Collision::computeTorques(const VectorXd& torques, const bool constraint_only) {
     
     // compute each self-collision in priority of closest distances
     VectorXd self_collision_torques = VectorXd::Zero(_robot->dof());
@@ -295,16 +356,18 @@ VectorXd SelfCollision::computeTorques(const VectorXd& torques, const bool const
 
     // Go through each index in order 
     for (int i = 0; i < indices.size(); ++i) {
-        if (_mesh_pair_flag[i] != SAFE_COLLISION) {
+        if (_mesh_pair_flag[i] != SAFE_OBJECT_COLLISION) {
 
             if (_verbose) {
-                std::cout << "Collision handling for pair " << _candidate_meshes[i].first << ", " << _candidate_meshes[i].second <<" \n";
+                int object_id = i % _n_objects;
+                int robot_link_id = i / _n_objects;
+                std::cout << "Collision handling for object id : " << object_id << " and robot link: " << robot_link_id << "\n";
             }
 
             /**
              * Zone handling 
              */
-            if (_mesh_pair_flag[i] == ZONE_1_COLLISION) {
+            if (_mesh_pair_flag[i] == ZONE_1_OBJECT_COLLISION) {
 
                 if (_verbose) {
                     std::cout << "Zone 2 Handling\n";
@@ -318,7 +381,7 @@ VectorXd SelfCollision::computeTorques(const VectorXd& torques, const bool const
 
                 // task elements                 
                 // MatrixXd projected_jacobian = _mesh_pair_projected_jacobian[i] * _N_prec;
-                MatrixXd projected_jacobian = _mesh_pair_projected_jacobian[i];
+                MatrixXd projected_jacobian = _mesh_pair_projected_jacobian[i] * _N_prec;
                 MatrixXd directed_projected_jacobian = _mesh_pair_constraint_direction[i].transpose() * projected_jacobian;
 
                 MatrixXd task_inertia = _robot->taskInertiaMatrix(projected_jacobian);
@@ -329,7 +392,7 @@ VectorXd SelfCollision::computeTorques(const VectorXd& torques, const bool const
 
                 if (task_force_along_constraint > _F_thresh) {
                     std::cout << "Zone 1 free\n";
-                    _mesh_pair_flag[i] = SAFE_COLLISION;  // exit nullspace 
+                    _mesh_pair_flag[i] = SAFE_OBJECT_COLLISION;  // exit nullspace 
                 } else {
                     self_collision_torques += 1 * projected_jacobian.transpose() * task_inertia * unit_mass_constraint_force;
 
@@ -338,7 +401,7 @@ VectorXd SelfCollision::computeTorques(const VectorXd& torques, const bool const
 
                 }
 
-            } else if (_mesh_pair_flag[i] == ZONE_2_COLLISION) {
+            } else if (_mesh_pair_flag[i] == ZONE_2_OBJECT_COLLISION) {
 
                 if (_verbose) {
                     std::cout << "Zone 2 Handling\n";
@@ -353,7 +416,7 @@ VectorXd SelfCollision::computeTorques(const VectorXd& torques, const bool const
                 // task elements 
                 
                 // MatrixXd projected_jacobian = _mesh_pair_projected_jacobian[i] * _N_prec;
-                MatrixXd projected_jacobian = _mesh_pair_projected_jacobian[i];
+                MatrixXd projected_jacobian = _mesh_pair_projected_jacobian[i] * _N_prec;
                 MatrixXd directed_projected_jacobian = _mesh_pair_constraint_direction[i].transpose() * projected_jacobian;
 
                 MatrixXd task_inertia = _robot->taskInertiaMatrix(projected_jacobian);
@@ -373,7 +436,7 @@ VectorXd SelfCollision::computeTorques(const VectorXd& torques, const bool const
 
                 if (task_force_along_constraint > _F_thresh) {
                     std::cout << "Zone 2 free\n";
-                    _mesh_pair_flag[i] = SAFE_COLLISION;
+                    _mesh_pair_flag[i] = SAFE_OBJECT_COLLISION;
                 } else {
                     // damping 
                     self_collision_torques += 1 * projected_jacobian.transpose() * task_inertia * unit_mass_constraint_force;
@@ -398,7 +461,7 @@ VectorXd SelfCollision::computeTorques(const VectorXd& torques, const bool const
 // for (int i = 0; i < _mesh_pair_flag.size(); ++i) {
 //         if (constrained_direction) {
 //             continue;
-//         } else if (_mesh_pair_flag[i] != SAFE_COLLISION) {
+//         } else if (_mesh_pair_flag[i] != SAFE_OBJECT_COLLISION) {
 
 //             if (_verbose) {
 //                 std::cout << "Collision handling for pair " << _candidate_meshes[i].first << ", " << _candidate_meshes[i].second <<" \n";
@@ -408,7 +471,7 @@ VectorXd SelfCollision::computeTorques(const VectorXd& torques, const bool const
 //             /**
 //              * Zone 1 collision 
 //              */
-//             if (_mesh_pair_flag[i] == ZONE_1_COLLISION) {
+//             if (_mesh_pair_flag[i] == ZONE_1_OBJECT_COLLISION) {
 
 //                 if (_mesh_pair_distance[i] == -1) {
 //                     std::cout << "Skipping collision\n";
@@ -460,7 +523,7 @@ VectorXd SelfCollision::computeTorques(const VectorXd& torques, const bool const
 //                     // self_collision_torques += 1 * directed_projected_jacobian.transpose() * task_force_along_constraint * _mesh_pair_constraint_direction[i];
 //                     // self_collision_torques += 1 * projected_jacobian.transpose() * task_force;
 
-//                     _mesh_pair_flag[i] = SAFE_COLLISION;  // exit nullspace 
+//                     _mesh_pair_flag[i] = SAFE_OBJECT_COLLISION;  // exit nullspace 
 //                 } else {
 //                     self_collision_torques += 1 * projected_jacobian.transpose() * task_inertia * unit_mass_constraint_force;
 
@@ -470,7 +533,7 @@ VectorXd SelfCollision::computeTorques(const VectorXd& torques, const bool const
 //                 }
 //                 // self_collision_torques += projected_jacobian.transpose() * task_inertia * unit_mass_constraint_force;
 
-//             } else if (_mesh_pair_flag[i] == ZONE_2_COLLISION) {
+//             } else if (_mesh_pair_flag[i] == ZONE_2_OBJECT_COLLISION) {
 
 //                 if (_verbose) {
 //                     std::cout << "Zone 2 Handling\n";
@@ -509,7 +572,7 @@ VectorXd SelfCollision::computeTorques(const VectorXd& torques, const bool const
 //                     // self_collision_torques += 1 * directed_projected_jacobian.transpose() * task_force_along_constraint * _mesh_pair_constraint_direction[i];
 //                     // self_collision_torques += 1 * projected_jacobian.transpose() * task_force_along_constraint;
 //                     // self_collision_torques += 1 * projected_jacobian.transpose() * task_force;
-//                     _mesh_pair_flag[i] = SAFE_COLLISION;
+//                     _mesh_pair_flag[i] = SAFE_OBJECT_COLLISION;
 //                 } else {
 //                     // damping 
 //                     self_collision_torques += 1 * projected_jacobian.transpose() * task_inertia * unit_mass_constraint_force;

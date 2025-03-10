@@ -1,0 +1,76 @@
+<?xml version="1.0" ?>
+
+<world name="demo_world" gravity="0.0 0.0 0.0">
+
+	<robot name="PANDA">
+		<model dir="${SAI2_MODEL_URDF_FOLDER}/panda" path="panda_arm_gripper_fixed.urdf" name="panda" />
+		<origin xyz="0.0 0.0 0.0" rpy="0 0 0" />
+	</robot>
+
+	<!-- <static_object name="Floor">
+		<origin xyz="0.0 0.0 0.0" rpy="0 0 0" />
+	    <visual>
+	        <origin xyz="0.0 0.0 0.0" rpy="0 0 0" />
+	        <geometry>
+	            <box size="3.0 3.0 0.1" />
+	        </geometry>
+	        <material name="material_red">
+		        <color rgba="0.1 0.1 0.1 1.0" />
+	        </material>
+	    </visual>
+	</static_object> -->
+
+	<dynamic_object name="object">
+		<origin xyz="0.0 0.0 0.0" rpy="0 0 0" />
+		<inertial>
+			<mass value="10"/>
+			<inertia ixx="0.4" ixy="0.0" ixz="0.0" iyy="0.4" iyz="0.0" izz="0.2"/>
+		</inertial>
+	    <visual>
+	        <origin xyz="0.0 0.0 0.0" rpy="0 0 0" />
+	        <geometry>
+	            <mesh filename="${SAI2_MODEL_URDF_FOLDER}/panda/meshes/collision/hand.obj" />
+	        </geometry>
+	        <material name="material_red">
+		        <color rgba="0.1 0.1 0.1 1.0" />
+	        </material>
+	    </visual>
+	</dynamic_object>
+
+	<light name="light1" type="directional">
+		<position xyz="2.0 -2.0 2.0" />
+		<lookat xyz="0.0 0.0 0.0" />
+	</light>
+
+	<light name="light2" type="directional">
+		<position xyz="2.0 2.0 2.0" />
+		<lookat xyz="0.0 0.0 0.0" />
+	</light>
+
+	<light name="light2" type="directional">
+		<position xyz="-2.0 2.0 2.0" />
+		<lookat xyz="0.0 0.0 0.0" />
+	</light>
+
+	<!-- <camera name="camera">
+		<position xyz="0.2 1.4 0.5" />
+		<vertical xyz="0.0 0.0 1.0" />
+		<lookat xyz="0.2 0.0 0.5" />
+	</camera> -->
+
+    <!-- <camera name="camera"> -->
+		<!-- <position xyz="1.0 1.2 0.5" /> -->
+		<!-- <position xyz="0.9 1.0 0.8" /> -->
+		<!-- <position xyz="1.0 -1.5 0.5" /> -->
+		<!-- <vertical xyz="0.0 0.0 1.0" /> -->
+		<!-- <lookat xyz="0 0.0 0.2" /> -->
+	<!-- </camera> -->
+
+	<camera name="camera">
+        <position xyz="0.919076 0.573171 0.563005" />
+        <lookat xyz="0.0957143 0.0264821  0.410668" />
+        <vertical xyz="-0.0933477  -0.134311   0.986533" />
+	</camera>
+
+
+</world>

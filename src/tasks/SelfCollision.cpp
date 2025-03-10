@@ -317,8 +317,8 @@ VectorXd SelfCollision::computeTorques(const VectorXd& torques, const bool const
                 }
 
                 // task elements                 
-                // MatrixXd projected_jacobian = _mesh_pair_projected_jacobian[i] * _N_prec;
-                MatrixXd projected_jacobian = _mesh_pair_projected_jacobian[i];
+                MatrixXd projected_jacobian = _mesh_pair_projected_jacobian[i] * _N_prec;
+                // MatrixXd projected_jacobian = _mesh_pair_projected_jacobian[i];
                 MatrixXd directed_projected_jacobian = _mesh_pair_constraint_direction[i].transpose() * projected_jacobian;
 
                 MatrixXd task_inertia = _robot->taskInertiaMatrix(projected_jacobian);
@@ -352,8 +352,8 @@ VectorXd SelfCollision::computeTorques(const VectorXd& torques, const bool const
 
                 // task elements 
                 
-                // MatrixXd projected_jacobian = _mesh_pair_projected_jacobian[i] * _N_prec;
-                MatrixXd projected_jacobian = _mesh_pair_projected_jacobian[i];
+                MatrixXd projected_jacobian = _mesh_pair_projected_jacobian[i] * _N_prec;
+                // MatrixXd projected_jacobian = _mesh_pair_projected_jacobian[i];
                 MatrixXd directed_projected_jacobian = _mesh_pair_constraint_direction[i].transpose() * projected_jacobian;
 
                 MatrixXd task_inertia = _robot->taskInertiaMatrix(projected_jacobian);

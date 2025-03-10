@@ -54,6 +54,7 @@ set(CONTROLLERS_SOURCE
     ${PROJECT_SOURCE_DIR}/src/tasks/SingularityHandler.cpp
     ${PROJECT_SOURCE_DIR}/src/tasks/JointHandler.cpp
     ${PROJECT_SOURCE_DIR}/src/tasks/SelfCollision.cpp
+    ${PROJECT_SOURCE_DIR}/src/tasks/Collision.cpp
     ${PROJECT_SOURCE_DIR}/src/HapticDeviceController.cpp
     ${PROJECT_SOURCE_DIR}/src/POPCBilateralTeleoperation.cpp)
 

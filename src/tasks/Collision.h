@@ -1,13 +1,13 @@
 /*
- * SelfCollision.h
+ * Collision.h
  *
- *      This class creates a self-collision handling.
+ *      This class creates a collision handling.
  *
  *      Author: William Chong 
  */
 
-#ifndef SAI2_PRIMITIVES_SELF_COLLISION_H_
-#define SAI2_PRIMITIVES_SELF_COLLISION_H_
+#ifndef SAI2_PRIMITIVES_COLLISION_H_
+#define SAI2_PRIMITIVES_COLLISION_H_
 
 #include <helper_modules/Sai2PrimitivesCommonDefinitions.h>
 #include "Sai2Model.h"
@@ -22,21 +22,21 @@
 using namespace Eigen;
 namespace Sai2Primitives {
 
-enum SelfCollisionState {
-    SAFE_COLLISION = 0,
-    ZONE_1_COLLISION,  // 1
-    ZONE_2_COLLISION,  // 2
+enum CollisionState {
+    SAFE_OBJECT_COLLISION = 0,
+    ZONE_1_OBJECT_COLLISION,  // 1
+    ZONE_2_OBJECT_COLLISION,  // 2
 };
 
-class SelfCollision {
+class Collision {
 public:
 
-    SelfCollision(std::shared_ptr<Sai2Model::Sai2Model> robot,
-                  const std::string& mesh_yaml,
-                  const bool& verbose = true,
-                  const double& distance_zone_1 = 0.1,
-                  const double& distance_zone_2 = 0.05,
-                  const double& f_thresh = 0.5);
+    Collision(std::shared_ptr<Sai2Model::Sai2Model> robot,
+                const std::string& mesh_yaml,
+                const bool& verbose = true,
+                const double& distance_zone_1 = 0.1,
+                const double& distance_zone_2 = 0.05,
+                const double& f_thresh = 1.0);
                 //   const double& distance_zone_1 = 0.05,
                 //   const double& distance_zone_2 = 0.02);
 
@@ -58,6 +58,7 @@ public:
         return _N_prec;
     }
 
+    void setObjectTransform(const Affine3d object_transform, const int ind);
     /*
         Collision information
     */
@@ -65,7 +66,7 @@ public:
         return _mesh_pair_body_points;
     }
 
-    std::vector<SelfCollisionState> getCollisionStates() {
+    std::vector<CollisionState> getCollisionStates() {
         return _mesh_pair_flag;
     }
 
@@ -141,19 +142,25 @@ private:
 
     // std::vector<gkPolytope> _bodies_centered;
     std::vector<gkPolytope> _bodies_polytope;
+    std::vector<gkPolytope> _object_bodies_polytope;
 
     std::vector<std::vector<Vector3d>> _bodies_centered;
     std::vector<std::vector<Vector3d>> _bodies;
 
+    std::vector<std::vector<Vector3d>> _object_bodies_centered;
+    std::vector<std::vector<Vector3d>> _object_bodies;
+
     // self-collision settings
     std::vector<std::pair<int, int>> _candidate_meshes;  // checking pairs of meshes
     std::vector<Affine3d> _T_meshes;
+    std::vector<Affine3d> _T_object_meshes;
     std::vector<std::string> _link_names;    
     int _n_collision_checks;  // number of candidate mesh pairs 
     int _n_meshes;
+    int _n_objects;
 
-    std::vector<SelfCollisionState> _mesh_pair_flag;
-    std::vector<SelfCollisionState> _final_mesh_pair_flag;
+    std::vector<CollisionState> _mesh_pair_flag;
+    std::vector<CollisionState> _final_mesh_pair_flag;
     std::vector<double> _mesh_pair_distance;
     std::vector<Vector3d> _mesh_pair_constraint_direction;
     std::vector<MatrixXd> _mesh_pair_projected_jacobian;
