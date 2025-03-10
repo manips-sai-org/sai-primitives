@@ -26,6 +26,7 @@ enum CollisionState {
     SAFE_OBJECT_COLLISION = 0,
     ZONE_1_OBJECT_COLLISION,  // 1
     ZONE_2_OBJECT_COLLISION,  // 2
+    CHECK_STATIONARY_COLLISION
 };
 
 class Collision {
@@ -36,7 +37,9 @@ public:
                 const bool& verbose = true,
                 const double& distance_zone_1 = 0.1,
                 const double& distance_zone_2 = 0.05,
-                const double& f_thresh = 1.0);
+                const double& f_thresh = 1.0,
+                const double& f_min = 0.5,
+                const double& dx_min = 0.005);
                 //   const double& distance_zone_1 = 0.05,
                 //   const double& distance_zone_2 = 0.02);
 
@@ -160,7 +163,7 @@ private:
     int _n_objects;
 
     std::vector<CollisionState> _mesh_pair_flag;
-    std::vector<CollisionState> _final_mesh_pair_flag;
+    std::vector<int> _check_mesh_pair_flag;
     std::vector<double> _mesh_pair_distance;
     std::vector<Vector3d> _mesh_pair_constraint_direction;
     std::vector<MatrixXd> _mesh_pair_projected_jacobian;
@@ -175,6 +178,8 @@ private:
     double _F_max;
     // double _F_max;
     double _F_thresh;
+    double _F_min;
+    double _dx_min;
 
     // safety
     double _distance_zone_1, _distance_zone_2;

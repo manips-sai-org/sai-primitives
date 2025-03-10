@@ -71,12 +71,16 @@ Collision::Collision(std::shared_ptr<Sai2Model::Sai2Model> robot,
                              const bool& verbose,
                              const double& distance_zone_1,
                              const double& distance_zone_2,
-                             const double& f_thresh) : 
+                             const double& f_thresh,
+                             const double& f_min,
+                             const double& dx_min) : 
                              _robot(robot),
                              _verbose(verbose),
                              _distance_zone_1(distance_zone_1),
                              _distance_zone_2(distance_zone_2),
-                             _F_thresh(f_thresh) {
+                             _F_thresh(f_thresh),
+                             _F_min(f_min),
+                             _dx_min(dx_min) {
 
     // parse yaml file (mesh filenames (.dat files), and candidate pairs)
     /*
@@ -172,6 +176,7 @@ Collision::Collision(std::shared_ptr<Sai2Model::Sai2Model> robot,
 
     for (int i = 0; i < _n_collision_checks; ++i) {
         _mesh_pair_flag.push_back(SAFE_OBJECT_COLLISION);
+        _check_mesh_pair_flag.push_back(0);  // to check to go out of stationary 
         _mesh_pair_distance.push_back(std::numeric_limits<double>::infinity());
         _mesh_pair_constraint_direction.push_back(Vector3d::Zero());
         _mesh_pair_projected_jacobian.push_back(MatrixXd::Zero(1, 1));
@@ -333,8 +338,12 @@ void Collision::updateTaskModel(const MatrixXd& N_prec) {
                 // zone 1
                 _mesh_pair_flag[i * _n_objects + j] = ZONE_1_OBJECT_COLLISION;
             } else {
+            // } else {
                 // _mesh_pair_flag[i] = SAFE_OBJECT_COLLISION;  // only register safe collision when exiting zone 1 collision 
 
+                // release the object colision if outside and no force is applied 
+                // _mesh_pair_flag[i * _n_objects + j] = CHECK_STATIONARY_COLLISION;
+                _check_mesh_pair_flag[i * _n_objects + j] = 1;  
             }
         }
     }
@@ -356,6 +365,28 @@ VectorXd Collision::computeTorques(const VectorXd& torques, const bool constrain
 
     // Go through each index in order 
     for (int i = 0; i < indices.size(); ++i) {
+
+        if (_check_mesh_pair_flag[i] == 1) {
+            // check if forces are below a threshold and the robot is stationary (within a velocity threshold in that direction)
+            // MatrixXd projected_jacobian = _mesh_pair_projected_jacobian[i] * _N_prec;
+            MatrixXd projected_jacobian = _mesh_pair_projected_jacobian[i] * _N_prec;
+            MatrixXd directed_projected_jacobian = _mesh_pair_constraint_direction[i].transpose() * projected_jacobian;
+
+            // using 1-dof constraint jacobian
+            MatrixXd task_inertia = _robot->taskInertiaMatrix(directed_projected_jacobian);
+            VectorXd task_force = _robot->dynConsistentInverseJacobian(directed_projected_jacobian).transpose() * torques;
+            // Vector3d task_force = _robot->dynConsistentInverseJacobian(_mesh_pair_linear_jacobian_b[i]).transpose() * torques;
+            double task_force_along_constraint = task_force(0);
+            double task_velocity_along_constraint = (directed_projected_jacobian * _robot->dq())(0);
+
+            if (std::abs(task_force_along_constraint) < _F_min && std::abs(task_velocity_along_constraint) < _dx_min) {
+                std::cout << "Stationary collision release\n";
+                _mesh_pair_flag[i] = SAFE_OBJECT_COLLISION;
+            } 
+            _check_mesh_pair_flag[i] = 0;
+
+        } 
+        
         if (_mesh_pair_flag[i] != SAFE_OBJECT_COLLISION) {
 
             if (_verbose) {
@@ -465,6 +496,7 @@ VectorXd Collision::computeTorques(const VectorXd& torques, const bool constrain
                 }
 
             }
+
         }
     }    
 

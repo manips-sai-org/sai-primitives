@@ -198,7 +198,8 @@ int main(int argc, char** argv) {
 				chai_lines[cnt]->m_pointA = cVector3d(pair.first(0), pair.first(1), pair.first(2));
 				chai_lines[cnt]->m_pointB = cVector3d(pair.second(0), pair.second(1), pair.second(2));
 				chai_lines[cnt]->setLineWidth(5);
-				if (collision_states[cnt] == Sai2Primitives::CollisionState::SAFE_OBJECT_COLLISION) {
+				if (collision_states[cnt] == Sai2Primitives::CollisionState::SAFE_OBJECT_COLLISION || 
+					collision_states[cnt] == Sai2Primitives::CollisionState::CHECK_STATIONARY_COLLISION) {
 					chai_lines[cnt]->m_colorPointA = cColorf(0, 1, 0);
 					chai_lines[cnt]->m_colorPointB = cColorf(0, 1, 0);
 				} else {
