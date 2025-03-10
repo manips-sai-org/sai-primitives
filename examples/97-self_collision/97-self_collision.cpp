@@ -99,8 +99,8 @@ cShapeLine* addLine(cWorld* world, cShapeLine* line, cVector3d pointA, cVector3d
 /*
 	Control
 */
-bool flag_simulation = true;
-// bool flag_simulation = false;
+// bool flag_simulation = true;
+bool flag_simulation = false;
 Sai2Common::RedisClient* redis_client;
 std::string JOINT_ANGLES_KEY = "sai2::FrankaPanda::Romeo::sensors::q";
 std::string JOINT_VELOCITIES_KEY = "sai2::FrankaPanda::Romeo::sensors::dq";
@@ -235,7 +235,7 @@ void control(shared_ptr<Sai2Model::Sai2Model> robot,
 
 	// Position plus orientation task
 	string link_name = "end-effector";
-	Vector3d pos_in_link = Vector3d(0.0, 0.0, 0.07);
+	Vector3d pos_in_link = Vector3d(0.0, 0.0, 0.107 + 0.1);
 	Affine3d compliant_frame = Affine3d(Translation3d(pos_in_link));
 
 	// Full motion force task
@@ -249,11 +249,13 @@ void control(shared_ptr<Sai2Model::Sai2Model> robot,
 	// auto motion_force_task = make_shared<Sai2Primitives::MotionForceTask>(
 	// 	robot, link_name, controlled_directions_translation,
 	// 	controlled_directions_rotation);
-	// motion_force_task->setSingularityGains(20, 20);
+	// // motion_force_task->setSingularityGains(20, 20);
 
-    motion_force_task->disableInternalOtg();
-    motion_force_task->enableVelocitySaturation(0.2);
-    motion_force_task->disableSingularityHandling();
+    motion_force_task->setPosControlGains(200, 20, 0);
+    motion_force_task->setOriControlGains(200, 20, 0);
+	motion_force_task->disableInternalOtg();
+    motion_force_task->enableVelocitySaturation(0.3);
+    // motion_force_task->disableSingularityHandling();
 	VectorXd motion_force_task_torques = VectorXd::Zero(dof);
 
 	// no gains setting here, using the default task values
@@ -287,13 +289,13 @@ void control(shared_ptr<Sai2Model::Sai2Model> robot,
     q_delta(5) = 5;
 
     // desired position offsets 
-    vector<Vector3d> desired_offsets {Vector3d(-2, 0, -0.6), Vector3d(0, 0, 0), 
+    vector<Vector3d> desired_offsets {Vector3d(-0.8, -0.4, -0.1), Vector3d(0, 0, 0), 
                                       Vector3d(0, 2, 0), Vector3d(0, 0, 0), 
                                       Vector3d(0, -2, 0), Vector3d(0, 0, 0),
                                       Vector3d(0, 0, 2), Vector3d(0, 0, 0)};
     // vector<Vector3d> desired_offsets {Vector3d(2, 0, 0)};
 	double t_initial = 5;
-	vector<double> t_wait {5, 5};
+	vector<double> t_wait {5, 100};
     // double t_wait = 10;  // wait between switching desired positions 
 	// double t_reset_wait = 5;  // wait when resetting position 
     double prev_time = 0;
@@ -302,18 +304,29 @@ void control(shared_ptr<Sai2Model::Sai2Model> robot,
     int max_cnt = desired_offsets.size();
 	int state = POSTURE;
 
+	int n_meshes = self_collision_handler->getCollisionStates().size();
+	int constraint_flag = 0;
+
 	// create logger
 	Sai2Common::Logger logger("joints", false);
 	VectorXd svalues = VectorXd::Zero(6);
     VectorXd robot_q = robot->q();
 	Vector3d ee_pos = motion_force_task->getCurrentPosition();
 	Vector3d goal_pos = motion_force_task->getGoalPosition();
-	int constraint_flag = 0;
+	VectorXi collision_state = VectorXi::Zero(n_meshes);
+	VectorXd collision_distance = VectorXd::Zero(n_meshes);	
+	Vector3d closest_point_in_world = Vector3d::Zero();
+	double closest_distance = 0;
+
 	// logger.addToLog(svalues, "svalues");
     logger.addToLog(robot_q, "robot_q");
 	logger.addToLog(ee_pos, "ee_pos");
 	logger.addToLog(goal_pos, "goal_pos");
 	logger.addToLog(constraint_flag, "constraint_flag");
+	logger.addToLog(collision_state, "collision_state");
+	logger.addToLog(collision_distance, "collision_distance");
+	logger.addToLog(closest_distance, "collision_closest_distance");
+	logger.addToLog(closest_point_in_world, "collision_closest_point_in_world");
 	logger.start();
 
 	// create a loop timer
@@ -381,6 +394,7 @@ void control(shared_ptr<Sai2Model::Sai2Model> robot,
 			N_prec = MatrixXd::Identity(dof, dof);
 			{
 				lock_guard<mutex> lock(mutex_robot);
+				joint_handler->updateTaskModel(N_prec);
 				self_collision_handler->updateTaskModel(N_prec);
 				motion_force_task->updateTaskModel(N_prec);
 			}
@@ -405,12 +419,24 @@ void control(shared_ptr<Sai2Model::Sai2Model> robot,
 
 			// joint_task->setGoalPosition(q_init + q_delta);
 
-			// compute torques for the different tasks
-			{
-				lock_guard<mutex> lock(mutex_robot);
-				motion_force_task_torques = motion_force_task->computeTorques();
-				joint_task_torques = joint_task->computeTorques();
-			}
+			// compute torques without self collision handler nullspace 
+            VectorXd motion_force_task_torques_without_handler = motion_force_task->computeTorques();
+            VectorXd joint_task_torques_without_handler = joint_task->computeTorques();
+
+            // // compute torques with self collision handler nullspace
+            // motion_force_task->updateTaskModel(self_collision_handler->getTaskAndPreviousNullspace());
+            // joint_task->updateTaskModel(motion_force_task->getTaskAndPreviousNullspace());
+            // motion_force_task_torques = motion_force_task->computeTorques();
+            // joint_task_torques = joint_task->computeTorques();
+            // VectorXd collision_handler_constraint_torques = \
+                // self_collision_handler->computeTorques(motion_force_task_torques_without_handler + joint_task_torques_without_handler, true);
+
+			// // compute torques for the different tasks
+			// {
+			// 	lock_guard<mutex> lock(mutex_robot);
+			// 	motion_force_task_torques = motion_force_task->computeTorques();
+			// 	joint_task_torques = joint_task->computeTorques();
+			// }
 
 			// // compute apf torques 
 			// VectorXd apf_force = VectorXd::Zero(robot->dof());
@@ -429,7 +455,11 @@ void control(shared_ptr<Sai2Model::Sai2Model> robot,
 			//------ compute the final torques
 			{
 				lock_guard<mutex> lock(mutex_torques);
-				control_torques = self_collision_handler->computeTorques(motion_force_task_torques + joint_task_torques);
+				// control_torques = joint_handler->computeTorques(self_collision_handler->computeTorques(motion_force_task_torques_without_handler + joint_task_torques_without_handler));
+				control_torques = self_collision_handler->computeTorques(motion_force_task_torques_without_handler + joint_task_torques_without_handler);
+				// control_torques += joint_task_torques_without_handler;
+				// control_torques = motion_force_task_torques_without_handler + joint_task_torques_without_handler;
+				// control_torques = collision_handler_constraint_torques + motion_force_task_torques + joint_task_torques;
 				// control_torques = motion_force_task_torques + joint_task_torques;
 				if (!flag_simulation) {
 					redis_client->setEigen(JOINT_TORQUES_COMMANDED_KEY, control_torques);
@@ -442,11 +472,26 @@ void control(shared_ptr<Sai2Model::Sai2Model> robot,
 			lock_guard<mutex> lock(mutex_collision);
 			collision_pairs = self_collision_handler->getCollisionPoints();
 			collision_states = self_collision_handler->getCollisionStates();
+			auto collision_distances = self_collision_handler->getDistances();
 			if (std::accumulate(collision_states.begin(), collision_states.end(), 0) != 0) {
 				constraint_flag = 1;
 			} else {
 				constraint_flag = 0;
 			}
+			// convert collision state to VectorXi
+			for (int i = 0; i < n_meshes; ++i) {
+				collision_state(i) = static_cast<int>(collision_states[i]);
+			}
+			// convert collision distances to VectorXd
+			for (int i = 0; i < n_meshes; ++i) {
+				collision_distance(i) = collision_distances[i];
+			}
+			
+			// only extract the closest point in the world 
+			Eigen::Index min_index;
+			double min_distance = collision_distance.minCoeff(&min_index);
+			closest_point_in_world = collision_pairs[min_index].first;
+			closest_distance = min_distance;
 		}
 
 		// MatrixXd Jc = MatrixXd::Zero(1, robot->dof());

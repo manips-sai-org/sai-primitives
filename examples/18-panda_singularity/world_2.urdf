@@ -30,16 +30,30 @@
 		<lookat xyz="0.0 0.0 0.0" />
 	</light>
 
+	<light name="light2" type="directional">
+		<position xyz="-2.0 2.0 2.0" />
+		<lookat xyz="0.0 0.0 0.0" />
+	</light>
+
 	<!-- <camera name="camera">
 		<position xyz="0.2 1.4 0.5" />
 		<vertical xyz="0.0 0.0 1.0" />
 		<lookat xyz="0.2 0.0 0.5" />
 	</camera> -->
 
-    <camera name="camera">
-		<position xyz="1.0 1.2 0.5" />
-		<vertical xyz="0.0 0.0 1.0" />
-		<lookat xyz="0.2 0.0 0.5" />
+    <!-- <camera name="camera"> -->
+		<!-- <position xyz="1.0 1.2 0.5" /> -->
+		<!-- <position xyz="0.9 1.0 0.8" /> -->
+		<!-- <position xyz="1.0 -1.5 0.5" /> -->
+		<!-- <vertical xyz="0.0 0.0 1.0" /> -->
+		<!-- <lookat xyz="0 0.0 0.2" /> -->
+	<!-- </camera> -->
+
+	<camera name="camera">
+        <position xyz="0.919076 0.573171 0.563005" />
+        <lookat xyz="0.0957143 0.0264821  0.410668" />
+        <vertical xyz="-0.0933477  -0.134311   0.986533" />
 	</camera>
+
 
 </world>
