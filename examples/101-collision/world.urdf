@@ -27,9 +27,11 @@
 			<inertia ixx="0.4" ixy="0.0" ixz="0.0" iyy="0.4" iyz="0.0" izz="0.2"/>
 		</inertial>
 	    <visual>
-	        <origin xyz="0.0 0.0 0.0" rpy="0 0 0" />
+	        <origin xyz="0.0 0.0 0.0" rpy="1.5717 0 0" />
 	        <geometry>
-	            <mesh filename="${SAI2_MODEL_URDF_FOLDER}/panda/meshes/collision/hand.obj" />
+	            <mesh filename="../../../openGJK/utils/object_meshes/nalgene-nalgene.obj" />
+				<!-- <box size="0.1 0.1 0.01" /> -->
+				<!-- <sphere radius="0.05" /> -->
 	        </geometry>
 	        <material name="material_red">
 		        <color rgba="0.1 0.1 0.1 1.0" />
@@ -47,10 +49,10 @@
 		<lookat xyz="0.0 0.0 0.0" />
 	</light>
 
-	<light name="light2" type="directional">
+	<!-- <light name="light2" type="directional">
 		<position xyz="-2.0 2.0 2.0" />
 		<lookat xyz="0.0 0.0 0.0" />
-	</light>
+	</light> -->
 
 	<!-- <camera name="camera">
 		<position xyz="0.2 1.4 0.5" />
@@ -66,11 +68,17 @@
 		<!-- <lookat xyz="0 0.0 0.2" /> -->
 	<!-- </camera> -->
 
-	<camera name="camera">
+	<!-- <camera name="camera">
         <position xyz="0.919076 0.573171 0.563005" />
         <lookat xyz="0.0957143 0.0264821  0.410668" />
         <vertical xyz="-0.0933477  -0.134311   0.986533" />
-	</camera>
+	</camera> -->
+
+<camera name="camera">
+	<position xyz=" 1.30533 0.694217 0.666715" />
+	<lookat xyz="0.481968 0.147528 0.514378" />
+	<vertical xyz="-0.0933479  -0.134311   0.986533" />
+</camera>
 
 
 </world>

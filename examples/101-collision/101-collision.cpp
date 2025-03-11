@@ -31,7 +31,7 @@ using namespace chai3d;
 const string world_file = "${EXAMPLE_101_FOLDER}/world.urdf";
 const string robot_file =
 	"${SAI2_MODEL_URDF_FOLDER}/panda/panda_arm_gripper_fixed.urdf";
-const std::string mesh_yaml = "/home/william/OpenSai/core/sai2-primitives/examples/101-collision/config.yaml";
+const std::string mesh_yaml = "/home/src0/OpenSai/core/sai2-primitives/examples/101-collision/config.yaml";
 const string robot_name = "PANDA";
 
 // ui torques and control torques
@@ -99,13 +99,13 @@ cShapeLine* addLine(cWorld* world, cShapeLine* line, cVector3d pointA, cVector3d
 /*
 	Control
 */
-bool flag_simulation = true;
-// bool flag_simulation = false;
+// bool flag_simulation = true;
+bool flag_simulation = false;
 Sai2Common::RedisClient* redis_client;
-std::string JOINT_ANGLES_KEY = "sai2::FrankaPanda::Romeo::sensors::q";
-std::string JOINT_VELOCITIES_KEY = "sai2::FrankaPanda::Romeo::sensors::dq";
-std::string JOINT_TORQUES_COMMANDED_KEY = "sai2::FrankaPanda::Romeo::actuators::fgc";
-std::string MASS_MATRIX_KEY = "sai2::FrankaPanda::Romeo::sensors::model::massmatrix";
+std::string JOINT_ANGLES_KEY = "sai2::FrankaPanda::Juliet::sensors::q";
+std::string JOINT_VELOCITIES_KEY = "sai2::FrankaPanda::Juliet::sensors::dq";
+std::string JOINT_TORQUES_COMMANDED_KEY = "sai2::FrankaPanda::Juliet::actuators::fgc";
+std::string MASS_MATRIX_KEY = "sai2::FrankaPanda::Juliet::sensors::model::massmatrix";
 VectorXd q_init = VectorXd::Zero(7);
 
 enum State {
