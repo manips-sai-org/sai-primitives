@@ -157,6 +157,14 @@ public:
         _enforce_handling_strategy = false;
     }
 
+    void setForceSingularityOption(const int opt) {
+        _joint_strategy = false;
+    }
+
+    void setJointSingularityOption(const int opt) {
+        _joint_strategy = true;
+    }
+
     /**
      * @brief Set the singularity handling parameters for classification
      * 
@@ -174,13 +182,15 @@ public:
                                       const double& type_2_torque_ratio,
                                       const double& type_2_angle_threshold,
                                       const double& perturb_step_size,
-                                      const int& buffer_size) {
+                                      const int& buffer_size,
+                                      const double& type_2_velocity_ratio) {
         _s_abs_tol = s_abs_tol;
         _type_1_tol = type_1_tol; 
         _type_2_torque_ratio = type_2_torque_ratio;
         _type_2_angle_threshold = type_2_angle_threshold;
         _perturb_step_size = perturb_step_size;
         _buffer_size = buffer_size;
+        _type_2_velocity_ratio = type_2_velocity_ratio;
     }
 
     /**
@@ -223,6 +233,14 @@ public:
         return _Lambda_s_modified;
     }
 
+    MatrixXd getSingularJointTaskRange() {
+        return _joint_task_range_s;
+    }
+
+    MatrixXd getSingularJointJacobian() {
+        return _posture_projected_jacobian;
+    }
+
 private:
 
     /**
@@ -242,7 +260,7 @@ private:
     Affine3d _compliant_frame;
     int _task_rank;
     int _dof;
-    VectorXd _joint_midrange, _q_upper, _q_lower, _tau_upper, _tau_lower;
+    VectorXd _joint_midrange, _q_upper, _q_lower, _tau_upper, _tau_lower, _dq_max;
     bool _enforce_type_1_strategy;
     bool _enforce_handling_strategy;
     bool _verbose;
@@ -265,6 +283,8 @@ private:
     double _kv_type_2;
     VectorXd _type_2_torque_vector;
     VectorXd _type_2_direction;
+    double _type_2_velocity_ratio;
+    VectorXd _type_2_velocity_vector;
 
     // model quantities 
     MatrixXd _svd_U, _svd_V;
@@ -286,6 +306,8 @@ private:
     VectorXd _singular_task_torques;
     VectorXd _joint_strategy_torques;
     VectorXd _impedance_force_torques;
+
+    bool _joint_strategy;
 };
 
 }  // namespace

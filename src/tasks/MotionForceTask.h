@@ -775,13 +775,15 @@ public:
 										const double& type_2_torque_ratio,
 										const double& type_2_angle_threshold,
 										const double& perturb_step_size,
-										const int& buffer_size) {
+										const int& buffer_size,
+										const double& type_2_velocity_ratio) {
 		_singularity_handler->setSingularityHandlingParams(s_abs_tol,
 															type_1_tol,
 															type_2_torque_ratio,
 															type_2_angle_threshold,
 															perturb_step_size,
-															buffer_size);
+															buffer_size,
+															type_2_velocity_ratio);
 	}
 
 	/**
@@ -847,6 +849,14 @@ public:
 	double getBlendingCoefficient() {
 		return _singularity_handler->getBlendingCoefficient();
 	}
+
+	MatrixXd getSingularJointTaskRange() {
+        return _singularity_handler->getSingularJointTaskRange();;
+    }
+
+    MatrixXd getSingularJointJacobian() {
+        return _singularity_handler->getSingularJointJacobian();
+    }
 
 	// -------- override step computation ----------
 	void enableManualStepPositionError() {

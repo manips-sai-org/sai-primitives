@@ -44,6 +44,23 @@ void control(shared_ptr<Sai2Model::Sai2Model> robot,
 void simulation(shared_ptr<Sai2Model::Sai2Model> robot,
 				shared_ptr<Sai2Simulation::Sai2Simulation> sim);
 
+Eigen::MatrixXd pseudoInverse(const Eigen::MatrixXd& mat, double tolerance = 1e-6) {
+    Eigen::JacobiSVD<Eigen::MatrixXd> svd(mat, Eigen::ComputeThinU | Eigen::ComputeThinV);
+    Eigen::VectorXd singularValues = svd.singularValues();
+    Eigen::MatrixXd singularValuesInv(mat.cols(), mat.rows());
+    singularValuesInv.setZero();
+
+    // Invert nonzero singular values
+    for (int i = 0; i < singularValues.size(); ++i) {
+        if (singularValues(i) > tolerance) {
+            singularValuesInv(i, i) = 1.0 / singularValues(i);
+        }
+    }
+
+    // Compute pseudoinverse: V * S⁺ * U^T
+    return svd.matrixV() * singularValuesInv * svd.matrixU().transpose();
+}
+
 //------------ main function
 int main(int argc, char** argv) {
 	Sai2Model::URDF_FOLDERS["EXAMPLE_18_FOLDER"] =
@@ -215,6 +232,52 @@ void control(shared_ptr<Sai2Model::Sai2Model> robot,
 			lock_guard<mutex> lock(mutex_torques);
 			// control_torques = joint_handler->computeTorques(motion_force_task_torques + joint_task_torques);
 			control_torques = motion_force_task_torques + joint_task_torques;
+		}
+
+		// debug compute the kinematics approach
+		VectorXd unit_mass_force = motion_force_task->getUnitControlForces();
+		MatrixXd U_s = motion_force_task->getSingularTaskRange();
+		MatrixXd J_s = motion_force_task->getSingularJacobian();
+		VectorXd JdotQdot = robot->jDotQDot(link_name, pos_in_link);
+		// std::cout << "unit mass force projected into singular space: " << unit_mass_force.transpose() << "\n";
+		// std::cout << "jdotqdot: " << JdotQdot << "\n";
+		VectorXd dynamic_bias = U_s.transpose() * JdotQdot;
+		VectorXd b = U_s.transpose() * unit_mass_force - U_s.transpose() * JdotQdot;
+		VectorXd ddq_sol = J_s.colPivHouseholderQr().solve(b);
+		// std::cout << "J_s: \n" << J_s << "\n";
+		// std::cout << "b: \n" << b.transpose() << "\n";
+		// std::cout << "ddq sol: " << ddq_sol.transpose() << "\n";
+
+		// compute task inertia matrix 
+		MatrixXd singular_task_lambda = (J_s * robot->MInv() * J_s.transpose()).inverse();
+		// std::cout << "singular task lambda: \n" << singular_task_lambda << "\n";
+
+		// solve closed-form 
+		if (!J_s.isZero()) {
+			MatrixXd A = J_s;
+			std::cout << A << "\n";
+			VectorXd ddq_opt = robot->MInv() * A.transpose() * (A * robot->MInv() * A.transpose()).inverse() * b;
+			std::cout << "ddq opt: " << ddq_opt.transpose() << "\n";
+
+			// compute torque from this 
+			MatrixXd J_qs = motion_force_task->getSingularJointJacobian();
+			MatrixXd singular_joint_lambda = (J_qs * robot->MInv() * J_qs.transpose()).inverse();
+			MatrixXd singular_joint_range = motion_force_task->getSingularJointTaskRange();
+			// std::cout << "singular joint lambda: \n" << singular_joint_lambda << "\n";
+			// std::cout << "Js: " << J_s.transpose() << "\n";
+			VectorXd torque_from_ddq = J_qs.transpose() * singular_joint_lambda * singular_joint_range.transpose() * ddq_opt;
+			// std::cout << "1\n";	
+			// torque_from_ddq = J_s.transpose() * torque_from_ddq;
+
+			std::cout << "torque from ddq: " << torque_from_ddq.transpose() << "\n";
+
+			// compute mp-inverse 
+			MatrixXd test(2, 2);
+			test << 0, 0, 2, 1;
+
+			auto test_inv = pseudoInverse(test);
+			std::cout << "test inv: \n" << test_inv << "\n";
+
 		}
 
 		// MatrixXd Jc = MatrixXd::Zero(1, robot->dof());
