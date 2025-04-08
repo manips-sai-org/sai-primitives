@@ -510,7 +510,7 @@ VectorXd JointHandler::computeTorques(const VectorXd& torques) {
         }
         
         // compute constrained torques (unit mass damping + task torques + apf torques)
-        std::cout << "apf: " << con_apf_torques.transpose() << "\n";
+        // std::cout << "apf: " << con_apf_torques.transpose() << "\n";
         VectorXd total_torques = VectorXd::Zero(_dof);
         total_torques += 1 * (_current_task_range.transpose() * _projected_jacobian).transpose() * \
                                 _Lambda_c * _current_task_range.transpose() * con_unit_damping_torques;

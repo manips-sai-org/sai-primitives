@@ -45,7 +45,7 @@ public:
                        const std::string& link_name,
                        const Affine3d& compliant_frame,
                        const int& task_rank,
-                       const bool& verbose = false);
+                       const bool& verbose = true);
 
     /**
      * @brief Updates the model quantities for the singularity handling task, and performs singularity classification
@@ -292,6 +292,7 @@ private:
     double _s_abs_tol;  
     double _s_min, _s_max;
     double _alpha;
+    double _alpha_prior;
     MatrixXd _N;
     MatrixXd _task_range_ns, _task_range_s, _joint_task_range_s;
     MatrixXd _projected_jacobian_ns, _projected_jacobian_s;

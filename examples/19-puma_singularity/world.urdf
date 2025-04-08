@@ -11,7 +11,7 @@
 	<static_object name="Floor">
 		<origin xyz="0.0 0.0 0.0" rpy="0 0 0" />
 	    <visual>
-	        <origin xyz="0.0 0.0 0.0" rpy="0 0 0" />
+	        <origin xyz="0.0 0.0 -0.05" rpy="0 0 0" />
 	        <geometry>
 	            <box size="3.0 3.0 0.1" />
 	        </geometry>
@@ -22,7 +22,7 @@
 	</static_object>
 
 	<light name="light1" type="directional">
-		<position xyz="-2.0 -2.0 2.0" />
+		<position xyz="2.0 -2.0 2.0" />
 		<lookat xyz="0.0 0.0 0.0" />
 	</light>
 
@@ -37,10 +37,22 @@
 		<lookat xyz="0.0 0.5 0.75" />
 	</camera> -->
 
-	<camera name="camera">
+	<!-- <camera name="camera">
 		<position xyz="-1.34848 0.766375 1.18243" />
 		<vertical xyz="0.401548 -0.133621  0.906038" />
 		<lookat xyz="-0.469794  0.543684  0.760161" />
+	</camera> -->
+
+	<!-- <camera name="camera">
+		<position xyz="-1.48907 0.789044  1.54227" />
+		<vertical xyz="0.366377 -0.237466  0.899654" />
+		<lookat xyz="-0.684648  0.383948   1.10775" />
+	</camera> -->
+
+	<camera name="camera">
+		<position xyz="1.21301  1.7223 1.32924" />
+		<vertical xyz="-0.138919 -0.227234  0.963881" />
+		<lookat xyz="0.641574 0.945759  1.06382" />
 	</camera>
 
 </world>

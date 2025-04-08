@@ -14,8 +14,8 @@ namespace {
     double TYPE_2_ANGLE_THRESHOLD = 5 * M_PI / 180;
     double PERTURB_STEP_SIZE = 5;
     double BUFFER_SIZE = 200;
-    double KP_TYPE_1 = 50;
-    double KV_TYPE_1 = 14;
+    double KP_TYPE_1 = 10;
+    double KV_TYPE_1 = 20;
     double KV_TYPE_2 = 5;
 }
 
@@ -95,6 +95,9 @@ SingularityHandler::SingularityHandler(std::shared_ptr<Sai2Model::Sai2Model> rob
     _joint_strategy = true;
     _type_2_velocity_ratio = 0.2;
     _type_2_velocity_vector = _type_2_velocity_ratio * VectorXd::Ones(_robot->dof());
+
+    _alpha = 1;
+    _alpha_prior = 1;
 }
 
 void SingularityHandler::updateTaskModel(MatrixXd& projected_jacobian, const MatrixXd& N_prec, const bool& is_floating) {
@@ -102,6 +105,8 @@ void SingularityHandler::updateTaskModel(MatrixXd& projected_jacobian, const Mat
     // if (is_floating) {
         // projected_jacobian.block(0, 0, 3, 3).setZero();
     // }
+
+    _alpha_prior = _alpha;
 
     // task range decomposition
     // MatrixXd projected_jacobian = jacobian * N_prec;  // actually used in control
@@ -295,10 +300,13 @@ void SingularityHandler::updateTaskModel(MatrixXd& projected_jacobian, const Mat
 void SingularityHandler::classifySingularity(const MatrixXd& singular_task_range,
                                              const MatrixXd& singular_joint_task_range) {
     // memory of entering conditions 
-    if (_singularity_types.size() == 0 || (_type_2_counter > _type_1_counter)) {
-        _q_prior = _robot->q();
-        _dq_prior = _robot->dq();
-    } 
+    // if (_alpha == 0) {
+        if (_singularity_types.size() == 0 || (_type_2_counter > _type_1_counter)) {
+        // if (_alpha_prior != 0 || (_type_2_counter > _type_1_counter)) {
+            _q_prior = _robot->q();
+            _dq_prior = _robot->dq();
+        } 
+    // }
 
     // if singular task range is empty, return no singularities 
     if (singular_task_range.norm() == 0) {
@@ -393,7 +401,7 @@ VectorXd SingularityHandler::computeTorques(const VectorXd& unit_mass_force, con
             }
         } 
 
-        // compute singular joint-space acceleration to match singular task-space acceleration
+        // compute singular joint-space acceleration to matc singular task-space acceleration
         VectorXd jdqd = _robot->jDotQDot(_link_name, _compliant_frame.translation());
         Eigen::CompleteOrthogonalDecomposition<Eigen::MatrixXd> cod(_projected_jacobian_s);
         VectorXd xdd = _task_range_s.transpose() * (unit_mass_force - jdqd);
@@ -402,14 +410,14 @@ VectorXd SingularityHandler::computeTorques(const VectorXd& unit_mass_force, con
         // handle singularity type based on which one has more counts  
         if (_type_1_counter > _type_2_counter || _enforce_type_1_strategy) {
             // joint holding to entering joint conditions  
-            VectorXd unit_torques = - _kp_type_1 * (_robot->q() - _q_prior) - _kv_type_1 * _robot->dq();  
+            VectorXd unit_torques = - _kp_type_1 * (_robot->q() - _q_prior) - _kv_type_1 * _robot->dq();
             _joint_strategy_torques = _posture_projected_jacobian.transpose() * _Lambda_joint_s_modified * _joint_task_range_s.transpose() * unit_torques;
 
-            // change control to ddq_opt + impedance_force matching 
-            if (_joint_strategy) {
-                _joint_strategy_torques += _alpha * _posture_projected_jacobian.transpose() * _Lambda_joint_s_modified * \
-                                            _joint_task_range_s.transpose() * ddq_opt;
-            }
+            // // change control to ddq_opt + impedance_force matching 
+            // if (_joint_strategy) {
+            //     _joint_strategy_torques += _posture_projected_jacobian.transpose() * _Lambda_joint_s_modified * \
+            //                                 _joint_task_range_s.transpose() * ddq_opt;
+            // }
 
         } else {
             // apply open-loop torque proportional to dot(unit mass force, singular direction)
@@ -431,18 +439,22 @@ VectorXd SingularityHandler::computeTorques(const VectorXd& unit_mass_force, con
                                         _posture_projected_jacobian.transpose() * _Lambda_joint_s_modified * \
                                         _joint_task_range_s.transpose() * (- _kv_type_2 * _robot->dq());
 
-            if (_joint_strategy) {
-                // change type 2 from open-loop torque to desired percentage of max velocity 
-                magnitude_unit_torques = std::abs(fTd) * _type_2_velocity_vector;
-                unit_torques = _type_2_direction.array() * magnitude_unit_torques.array(); 
-                VectorXd qd = unit_torques.array() * _dq_max.array();
-                _joint_strategy_torques = _posture_projected_jacobian.transpose() * _Lambda_joint_s_modified * \
-                                             _joint_task_range_s.transpose() * (_alpha * ddq_opt - _kv_type_2 * (_robot->dq() - qd));
-            }
+            // if (_joint_strategy) {
+            //     // change type 2 from open-loop torque to desired percentage of max velocity 
+            //     magnitude_unit_torques = std::abs(fTd) * _type_2_velocity_vector;
+            //     unit_torques = _type_2_direction.array() * magnitude_unit_torques.array(); 
+            //     VectorXd qd = unit_torques.array() * _dq_max.array();
+            //     _joint_strategy_torques = _posture_projected_jacobian.transpose() * _Lambda_joint_s_modified * \
+            //                                  _joint_task_range_s.transpose() * (_alpha * ddq_opt - _kv_type_2 * (_robot->dq() - qd));
+            // }
         }
 
         // combine non-singular torques and blended singular torques with joint strategy torques
-        _singular_task_torques = _projected_jacobian_s.transpose() * (_Lambda_s_modified * _task_range_s.transpose() * unit_mass_force + \
+        // _singular_task_torques = _projected_jacobian_s.transpose() * (_Lambda_s_modified * _task_range_s.transpose() * unit_mass_force + \
+        //                                     _task_range_s.transpose() * force_related_terms);
+
+        MatrixXd Is = MatrixXd::Identity(_Lambda_joint_s_modified.rows(), _Lambda_joint_s_modified.rows());
+        _singular_task_torques = _projected_jacobian_s.transpose() * ((_alpha * _Lambda_s_modified + (1 - _alpha) * 0 * Is) * _task_range_s.transpose() * unit_mass_force + \
                                             _task_range_s.transpose() * force_related_terms);
 
         _impedance_force_torques += _projected_jacobian_s.transpose() * _task_range_s.transpose() * force_related_terms;
@@ -456,10 +468,24 @@ VectorXd SingularityHandler::computeTorques(const VectorXd& unit_mass_force, con
                 _singular_task_torques(i) = _tau_lower(i);
             }
         }
+
+        if (_alpha == 0) {
+            std::cout << "alpha: " << _alpha << "\n";
+        }
+
         if (_joint_strategy) {
-            return tau_ns + _joint_strategy_torques;
+            // if (_alpha == 0) {
+            //     return tau_ns + _singular_task_torques + 1 * _joint_strategy_torques;
+            // } else {
+            //     return tau_ns + _singular_task_torques + 0 * _joint_strategy_torques + \
+            //                 _posture_projected_jacobian.transpose() * _Lambda_joint_s_modified * _joint_task_range_s.transpose() * (- _kv_type_1 * _robot->dq());
+            // }
+            return tau_ns + _singular_task_torques + _joint_strategy_torques;
+            // return tau_ns + _joint_strategy_torques;
         } else {
-            return tau_ns + _alpha * _singular_task_torques + (1 - _alpha) * _joint_strategy_torques;
+            // return tau_ns + _alpha * _singular_task_torques + (1 - _alpha) * _joint_strategy_torques;
+            // return tau_ns + _joint_strategy_torques;
+            return tau_ns + _singular_task_torques + (_alpha == 0) * 0 * _joint_strategy_torques;
         }
     }
 }

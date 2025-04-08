@@ -61,6 +61,7 @@ int main() {
 	// load graphics scene
 	auto graphics = make_shared<Sai2Graphics::Sai2Graphics>(world_file);
 	graphics->addForceSensorDisplay(sim->getAllForceSensorData()[0]);
+	graphics->setBackgroundColor(.678, .847, .902);
 
 	// Run simulation and control threads
 	thread sim_thread(runSim, sim);

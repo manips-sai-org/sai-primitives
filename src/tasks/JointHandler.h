@@ -33,7 +33,7 @@ class JointHandler {
 public:
 
     JointHandler(std::shared_ptr<Sai2Model::Sai2Model> robot,
-                 const bool& verbose = true,
+                 const bool& verbose = false,
                  const bool& truncation_flag = false,
                  const bool& is_floating = false,
                  const double& pos_zone_1 = 9,

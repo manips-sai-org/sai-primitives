@@ -27,7 +27,7 @@ using namespace Eigen;
 // config file names and object names
 const string world_file = "${EXAMPLE_18_FOLDER}/world.urdf";
 const string robot_file =
-	"${SAI2_MODEL_URDF_FOLDER}/panda/panda_arm_sphere.urdf";
+	"${SAI2_MODEL_URDF_FOLDER}/panda/panda_arm_gripper_fixed.urdf";
 const string robot_name = "PANDA";
 
 // ui torques and control torques
@@ -76,6 +76,7 @@ int main(int argc, char** argv) {
 	auto graphics = make_shared<Sai2Graphics::Sai2Graphics>(world_file);
 	graphics->addUIForceInteraction(robot_name);
 	// graphics->showTransparency(true, robot_name, 0.5);
+	graphics->setBackgroundColor(.678, .847, .902);
 
 	// load simulation world
 	auto sim = make_shared<Sai2Simulation::Sai2Simulation>(world_file);
@@ -230,8 +231,8 @@ void control(shared_ptr<Sai2Model::Sai2Model> robot,
 		//------ compute the final torques
 		{
 			lock_guard<mutex> lock(mutex_torques);
-			// control_torques = joint_handler->computeTorques(motion_force_task_torques + joint_task_torques);
-			control_torques = motion_force_task_torques + joint_task_torques;
+			control_torques = joint_handler->computeTorques(motion_force_task_torques + joint_task_torques);
+			// control_torques = motion_force_task_torques + joint_task_torques;
 		}
 
 		// debug compute the kinematics approach
