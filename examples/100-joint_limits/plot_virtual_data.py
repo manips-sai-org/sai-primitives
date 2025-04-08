@@ -49,67 +49,101 @@ def plot_data(csv_file, joint_index=2):
     ee_pos_columns = [col for col in df.columns if 'ee_pos__' in col]   
     goal_pos_columns = [col for col in df.columns if 'goal_pos__' in col]   
 
+    # """ 
+    #     Plot joint data (all)
+    # """
+
+    # # Plot joint data 
+    # # Plot the selected joint
+    # fig, axes = plt.subplots(3, 1, figsize=(10, 10))
+    # # plt.subplot(1, 1, 1)
+    # axes[0].plot(df['time'], df[joint], label=joint)   
+
+    # # Draw horizontal dashed lines
+    # axes[0].axhline(y=q_min[joint_index] + lower_offset, color='g', linestyle='--')
+    # axes[0].axhline(y=q_max[joint_index] - lower_offset, color='g', linestyle='--')
+    # axes[0].axhline(y=q_min[joint_index] + offset, color='y', linestyle='--')
+    # axes[0].axhline(y=q_max[joint_index] - offset, color='y', linestyle='--')
+    # axes[0].axhline(y=q_min[joint_index], color='r', linestyle='--')
+    # axes[0].axhline(y=q_max[joint_index], color='r', linestyle='--')   
+
+    # # # Draw pos and vel constraint lines
+    # # Plot vertical yellow bars
+    # for i in range(len(df['time'])):
+    #     if df[joint_pos_state_columns[joint_index]][i] != 0:
+    #         axes[0].axvline(x=df['time'][i], color='yellow', linestyle='-', linewidth=5, alpha=0.005)
+
+    # axes[0].set_xlabel('Time (s)')
+    # axes[0].set_ylabel('Joint Angle (rad)')
+    # axes[0].set_title(f'Robot Joint {joint_index} Angle Over Time')
+    # axes[0].legend()
+    # axes[0].grid()   
+
+    # # Velocity
+    # # plt.figure(figsize=(10, 6))
+    # # plt.subplot(2, 1, 1)
+    # axes[1].plot(df['time'], df[joint_vel_columns[joint_index]], label=joint)   
+
+    # # Draw horizontal dashed lines
+    # # plt.axhline(y=dq_max[joint_index] + offset, color='g', linestyle='--')
+    # # plt.axhline(y=dq_max[joint_index] - offset, color='g', linestyle='--')
+    # axes[1].axhline(y=dq_max[joint_index], color='r', linestyle='--')
+    # axes[1].axhline(y=-dq_max[joint_index], color='r', linestyle='--')  
+    # axes[1].set_xlabel('Time (s)')
+    # axes[1].set_ylabel('Joint Velocity (rad/s)')
+    # axes[1].set_title(f'Robot Joint {joint_index} Velocity Over Time')
+    # axes[1].legend()
+    # axes[1].grid()   
+
+    # # Torque
+    # # plt.subplot(3, 1, 1)
+    # # plt.figure(figsize=(10, 6))
+    # axes[2].plot(df['time'], df[joint_torque_columns[joint_index]], label=joint)   
+
+    # # Draw horizontal dashed lines
+    # # plt.axhline(y=dq_max[joint_index] + offset, color='g', linestyle='--')
+    # # plt.axhline(y=dq_max[joint_index] - offset, color='g', linestyle='--')
+    # # plt.axhline(y=dq_max[joint_index], color='r', linestyle='--')
+    # # plt.axhline(y=-dq_max[joint_index], color='r', linestyle='--')  
+    # axes[2].set_xlabel('Time (s)')
+    # axes[2].set_ylabel('Joint Torque (N-m)')
+    # axes[2].set_title(f'Robot Joint {joint_index} Torque Over Time')
+    # axes[2].legend()
+    # axes[2].grid()  
+
+    # plt.tight_layout()  # Adjust spacing to prevent overlap
+
     """ 
-        Plot joint data
+        Plot joint data (only position)
     """
 
     # Plot joint data 
     # Plot the selected joint
-    fig, axes = plt.subplots(3, 1, figsize=(10, 10))
+    # fig, axes = plt.subplots(3, 1, figsize=(10, 10))
+    fig, axes = plt.subplots(1, 1)
+    time_indices = np.arange(130, 3100, 1)
     # plt.subplot(1, 1, 1)
-    axes[0].plot(df['time'], df[joint], label=joint)   
+    axes.plot(df['time'][time_indices], df[joint][time_indices], label='Joint 3')   
 
     # Draw horizontal dashed lines
-    axes[0].axhline(y=q_min[joint_index] + lower_offset, color='g', linestyle='--')
-    axes[0].axhline(y=q_max[joint_index] - lower_offset, color='g', linestyle='--')
-    axes[0].axhline(y=q_min[joint_index] + offset, color='y', linestyle='--')
-    axes[0].axhline(y=q_max[joint_index] - offset, color='y', linestyle='--')
-    axes[0].axhline(y=q_min[joint_index], color='r', linestyle='--')
-    axes[0].axhline(y=q_max[joint_index], color='r', linestyle='--')   
+    axes.axhline(y=q_min[joint_index] + lower_offset, color='g', linestyle='--')
+    axes.axhline(y=q_max[joint_index] - lower_offset, color='g', linestyle='--')
+    axes.axhline(y=q_min[joint_index] + offset, color='y', linestyle='--')
+    axes.axhline(y=q_max[joint_index] - offset, color='y', linestyle='--')
+    axes.axhline(y=q_min[joint_index], color='r', linestyle='--')
+    axes.axhline(y=q_max[joint_index], color='r', linestyle='--')   
 
     # # Draw pos and vel constraint lines
     # Plot vertical yellow bars
     for i in range(len(df['time'])):
         if df[joint_pos_state_columns[joint_index]][i] != 0:
-            axes[0].axvline(x=df['time'][i], color='yellow', linestyle='-', linewidth=5, alpha=0.005)
+            axes.axvline(x=df['time'][i], color='yellow', linestyle='-', linewidth=5, alpha=0.005)
 
-    axes[0].set_xlabel('Time (s)')
-    axes[0].set_ylabel('Joint Angle (rad)')
-    axes[0].set_title(f'Robot Joint {joint_index} Angle Over Time')
-    axes[0].legend()
-    axes[0].grid()   
-
-    # Velocity
-    # plt.figure(figsize=(10, 6))
-    # plt.subplot(2, 1, 1)
-    axes[1].plot(df['time'], df[joint_vel_columns[joint_index]], label=joint)   
-
-    # Draw horizontal dashed lines
-    # plt.axhline(y=dq_max[joint_index] + offset, color='g', linestyle='--')
-    # plt.axhline(y=dq_max[joint_index] - offset, color='g', linestyle='--')
-    axes[1].axhline(y=dq_max[joint_index], color='r', linestyle='--')
-    axes[1].axhline(y=-dq_max[joint_index], color='r', linestyle='--')  
-    axes[1].set_xlabel('Time (s)')
-    axes[1].set_ylabel('Joint Velocity (rad/s)')
-    axes[1].set_title(f'Robot Joint {joint_index} Velocity Over Time')
-    axes[1].legend()
-    axes[1].grid()   
-
-    # Torque
-    # plt.subplot(3, 1, 1)
-    # plt.figure(figsize=(10, 6))
-    axes[2].plot(df['time'], df[joint_torque_columns[joint_index]], label=joint)   
-
-    # Draw horizontal dashed lines
-    # plt.axhline(y=dq_max[joint_index] + offset, color='g', linestyle='--')
-    # plt.axhline(y=dq_max[joint_index] - offset, color='g', linestyle='--')
-    # plt.axhline(y=dq_max[joint_index], color='r', linestyle='--')
-    # plt.axhline(y=-dq_max[joint_index], color='r', linestyle='--')  
-    axes[2].set_xlabel('Time (s)')
-    axes[2].set_ylabel('Joint Torque (N-m)')
-    axes[2].set_title(f'Robot Joint {joint_index} Torque Over Time')
-    axes[2].legend()
-    axes[2].grid()  
+    axes.set_xlabel('Time (s)')
+    axes.set_ylabel('Joint Angle (rad)')
+    axes.set_title(f'Robot Joint {joint_index} Angle Over Time')
+    axes.legend()
+    axes.grid()   
 
     plt.tight_layout()  # Adjust spacing to prevent overlap
 
@@ -119,8 +153,8 @@ def plot_data(csv_file, joint_index=2):
 
     # Plot ee position 
     fig, axes = plt.subplots(3, 1, figsize=(10, 10))
-    axes[0].plot(df['time'], df[ee_pos_columns[0]], label='x current', color='b')
-    axes[0].plot(df['time'], df[goal_pos_columns[0]], label='x goal', linestyle='--', color='g')
+    axes[0].plot(df['time'][time_indices], df[ee_pos_columns[0]][time_indices], label='x current', color='b')
+    axes[0].plot(df['time'][time_indices], df[goal_pos_columns[0]][time_indices], label='x goal', linestyle='--', color='g')
 
     # # Draw pos and vel constraint lines
     # Plot vertical yellow bars
@@ -135,8 +169,8 @@ def plot_data(csv_file, joint_index=2):
     axes[0].grid()   
 
     # Y
-    axes[1].plot(df['time'], df[ee_pos_columns[1]], label='y current', color='b')
-    axes[1].plot(df['time'], df[goal_pos_columns[1]], label='y goal', color='g')
+    axes[1].plot(df['time'][time_indices], df[ee_pos_columns[1]][time_indices], label='y current', color='b')
+    axes[1].plot(df['time'][time_indices], df[goal_pos_columns[1]][time_indices], label='y goal', color='g')
 
     # # Draw pos and vel constraint lines
     # Plot vertical yellow bars
@@ -151,8 +185,8 @@ def plot_data(csv_file, joint_index=2):
     axes[1].grid()   
 
     # Z
-    axes[2].plot(df['time'], df[ee_pos_columns[2]], label='z current', color='b')
-    axes[2].plot(df['time'], df[goal_pos_columns[2]], label='z goal', color='g')
+    axes[2].plot(df['time'][time_indices], df[ee_pos_columns[2]][time_indices], label='z current', color='b')
+    axes[2].plot(df['time'][time_indices], df[goal_pos_columns[2]][time_indices], label='z goal', color='g')
 
     # # Draw pos and vel constraint lines
     # Plot vertical yellow bars

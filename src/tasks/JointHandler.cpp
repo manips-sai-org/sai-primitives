@@ -107,6 +107,7 @@ JointHandler::JointHandler(std::shared_ptr<Sai2Model::Sai2Model> robot,
     _rho = VectorXd::Zero(robot->dof());
     _rho_0 = _pos_zone_2_threshold;
     _eta = 0.1 * VectorXd::Ones(robot->dof());
+    _apf_torques = VectorXd::Zero(robot->dof());
 }
 
 /**
@@ -219,6 +220,7 @@ void JointHandler::updateTaskModel(const MatrixXd& N_prec) {
             double q_zone_upper = _q_max(i) - _pos_zone_2_threshold(i);
             // alpha.push_back(std::clamp((q(i) - q_zone_lower) / (q_zone_upper - q_zone_lower), 0.0, 1.0));
             _blending_coefficients(i) = std::clamp(std::abs((q(i) - q_zone_lower) / (q_zone_upper - q_zone_lower)), 0.0, 1.0);
+
         } else if (q(i) < _q_min(i) + _pos_zone_2_threshold(i)) {
             // apf
             _joint_state(i) = MIN_HARD_POS;
@@ -353,7 +355,9 @@ void JointHandler::updateTaskModel(const MatrixXd& N_prec) {
 }
 
 VectorXd JointHandler::computeTorques(const VectorXd& torques,
-                                      const bool constraint_only) {
+                                      const bool constraint_only,
+                                      const bool baseline,
+                                      const bool no_exit) {
     
     // update robot  
     VectorXd q = _robot->q();
@@ -428,12 +432,14 @@ VectorXd JointHandler::computeTorques(const VectorXd& torques,
 
                 // dot product check
                 if (projected_torques_in_constraint(i) > _tau_thresh) {
+                    std::cout << "Min Hard Passthrough\n";
                     con_task_torques(cnt) = projected_torques_in_constraint(i);
                     _joint_state(i) = SAFE;
-                    con_unit_damping_torques(cnt) = 0;
+                    con_unit_damping_torques(cnt) = 0;  // DISABLE FOR BASELINE
                     // _var_pos_zone_1_threshold(i) = _pos_zone_1_threshold(i);
                     // con_unit_damping_torques(cnt) = - std::pow(_blending_coefficients[cnt], 2) * _kv_pos_limit(i) * dq(i);
                 } 
+
                 constrained_joint = true;
 
             } else if (_joint_state(i) == MAX_SOFT_POS) {                
@@ -466,10 +472,11 @@ VectorXd JointHandler::computeTorques(const VectorXd& torques,
                     std::cout << "Max Hard Passthrough\n";
                     con_task_torques(cnt) = projected_torques_in_constraint(i);
                     _joint_state(i) = SAFE;
-                    con_unit_damping_torques(cnt) = 0;
+                    // con_unit_damping_torques(cnt) = 0;  // DISABLE FOR BASELINE 
                     // _var_pos_zone_1_threshold(i) = _pos_zone_1_threshold(i);
                     // con_unit_damping_torques(cnt) = - std::pow(_blending_coefficients[cnt], 2) * _kv_pos_limit(i) * dq(i);
                 } 
+
                 constrained_joint = true;
 
             } 
@@ -528,22 +535,40 @@ VectorXd JointHandler::computeTorques(const VectorXd& torques,
                 cnt++;
             }
         }
-        
-        // compute constrained torques (unit mass damping + task torques + apf torques)
-        std::cout << "apf: " << con_apf_torques.transpose() << "\n";
+
+        _apf_torques = 1 * (_current_task_range.transpose() * _projected_jacobian).transpose() * \
+                                    _Lambda_c * _current_task_range.transpose() * (1 * con_apf_torques);
         VectorXd total_torques = VectorXd::Zero(_dof);
-        total_torques += 1 * (_current_task_range.transpose() * _projected_jacobian).transpose() * \
-                                _Lambda_c * _current_task_range.transpose() * con_unit_damping_torques;
-        // total_torques += 1 * (_current_task_range.transpose() * _projected_jacobian).transpose() * \
-                                // _current_task_range.transpose() * (1 * con_task_torques + 1 * con_apf_torques);
-        total_torques += 1 * (_current_task_range.transpose() * _projected_jacobian).transpose() * \
-                                _Lambda_c * _current_task_range.transpose() * (1 * con_apf_torques);
-        total_torques += 1 * (_current_task_range.transpose() * _projected_jacobian).transpose() * \
-                                _current_task_range.transpose() * (1 * con_task_torques);
-        // total_torques += 1 * (_projected_jacobian).transpose() * _Lambda_c * con_unit_damping_torques;
-        // total_torques += _projected_jacobian.transpose() * (con_task_torques + con_apf_torques);
-        if (!constraint_only) {
-            total_torques += 1 * projected_torques_not_in_constraint;
+        if (baseline) {
+            total_torques += torques;
+            total_torques += 1 * (_current_task_range.transpose() * _projected_jacobian).transpose() * \
+                                    _Lambda_c * _current_task_range.transpose() * (1 * con_apf_torques);
+            total_torques += 1 * (_current_task_range.transpose() * _projected_jacobian).transpose() * \
+                                    _Lambda_c * _current_task_range.transpose() * con_unit_damping_torques;
+            // std::cout << "apf: " << con_apf_torques.transpose() << "\n";
+        } else {        
+            // compute constrained torques (unit mass damping + task torques + apf torques)
+            std::cout << "apf: " << con_apf_torques.transpose() << "\n";
+            // VectorXd total_torques = VectorXd::Zero(_dof);
+            total_torques += 1 * (_current_task_range.transpose() * _projected_jacobian).transpose() * \
+                                    _Lambda_c * _current_task_range.transpose() * con_unit_damping_torques;
+            // total_torques += 1 * (_current_task_range.transpose() * _projected_jacobian).transpose() * \
+                                    // _current_task_range.transpose() * (1 * con_task_torques + 1 * con_apf_torques);
+            total_torques += 1 * (_current_task_range.transpose() * _projected_jacobian).transpose() * \
+                                    _Lambda_c * _current_task_range.transpose() * (1 * con_apf_torques);
+
+            // if (!no_exit) {
+                total_torques += 1 * (_current_task_range.transpose() * _projected_jacobian).transpose() * \
+                                        _current_task_range.transpose() * (1 * con_task_torques);
+            std::cout << "con task torques: \n" << con_task_torques.transpose() << "\n";
+            // }
+            // total_torques += 1 * (_projected_jacobian).transpose() * _Lambda_c * con_unit_damping_torques;
+            // total_torques += _projected_jacobian.transpose() * (con_task_torques + con_apf_torques);
+
+
+            if (!constraint_only) {
+                total_torques += 1 * projected_torques_not_in_constraint;
+            } 
         }
 
         // _non_task_safety_torques = (_current_task_range.transpose() * _projected_jacobian).transpose() * _current_task_range.transpose() * element_wise_non_task_safety_torques;

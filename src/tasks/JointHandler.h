@@ -36,8 +36,10 @@ public:
                  const bool& verbose = true,
                  const bool& truncation_flag = false,
                  const bool& is_floating = false,
-                 const double& pos_zone_1 = 9,
-                 const double& pos_zone_2 = 6,
+                 const double& pos_zone_1 = 6,
+                 const double& pos_zone_2 = 4,
+                //  const double& pos_zone_1 = -100,  // baseline
+                //  const double& pos_zone_2 = 4,  // baseline 
                  const double& vel_zone_1 = 40,
                  const double& vel_zone_2 = 30,
                  const double& tau_thresh = 1,
@@ -90,7 +92,9 @@ public:
     void updateTaskModel(const MatrixXd& N_prec);
 
     VectorXd computeTorques(const VectorXd& torques,
-                            const bool constraint_only = false);
+                            const bool constraint_only = false,
+                            const bool baseline = false,
+                            const bool no_exit = false);
 
     /*
         Threshold and parameter setting 
@@ -126,6 +130,7 @@ public:
 
     void setPosZone2Threshold(const VectorXd& zone_2_threshold) {
         _pos_zone_2_threshold = zone_2_threshold;
+        _rho_0 = zone_2_threshold;
     }
 
     void setVelZone1Threshold(const VectorXd& zone_1_threshold) {
@@ -142,6 +147,14 @@ public:
 
     void setTorqueThreshold(const double& tau) {
         _tau_thresh = tau;
+    }
+
+    void setEta(const double& eta) {
+        _eta = eta * VectorXd::Ones(_dof);
+    }
+
+    VectorXd getAPFTorques() {
+        return _apf_torques;
     }
 
     VectorXd computePositionIntegration(const VectorXd& q, 
@@ -193,6 +206,7 @@ private:
     VectorXd _rho;
     VectorXd _rho_0;
     VectorXd _eta;
+    VectorXd _apf_torques;
 
     // verbose output 
     std::vector<std::string> _constraint_description;

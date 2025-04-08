@@ -139,6 +139,15 @@ void control(shared_ptr<Sai2Model::Sai2Model> robot,
 	int dof = robot->dof();
 	MatrixXd N_prec = MatrixXd::Identity(dof, dof);
 
+    // joint limits 
+    int joint_cnt = 0;
+    VectorXd q_min(dof), q_max(dof);
+    for (auto limit : robot->jointLimits()) {
+        q_min(joint_cnt) = limit.position_lower;
+        q_max(joint_cnt) = limit.position_upper;
+        joint_cnt++;
+    }
+
 	// joint handler
 	auto joint_handler = make_unique<Sai2Primitives::JointHandler>(robot);
 
@@ -182,7 +191,7 @@ void control(shared_ptr<Sai2Model::Sai2Model> robot,
     // offsets 
     VectorXd q_delta = VectorXd::Zero(robot->dof());
     q_delta(3) = -5;
-    double sign_switch = 1;
+    double sign_switch = -1;
 
     // // apf joint limits
     // auto joint_limits = robot->jointLimits();
@@ -216,6 +225,7 @@ void control(shared_ptr<Sai2Model::Sai2Model> robot,
 	double t_initial = 2;
 	// vector<double> t_wait {10, 10};
 	vector<double> t_wait {5, 5};
+	// vector<double> t_wait {5, 20};  // baseline lower velocity 
     // double t_wait = 10;  // wait between switching desired positions
 	// double t_reset_wait = 5;  // wait when resetting position
     double prev_time = 0;
@@ -233,11 +243,13 @@ void control(shared_ptr<Sai2Model::Sai2Model> robot,
 	VectorXi joint_pos_state = VectorXi::Zero(robot->dof());
 	VectorXi joint_vel_state = VectorXi::Zero(robot->dof());
 	// VectorXd joint_task_torques = VectorXd::Zero(robot->dof());
+    VectorXd apf_torques = VectorXd::Zero(robot->dof());
 	int constraint_flag = 0;
     logger.addToLog(robot_q, "robot_q");
 	logger.addToLog(robot_dq, "robot_dq");
 	logger.addToLog(robot_torque, "robot_torque");
 	logger.addToLog(joint_pos_state, "joint_pos_state");
+    logger.addToLog(apf_torques, "apf_torques");
 	logger.start(100);
 
 	// create a loop timer
@@ -263,7 +275,8 @@ void control(shared_ptr<Sai2Model::Sai2Model> robot,
 			robot->setQ(redis_client->getEigen(JOINT_ANGLES_KEY));
 			robot->setDq(redis_client->getEigen(JOINT_VELOCITIES_KEY));
 			MatrixXd M = redis_client->getEigen(MASS_MATRIX_KEY);
-            M.bottomRightCorner(4, 4) += 0.15 * Matrix3d::Identity();
+            // M.bottomRightCorner(4, 4) += 0.15 * Matrix3d::Identity();
+            M.bottomRightCorner(3, 3) += 0.15 * Matrix3d::Identity();
 			robot->updateModel(M);
 
 			robot_q = robot->q();
@@ -291,6 +304,8 @@ void control(shared_ptr<Sai2Model::Sai2Model> robot,
 
                 joint_task->disableInternalOtg();
                 joint_task->enableVelocitySaturation(1.2);
+                // joint_task->enableVelocitySaturation(0.5);
+                // joint_task->enableVelocitySaturation(0.3);
 				joint_task->setGains(300, 20, 0);
 			}
 
@@ -317,9 +332,41 @@ void control(shared_ptr<Sai2Model::Sai2Model> robot,
             }
 
             // compute torques 
+            bool flag_joint_handler = true;
+            bool flag_baseline = false;
             {
                 lock_guard<mutex> lock(mutex_torques);
-                control_torques = joint_handler->computeTorques(joint_task->computeTorques());
+                if (flag_joint_handler) {
+
+                    control_torques = joint_handler->computeTorques(joint_task->computeTorques());
+                    // joint_handler->setEta(0.01);
+                    joint_handler->setEta(0.003);
+
+                } else if (flag_baseline) {
+                    // default computation with APF added directly 
+                    // // compute apf torques 
+                    // VectorXd apf_force = VectorXd::Zero(robot->dof());
+                    // for (int i = 0; i < robot->dof(); ++i) {
+                    //     if (i == 3) {
+                    //         double rho_lower = robot->q()(i) - q_min(i);
+                    //         double rho_upper = q_max(i) - robot->q()(i);
+                    //         double boundary = 6 * M_PI / 180;
+                    //         double eta = 0.01;
+                    //         if (rho_lower < boundary) {
+                    //             apf_force(i) = eta * std::abs(((1 / rho_lower) - (1 / boundary))) * (1 / (rho_lower * rho_lower));
+                    //         } else if (rho_upper < boundary) {
+                    //             apf_force(i) = - eta * std::abs(((1 / rho_upper) - (1 / (- boundary)))) * (1 / (rho_upper * rho_upper));
+                    //         }
+                    //     }
+                    // }
+                    std::cout << "Baseline\n";
+                    joint_handler->setEta(0.003);
+                    control_torques = joint_handler->computeTorques(joint_task->computeTorques(), false, true);
+                } else {
+                    // nullspace computation with APF, but no exit strategy
+                    control_torques = joint_handler->computeTorques(joint_task->computeTorques(), false, false, true); 
+                }
+
                 if (!flag_simulation) {
 				    redis_client->setEigen(JOINT_TORQUES_COMMANDED_KEY, control_torques);
                 }
@@ -331,6 +378,8 @@ void control(shared_ptr<Sai2Model::Sai2Model> robot,
             auto joint_states = joint_handler->getJointState();
             joint_pos_state = joint_states.first;
             joint_vel_state = joint_states.second;
+
+            apf_torques = joint_handler->getAPFTorques();
         }
 
 		// -------------------------------------------

@@ -235,7 +235,8 @@ void control(shared_ptr<Sai2Model::Sai2Model> robot,
 
 	// Position plus orientation task
 	string link_name = "end-effector";
-	Vector3d pos_in_link = Vector3d(0.0, 0.0, 0.107 + 0.1);
+	// Vector3d pos_in_link = Vector3d(0.0, 0.0, 0.107 + 0.1);
+	Vector3d pos_in_link = Vector3d(0.0, 0.0, 0.0);
 	Affine3d compliant_frame = Affine3d(Translation3d(pos_in_link));
 
 	// Full motion force task

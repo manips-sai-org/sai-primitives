@@ -116,9 +116,10 @@ public:
      * @param kv_type_1 velocity damping gain for type 1 strategy
      * @param kv_type_2 velocity damping gain for type 2 strategy
      */
-    void setSingularityHandlingGains(const double& kp_type_1, const double& kv_type_1, const double& kv_type_2) {
+    void setSingularityHandlingGains(const double& kp_type_1, const double& kv_type_1, const double& kp_type_2, const double& kv_type_2) {
         _kp_type_1 = kp_type_1;
         _kv_type_1 = kv_type_1;
+        _kp_type_2 = kp_type_2;
         _kv_type_2 = kv_type_2;
     }
 
@@ -183,6 +184,10 @@ public:
         _buffer_size = buffer_size;
     }
 
+    void setType2Direction(const VectorXd& type_2_direction) {
+        _type_2_direction = type_2_direction;
+    }
+
     /**
      * @brief Getters 
      * 
@@ -223,6 +228,14 @@ public:
         return _Lambda_s_modified;
     }
 
+    VectorXd getSingularValues() {
+        return _svd_s;
+    }
+
+    VectorXd getSingularTaskTorques() {
+        return _task_torques_with_singularity;
+    }
+
 private:
 
     /**
@@ -242,7 +255,7 @@ private:
     Affine3d _compliant_frame;
     int _task_rank;
     int _dof;
-    VectorXd _joint_midrange, _q_upper, _q_lower, _tau_upper, _tau_lower;
+    VectorXd _joint_midrange, _q_upper, _q_lower, _tau_upper, _tau_lower, _dq_max;
     bool _enforce_type_1_strategy;
     bool _enforce_handling_strategy;
     bool _verbose;
@@ -262,9 +275,12 @@ private:
     // type 2 specifications
     double _type_2_torque_ratio;  // use X% of the max joint torque 
     double _type_2_angle_threshold;
-    double _kv_type_2;
+    double _kp_type_2, _kv_type_2;
+    VectorXd _type_2_max_vel_vector;
     VectorXd _type_2_torque_vector;
     VectorXd _type_2_direction;
+    double _type_2_force_threshold;
+    // std::unique_ptr<Sai2Common::ButterworthLowPass> _low_pass_filter;  // LPF for desired velocity 
 
     // model quantities 
     MatrixXd _svd_U, _svd_V;
@@ -286,6 +302,7 @@ private:
     VectorXd _singular_task_torques;
     VectorXd _joint_strategy_torques;
     VectorXd _impedance_force_torques;
+    VectorXd _task_torques_with_singularity;
 };
 
 }  // namespace

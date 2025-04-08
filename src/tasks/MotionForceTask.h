@@ -756,8 +756,8 @@ public:
      * @param kv_type_1 velocity damping gain for type 1 strategy
      * @param kv_type_2 velocity damping gain for type 2 strategy
      */
-	void setSingularityHandlingGains(const double& kp_type_1, const double& kv_type_1, const double& kv_type_2) {
-		_singularity_handler->setSingularityHandlingGains(kp_type_1, kv_type_1, kv_type_2);
+	void setSingularityHandlingGains(const double& kp_type_1, const double& kv_type_1, const double& kp_type_2, const double& kv_type_2) {
+		_singularity_handler->setSingularityHandlingGains(kp_type_1, kv_type_1, kp_type_2, kv_type_2);
 	}
 
 	/**
@@ -782,6 +782,10 @@ public:
 															type_2_angle_threshold,
 															perturb_step_size,
 															buffer_size);
+	}
+
+	void setSingularityHandlingType2Direction(const VectorXd& type_2_direction) {
+		_singularity_handler->setType2Direction(type_2_direction);
 	}
 
 	/**
@@ -842,6 +846,14 @@ public:
 
 	MatrixXd getSingularTaskRange() {
 		return _singularity_handler->getSingularTaskRange();
+	}
+
+	VectorXd getSingularTaskTorques() {
+		return _singularity_handler->getSingularTaskTorques();
+	}
+
+	VectorXd getSingularValues() {
+		return _singularity_handler->getSingularValues();
 	}
 
 	double getBlendingCoefficient() {
