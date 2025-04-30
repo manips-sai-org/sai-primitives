@@ -649,8 +649,8 @@ public:
 	 * @param goal_orientation 
 	 */
 	void setOutputGoal(const Vector3d& goal_position, const Matrix3d& goal_orientation) {
-       _latest_output.robot_goal_position = goal_position;
-       _latest_output.robot_goal_orientation = goal_orientation;
+    	_latest_output.robot_goal_position = goal_position;
+    	_latest_output.robot_goal_orientation = goal_orientation;
     }
 
 private:
