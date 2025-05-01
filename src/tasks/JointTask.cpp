@@ -9,9 +9,9 @@
 #include <stdexcept>
 
 using namespace Eigen;
-namespace Sai2Primitives {
+namespace SaiPrimitives {
 
-JointTask::JointTask(std::shared_ptr<Sai2Model::Sai2Model>& robot,
+JointTask::JointTask(std::shared_ptr<SaiModel::SaiModel>& robot,
 					 const std::string& task_name, const double loop_timestep)
 	: TemplateTask(robot, task_name, TaskType::JOINT_TASK, loop_timestep) {
 	// selection for full joint task
@@ -20,7 +20,7 @@ JointTask::JointTask(std::shared_ptr<Sai2Model::Sai2Model>& robot,
 	initialSetup();
 }
 
-JointTask::JointTask(std::shared_ptr<Sai2Model::Sai2Model>& robot,
+JointTask::JointTask(std::shared_ptr<SaiModel::SaiModel>& robot,
 					 const MatrixXd& joint_selection_matrix,
 					 const std::string& task_name, const double loop_timestep)
 	: TemplateTask(robot, task_name, TaskType::JOINT_TASK, loop_timestep) {
@@ -230,7 +230,7 @@ void JointTask::updateTaskModel(const MatrixXd& N_prec) {
 	_N_prec = N_prec;
 	_projected_jacobian = _joint_selection * _N_prec;
 
-	_current_task_range = Sai2Model::matrixRangeBasis(_projected_jacobian);
+	_current_task_range = SaiModel::matrixRangeBasis(_projected_jacobian);
 	if (_current_task_range.norm() == 0) {
 		// there is no controllable degree of freedom for the task, just
 		// return should maybe print a warning here
@@ -238,7 +238,7 @@ void JointTask::updateTaskModel(const MatrixXd& N_prec) {
 		return;
 	}
 
-	Sai2Model::OpSpaceMatrices op_space_matrices =
+	SaiModel::OpSpaceMatrices op_space_matrices =
 		getConstRobotModel()->operationalSpaceMatrices(
 			_current_task_range.transpose() * _projected_jacobian);
 	_M_partial = op_space_matrices.Lambda;
@@ -282,17 +282,26 @@ void JointTask::updateTaskModel(const MatrixXd& N_prec) {
 	}
 }
 
+VectorXd JointTask::computeTorques(const Eigen::VectorXd& tau_prec) {
+	VectorXd task_torques = computeTorques();
+	VectorXd disturbance_compensation =
+		_projected_jacobian.transpose() * _current_task_range * _M_partial *
+		_current_task_range.transpose() * _joint_selection *
+		getConstRobotModel()->MInv() * tau_prec;
+	return task_torques - disturbance_compensation;
+}
+
 VectorXd JointTask::computeTorques() {
 	VectorXd partial_joint_task_torques = VectorXd::Zero(_task_dof);
 	_projected_jacobian = _joint_selection * _N_prec;
 
 	// update constroller state
 	_current_position = _joint_selection * getConstRobotModel()->q();
-	_current_velocity = _projected_jacobian * getConstRobotModel()->dq();
+	_current_velocity = _joint_selection * getConstRobotModel()->dq();
 
 	if (_current_task_range.norm() == 0) {
-		// there is no controllable degree of freedom for the task, just return
-		// zero torques. should maybe print a warning here
+		// there is no controllable degree of freedom for the task, just
+		// return zero torques. should maybe print a warning here
 		return VectorXd::Zero(getConstRobotModel()->dof());
 	}
 
@@ -316,7 +325,7 @@ VectorXd JointTask::computeTorques() {
 
 	// compute task force (with velocity saturation if asked)
 	if (_use_velocity_saturation_flag) {
-		const MatrixXd kv_inverse = Sai2Model::computePseudoInverse(_kv);
+		const MatrixXd kv_inverse = SaiModel::computePseudoInverse(_kv);
 		_desired_velocity =
 			-_kp * kv_inverse * (_current_position - _desired_position) -
 			_ki * kv_inverse * _integrated_position_error;
@@ -348,7 +357,8 @@ VectorXd JointTask::computeTorques() {
 
 void JointTask::enableInternalOtgAccelerationLimited(
 	const VectorXd& max_velocity, const VectorXd& max_acceleration) {
-	if (max_velocity.size() == 1 && max_acceleration.size() == 1 && _task_dof != 1) {
+	if (max_velocity.size() == 1 && max_acceleration.size() == 1 &&
+		_task_dof != 1) {
 		enableInternalOtgAccelerationLimited(max_velocity(0),
 											 max_acceleration(0));
 		return;
@@ -357,8 +367,9 @@ void JointTask::enableInternalOtgAccelerationLimited(
 	if (max_velocity.size() != _task_dof ||
 		max_acceleration.size() != _task_dof) {
 		throw std::invalid_argument(
-			"max velocity or max acceleration vector size not consistent with "
-			"task dof in JointTask::enableInternalOtgAccelerationLimited\n");
+			"max velocity or max acceleration vector size not consistent "
+			"with task dof in "
+			"JointTask::enableInternalOtgAccelerationLimited\n");
 	}
 	if (!_use_internal_otg_flag || _otg->getJerkLimitEnabled()) {
 		_otg->reInitialize(_current_position);
@@ -411,8 +422,8 @@ void JointTask::enableVelocitySaturation(const VectorXd& saturation_velocity) {
 	}
 	if (saturation_velocity.size() != _task_dof) {
 		throw std::invalid_argument(
-			"saturation velocity vector size not consistent with task dof in "
-			"JointTask::enableVelocitySaturation\n");
+			"saturation velocity vector size not consistent with task dof "
+			"in JointTask::enableVelocitySaturation\n");
 	}
 	if (saturation_velocity.minCoeff() <= 0) {
 		throw std::invalid_argument(
@@ -434,4 +445,4 @@ bool JointTask::goalPositionReached(const double& tol) {
 	}
 }
 
-} /* namespace Sai2Primitives */
+} /* namespace SaiPrimitives */

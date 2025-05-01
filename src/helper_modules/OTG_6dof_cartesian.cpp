@@ -13,14 +13,14 @@
 using namespace Eigen;
 using namespace ruckig;
 
-namespace Sai2Primitives {
+namespace SaiPrimitives {
 
 namespace {
 bool isValidRotation(const Matrix3d mat) {
 	if ((mat.transpose() * mat - Matrix3d::Identity()).norm() > 1e-3) {
 		return false;
 	}
-	if (abs(mat.determinant() - 1) > 1e-6) {
+	if (abs(mat.determinant() - 1) > 1e-3) {
 		return false;
 	}
 	return true;
@@ -238,4 +238,4 @@ Matrix3d OTG_6dof_cartesian::getNextOrientation() const {
 	return _reference_frame * next_orientation;
 }
 
-} /* namespace Sai2Primitives */
+} /* namespace SaiPrimitives */

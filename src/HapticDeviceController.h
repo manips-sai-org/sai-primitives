@@ -10,16 +10,16 @@
  *      Authors: Margot Vulliez & Mikael Jorda
  */
 
-#ifndef SAI2_HAPTIC_DEVICE_CONTROLLER_H_
-#define SAI2_HAPTIC_DEVICE_CONTROLLER_H_
+#ifndef SAI_HAPTIC_DEVICE_CONTROLLER_H_
+#define SAI_HAPTIC_DEVICE_CONTROLLER_H_
 
 #include <Eigen/Dense>
 #include <memory>
 #include <string>
 
-#include "Sai2Model.h"
+#include "SaiModel.h"
 
-namespace Sai2Primitives {
+namespace SaiPrimitives {
 
 enum HapticControlType {
 	HOMING,
@@ -577,12 +577,12 @@ public:
 	}
 
 	void setVariableDampingGainsPos(
-		const vector<double>& velocity_thresholds,
-		const vector<double>& variable_damping_gains);
+		const VectorXd& velocity_thresholds,
+		const VectorXd& variable_damping_gains);
 
 	void setVariableDampingGainsOri(
-		const vector<double>& velocity_thresholds,
-		const vector<double>& variable_damping_gains);
+		const VectorXd& velocity_thresholds,
+		const VectorXd& variable_damping_gains);
 
 	/**
 	 * @brief Set the conversion factors from force to position/orientation
@@ -718,10 +718,10 @@ private:
 	double _reduction_factor_moment;
 
 	// variable damping for motion-motion controller direct force feedback
-	vector<double> _variable_damping_linvel_thresholds;
-	vector<double> _variable_damping_angvel_thresholds;
-	vector<double> _variable_damping_gains_pos;
-	vector<double> _variable_damping_gains_ori;
+	VectorXd _variable_damping_linvel_thresholds;
+	VectorXd _variable_damping_angvel_thresholds;
+	VectorXd _variable_damping_gains_pos;
+	VectorXd _variable_damping_gains_ori;
 
 	// admittance factors for froce-motion controller
 	double _device_force_to_robot_delta_position;
@@ -756,6 +756,6 @@ private:
 	double _device_workspace_angle_limit;
 };
 
-} /* namespace Sai2Primitives */
+} /* namespace SaiPrimitives */
 
-#endif /* SAI2_HAPTIC_DEVICE_CONTROLLER_H_ */
+#endif /* SAI_HAPTIC_DEVICE_CONTROLLER_H_ */

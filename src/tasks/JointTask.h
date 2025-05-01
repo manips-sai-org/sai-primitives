@@ -3,14 +3,14 @@
  *
  *      This class creates a joint controller for a robotic manipulator using
  * dynamic decoupling and an underlying PID compensator. It requires a robot
- * model parsed from a urdf file to a Sai2Model object. It does not support
+ * model parsed from a urdf file to a SaiModel object. It does not support
  * spherical joints
  *
  *      Author: Mikael Jorda
  */
 
-#ifndef SAI2_PRIMITIVES_JOINT_TASK_H_
-#define SAI2_PRIMITIVES_JOINT_TASK_H_
+#ifndef SAI_PRIMITIVES_JOINT_TASK_H_
+#define SAI_PRIMITIVES_JOINT_TASK_H_
 
 #include <helper_modules/OTG_joints.h>
 
@@ -19,12 +19,12 @@
 #include <memory>
 #include <string>
 
-#include "Sai2Model.h"
+#include "SaiModel.h"
 #include "TemplateTask.h"
-#include "helper_modules/Sai2PrimitivesCommonDefinitions.h"
+#include "helper_modules/SaiPrimitivesCommonDefinitions.h"
 
 using namespace Eigen;
-namespace Sai2Primitives {
+namespace SaiPrimitives {
 
 class JointTask : public TemplateTask {
 public:
@@ -47,13 +47,13 @@ public:
 	/**
 	 * @brief      Constructor for a full joint task
 	 *
-	 * @param      robot      A pointer to a Sai2Model object for the robot that
+	 * @param      robot      A pointer to a SaiModel object for the robot that
 	 *                        is to be controlled
 	 * @param[in]  task_name  The task name
 	 * @param[in]  loop_timestep  time taken by a control loop. Used only in
 	 * trajectory generation
 	 */
-	JointTask(std::shared_ptr<Sai2Model::Sai2Model>& robot,
+	JointTask(std::shared_ptr<SaiModel::SaiModel>& robot,
 			  const std::string& task_name = "joint_task",
 			  const double loop_timestep = 0.001);
 
@@ -69,7 +69,7 @@ public:
 	 * @param task_name
 	 * @param loop_timestep
 	 */
-	JointTask(std::shared_ptr<Sai2Model::Sai2Model>& robot,
+	JointTask(std::shared_ptr<SaiModel::SaiModel>& robot,
 			  const MatrixXd& joint_selection_matrix,
 			  const std::string& task_name = "partial_joint_task",
 			  const double loop_timestep = 0.001);
@@ -90,10 +90,19 @@ public:
 	 *             update and updated values for the robot joint
 	 *             positions/velocities
 	 *
-	 * @param      task_joint_torques  the vector to be filled with the new
-	 *                                 joint torques to apply for the task
+	 * @return Eigen::VectorXd the joint task torques
 	 */
 	VectorXd computeTorques() override;
+
+	/**
+	 * @brief Computes the joint torques associated with this control task, and
+	 * feedforward compensates the disturbances due to the previous tasks.
+	 *
+	 * @param tau_prec the control torques from the frevious tasks in the
+	 * hierarchy
+	 * @return Eigen::VectorXd the joint task torques
+	 */
+	VectorXd computeTorques(const Eigen::VectorXd& tau_prec) override;
 
 	/**
 	 * @brief      reinitializes the desired and goal states to the current
@@ -112,7 +121,9 @@ public:
 	const MatrixXd getJointSelectionMatrix() const { return _joint_selection; }
 
 	int getTaskDof() const { return _task_dof; }
-	bool isFullJointTask() const { return _task_dof == getConstRobotModel()->dof(); }
+	bool isFullJointTask() const {
+		return _task_dof == getConstRobotModel()->dof();
+	}
 
 	/**
 	 * @brief Get the Current Position
@@ -355,11 +366,11 @@ public:
 
 	/**
 	 * @brief Set the Bounded Inertia Estimate Threshold
-	 * 
-	 * @param threshold 
+	 *
+	 * @param threshold
 	 */
 	void setBoundedInertiaEstimateThreshold(const double threshold) {
-		if(threshold < 0) {
+		if (threshold < 0) {
 			_bie_threshold = 0;
 		} else {
 			_bie_threshold = threshold;
@@ -368,24 +379,21 @@ public:
 
 	/**
 	 * @brief Get the Bounded Inertia Estimate Threshold value
-	 * 
-	 * @return double 
+	 *
+	 * @return double
 	 */
-	double getBoundedInertiaEstimateThreshold() const {
-		return _bie_threshold;
-	}
+	double getBoundedInertiaEstimateThreshold() const { return _bie_threshold; }
 
 	/**
-	 * @brief	   Returns whether current position is within a tolerance to the goal
-	*/
+	 * @brief	   Returns whether current position is within a tolerance to the
+	 * goal
+	 */
 	bool goalPositionReached(const double& tol = 1e-2);
 
 	/**
-	 * @brief	Reset integrator error  
-	*/
-	void resetIntegrators() {
-		_integrated_position_error.setZero();
-	}
+	 * @brief	Reset integrator error
+	 */
+	void resetIntegrators() { _integrated_position_error.setZero(); }
 
 	/**
 	 * @brief   Reset integrator error by index 
@@ -466,7 +474,6 @@ private:
 	MatrixXd _current_task_range;
 };
 
-} /* namespace Sai2Primitives */
+} /* namespace SaiPrimitives */
 
-/* SAI2_PRIMITIVES_JOINT_TASK_H_ */
-#endif
+#endif /* SAI_PRIMITIVES_JOINT_TASK_H_ */

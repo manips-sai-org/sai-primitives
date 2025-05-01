@@ -1,30 +1,31 @@
 /*
  * TemplateTask.h
  *
- *      Template task for Sai2 tasks
+ *      Template task for Sai tasks
  *
  *      Author: Mikael Jorda
  */
 
-#ifndef SAI2_PRIMITIVES_TEMPLATE_TASK_H_
-#define SAI2_PRIMITIVES_TEMPLATE_TASK_H_
+#ifndef SAI_PRIMITIVES_TEMPLATE_TASK_H_
+#define SAI_PRIMITIVES_TEMPLATE_TASK_H_
 
-#include <Sai2Model.h>
+#include <SaiModel.h>
 
 #include <Eigen/Dense>
 #include <memory>
 
-namespace Sai2Primitives {
+namespace SaiPrimitives {
 
 enum TaskType {
 	UNDEFINED,
+	JOINT_LIMIT_AVOIDANCE_TASK,
 	JOINT_TASK,
 	MOTION_FORCE_TASK,
 };
 
 class TemplateTask {
 public:
-	TemplateTask(std::shared_ptr<Sai2Model::Sai2Model>& robot,
+	TemplateTask(std::shared_ptr<SaiModel::SaiModel>& robot,
 				 const std::string& task_name, const TaskType task_type,
 				 const double loop_timestep)
 		: _robot(robot),
@@ -47,6 +48,15 @@ public:
 	 * @return Eigen::VectorXd the joint task torques
 	 */
 	virtual Eigen::VectorXd computeTorques() = 0;
+
+	/**
+	 * @brief Computes the joint torques associated with this control task, and
+	 * feedforward compensates the disturbances due to the previous tasks.
+	 *
+	 * @param tau_prec the control torques from the frevious tasks in the hierarchy
+	 * @return Eigen::VectorXd the joint task torques
+	 */
+	virtual Eigen::VectorXd computeTorques(const Eigen::VectorXd& tau_prec) = 0;
 
 	/**
 	 * @brief Re initializes the task by setting the desired state to the
@@ -81,9 +91,9 @@ public:
 	/**
 	 * @brief gets a const reference to the internal robot model
 	 *
-	 * @return const std::shared_ptr<Sai2Model::Sai2Model>
+	 * @return const std::shared_ptr<SaiModel::SaiModel>
 	 */
-	const std::shared_ptr<Sai2Model::Sai2Model>& getConstRobotModel() const {
+	const std::shared_ptr<SaiModel::SaiModel>& getConstRobotModel() const {
 		return _robot;
 	}
 
@@ -106,14 +116,13 @@ public:
 	const std::string& getTaskName() const { return _task_name; }
 
 private:
-	std::shared_ptr<Sai2Model::Sai2Model> _robot;
+	std::shared_ptr<SaiModel::SaiModel> _robot;
 	double _loop_timestep;
 
 	TaskType _task_type;
 	std::string _task_name;
 };
 
-} /* namespace Sai2Primitives */
+} /* namespace SaiPrimitives */
 
-/* SAI2_PRIMITIVES_TEMPLATE_TASK_H_ */
-#endif
+#endif /* SAI_PRIMITIVES_TEMPLATE_TASK_H_ */
