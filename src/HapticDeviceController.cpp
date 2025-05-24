@@ -340,8 +340,8 @@ void HapticDeviceController::motionMotionControlPosition(
 
 	// scale and rotate to device frame
 	Vector3d haptic_force_direct_feedback =
-		_R_world_device.transpose() * _reduction_factor_force /
-		_scaling_factor_pos * haptic_forces_robot_space_direct_feedback;
+		_R_world_device.transpose() * _reduction_factor_force *
+		haptic_forces_robot_space_direct_feedback;
 
 	// add damping to the direct force feedback
 	if (haptic_force_direct_feedback.norm() > 1e-2) {
@@ -411,8 +411,8 @@ void HapticDeviceController::motionMotionControlOrientation(
 
 	// scale and rotate to device frame
 	Vector3d haptic_moment_direct_feedback =
-		_R_world_device.transpose() * _reduction_factor_moment /
-		_scaling_factor_ori * haptic_moments_robot_space_direct_feedback;
+		_R_world_device.transpose() * _reduction_factor_moment *
+		haptic_moments_robot_space_direct_feedback;
 
 	// add damping to the direct force feedback
 	if (haptic_moment_direct_feedback.norm() > 1e-2) {
