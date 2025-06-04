@@ -36,13 +36,13 @@ public:
                  const bool& verbose = true,
                  const bool& truncation_flag = false,
                  const bool& is_floating = false,
-                 const double& pos_zone_1 = 6,
+                 const double& pos_zone_1 = 4,
                  const double& pos_zone_2 = 4,
                 //  const double& pos_zone_1 = -100,  // baseline
                 //  const double& pos_zone_2 = 4,  // baseline 
                  const double& vel_zone_1 = 40,
                  const double& vel_zone_2 = 30,
-                 const double& tau_thresh = 1,
+                 const double& tau_thresh = 0.2,
                  const double& tau_vel_thresh = 1,
                  const double& t_delta = 0.1,
                  const double& kv = 20,
@@ -128,6 +128,10 @@ public:
         _pos_zone_1_threshold = zone_1_threshold;
     }
 
+    void setPosZone1ThresholdIndex(const double& threshold, const int index) {
+        _pos_zone_1_threshold(index) = threshold;
+    }
+
     void setPosZone2Threshold(const VectorXd& zone_2_threshold) {
         _pos_zone_2_threshold = zone_2_threshold;
         _rho_0 = zone_2_threshold;
@@ -169,6 +173,14 @@ public:
 
     std::pair<VectorXi, VectorXi> getJointState() {
         return std::make_pair(_joint_state, _joint_vel_state);
+    }
+
+    VectorXi getJointLimitState() {
+        return _joint_state;
+    }
+
+    VectorXd getJointLimitDistances() {
+        return _joint_distances;
     }
 
 private:
@@ -225,6 +237,13 @@ private:
     MatrixXd _Lambda_c;
     MatrixXd _projected_jacobian;
     MatrixXd _current_task_range;
+
+    VectorXd _joint_distances;
+    
+    // collision handling
+    double _t_collision;
+    VectorXd _entry_velocity;
+    VectorXd _exit_velocity;
 
 };
 
