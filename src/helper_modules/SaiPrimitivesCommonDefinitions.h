@@ -23,14 +23,26 @@ enum DynamicDecouplingType {
  * @brief structure to store the gains of a PID controller
  * 
  */
+// struct PIDGains {
+// 	double kp;
+// 	double kv;
+// 	double ki;
+
+// 	PIDGains(double kp, double kv, double ki) : kp(kp), kv(kv), ki(ki) {}
+// };
 struct PIDGains {
-	double kp;
-	double kv;
-	double ki;
+	Eigen::Vector3d kp;
+	Eigen::Vector3d kv;
+	Eigen::Vector3d ki;
 
-	PIDGains(double kp, double kv, double ki) : kp(kp), kv(kv), ki(ki) {}
+	PIDGains(const Eigen::Vector3d& kp, const Eigen::Vector3d& kv, const Eigen::Vector3d& ki)
+		: kp(kp), kv(kv), ki(ki) {}
+
+	PIDGains(double kp_scalar, double kv_scalar, double ki_scalar)
+		: kp(Eigen::Vector3d::Constant(kp_scalar)),
+		  kv(Eigen::Vector3d::Constant(kv_scalar)),
+		  ki(Eigen::Vector3d::Constant(ki_scalar)) {}
 };
-
 /// @brief get a vector of P gains from a vector of PIDGains
 Eigen::VectorXd extractKpFromGainVector(const std::vector<PIDGains>& gains);
 /// @brief get a vector of D gains from a vector of PIDGains

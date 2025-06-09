@@ -302,8 +302,13 @@ public:
 								  const VectorXd& kv_ori,
 								  const VectorXd& ki_ori);
 
+	// void setForceControlGains(const PIDGains& gains) {
+	// 	setForceControlGains(gains.kp, gains.kv, gains.ki);
+	// }
 	void setForceControlGains(const PIDGains& gains) {
-		setForceControlGains(gains.kp, gains.kv, gains.ki);
+		_kp_force = gains.kp.asDiagonal();
+		_kv_force = gains.kv.asDiagonal();
+		_ki_force = gains.ki.asDiagonal();
 	}
 	void setForceControlGains(double kp_force, double kv_force,
 							  double ki_force) {
@@ -311,23 +316,42 @@ public:
 		_kv_force = kv_force * Matrix3d::Identity();
 		_ki_force = ki_force * Matrix3d::Identity();
 	}
+	// vector<PIDGains> getForceControlGains() const {
+	// 	return vector<PIDGains>(
+	// 		1, PIDGains(_kp_force(0, 0), _kv_force(0, 0), _ki_force(0, 0)));
+	// }
 	vector<PIDGains> getForceControlGains() const {
-		return vector<PIDGains>(
-			1, PIDGains(_kp_force(0, 0), _kv_force(0, 0), _ki_force(0, 0)));
+		return vector<PIDGains>{
+			PIDGains(_kp_force.diagonal(),
+					 _kv_force.diagonal(),
+					 _ki_force.diagonal())
+		};
 	}
 
+	// void setMomentControlGains(const PIDGains& gains) {
+	// 	setMomentControlGains(gains.kp, gains.kv, gains.ki);
+	// }
 	void setMomentControlGains(const PIDGains& gains) {
-		setMomentControlGains(gains.kp, gains.kv, gains.ki);
+		_kp_moment = gains.kp.asDiagonal();
+		_kv_moment = gains.kv.asDiagonal();
+		_ki_moment = gains.ki.asDiagonal();
 	}
 	void setMomentControlGains(double kp_moment, double kv_moment,
-							   double ki_moment) {
-		_kp_moment = kp_moment * Matrix3d::Identity();
-		_kv_moment = kv_moment * Matrix3d::Identity();
-		_ki_moment = ki_moment * Matrix3d::Identity();
+		double ki_moment) {
+			_kp_moment = kp_moment * Matrix3d::Identity();
+			_kv_moment = kv_moment * Matrix3d::Identity();
+			_ki_moment = ki_moment * Matrix3d::Identity();
 	}
+	// vector<PIDGains> getMomentControlGains() const {
+	// 	return vector<PIDGains>(
+	// 		1, PIDGains(_kp_moment(0, 0), _kv_moment(0, 0), _ki_moment(0, 0)));
+	// }
 	vector<PIDGains> getMomentControlGains() const {
-		return vector<PIDGains>(
-			1, PIDGains(_kp_moment(0, 0), _kv_moment(0, 0), _ki_moment(0, 0)));
+		return vector<PIDGains>{
+			PIDGains(_kp_moment.diagonal(),
+					 _kv_moment.diagonal(),
+					 _ki_moment.diagonal())
+		};
 	}
 
 	void setFeedforwardForceGain(const double kff_force) {
