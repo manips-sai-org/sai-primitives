@@ -748,12 +748,12 @@ void HapticDeviceController::
 			"HapticDeviceController::"
 			"parametrizeProxyForceFeedbackSpaceFromRobotForceSpace");
 	}
-	if (!robot_sigma_force.isApprox(robot_sigma_force * robot_sigma_force)) {
-		throw std::runtime_error(
-			"Robot sigma force matrix must be a projection matrix in "
-			"HapticDeviceController::"
-			"parametrizeProxyForceFeedbackSpaceFromRobotForceSpace");
-	}
+	// if (!robot_sigma_force.isApprox(robot_sigma_force * robot_sigma_force)) {
+	// 	throw std::runtime_error(
+	// 		"Robot sigma force matrix must be a projection matrix in "
+	// 		"HapticDeviceController::"
+	// 		"parametrizeProxyForceFeedbackSpaceFromRobotForceSpace");
+	// }
 	_sigma_proxy_force_feedback =
 		_R_world_device.transpose() * robot_sigma_force * _R_world_device;
 }
