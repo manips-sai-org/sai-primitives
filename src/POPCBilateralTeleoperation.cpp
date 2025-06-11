@@ -20,11 +20,11 @@ const double angvel_lower_bound = 1e-3;
 
 Matrix3d extractKpGainMatrix(vector<PIDGains> gains) {
 	if (gains.size() == 1) {
-		return gains.at(0).kp * Matrix3d::Identity();
+		return gains.at(0).kp.asDiagonal();
 	}
 	Matrix3d kp = Matrix3d::Zero();
 	for (int i = 0; i < 3; i++) {
-		kp(i, i) = gains.at(i).kp;
+		kp(i, i) = gains.at(i).kp(i);
 	}
 	return kp;
 }
