@@ -87,6 +87,7 @@ SingularityHandler::SingularityHandler(std::shared_ptr<Sai2Model::Sai2Model> rob
     _buffer_size = BUFFER_SIZE;
 
     _impedance_force_torques = VectorXd::Zero(_dof);
+    _enable_force_decoupling = true;
 }
 
 void SingularityHandler::updateTaskModel(MatrixXd& projected_jacobian, const MatrixXd& N_prec, const bool& is_floating) {
@@ -289,7 +290,7 @@ void SingularityHandler::updateTaskModel(MatrixXd& projected_jacobian, const Mat
 void SingularityHandler::classifySingularity(const MatrixXd& singular_task_range,
                                              const MatrixXd& singular_joint_task_range) {
     // memory of entering conditions 
-    if (_singularity_types.size() == 0 || (_type_2_counter > _type_1_counter)) {
+    if (_singularity_types.size() == 0 || (_type_2_counter > _type_1_counter) || _enforce_type_1_strategy) {
         _q_prior = _robot->q();
         _dq_prior = _robot->dq();
     } 
@@ -366,10 +367,16 @@ VectorXd SingularityHandler::computeTorques(const VectorXd& unit_mass_force, con
     _impedance_force_torques = _projected_jacobian_ns.transpose() * _task_range_ns.transpose() * force_related_terms;
     _singular_task_torques = VectorXd::Zero(_dof);
     _joint_strategy_torques = VectorXd::Zero(_dof);
+    VectorXd tau_ns = VectorXd::Zero(_dof);
 
-    if (_singularity_types.size() == 0) {
-        VectorXd tau_ns = _projected_jacobian_ns.transpose() * (_Lambda_ns_modified * _task_range_ns.transpose() * unit_mass_force + \
+    if (_singularity_types.size() == 0 || !_enforce_handling_strategy) {
+        if (_enable_force_decoupling) {
+            tau_ns = _projected_jacobian_ns.transpose() * (_Lambda_ns_modified * _task_range_ns.transpose() * unit_mass_force + \
+                            _Lambda_ns_modified * _task_range_ns.transpose() * force_related_terms);
+        } else {
+            tau_ns = _projected_jacobian_ns.transpose() * (_Lambda_ns_modified * _task_range_ns.transpose() * unit_mass_force + \
                             _task_range_ns.transpose() * force_related_terms);
+        }
         _task_torques_with_singularity = tau_ns;
         return tau_ns;
     } else if (_dynamic_decoupling_type == IMPEDANCE) {

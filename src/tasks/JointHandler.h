@@ -36,15 +36,15 @@ public:
                  const bool& verbose = true,
                  const bool& truncation_flag = false,
                  const bool& is_floating = false,
-                 const double& pos_zone_1 = 4,
+                 const double& pos_zone_1 = 8,
                  const double& pos_zone_2 = 4,
                 //  const double& pos_zone_1 = -100,  // baseline
                 //  const double& pos_zone_2 = 4,  // baseline 
                  const double& vel_zone_1 = 40,
                  const double& vel_zone_2 = 30,
-                 const double& tau_thresh = 0.2,
+                 const double& tau_thresh = 0.5,
                  const double& tau_vel_thresh = 1,
-                 const double& t_delta = 0.1,
+                 const double& t_delta = 0.01,
                  const double& kv = 20,
                  const double& gamma = 1e0,
                  const std::vector<int>& joint_selection = {});
@@ -94,7 +94,8 @@ public:
     VectorXd computeTorques(const VectorXd& torques,
                             const bool constraint_only = false,
                             const bool baseline = false,
-                            const bool no_exit = false);
+                            const bool no_exit = false,
+                            const bool joint_task = false);
 
     /*
         Threshold and parameter setting 
@@ -137,6 +138,10 @@ public:
         _rho_0 = zone_2_threshold;
     }
 
+    void setPosZone2ThresholdIndex(const double& threshold, const int index) {
+        _pos_zone_2_threshold(index) = threshold;
+    }
+
     void setVelZone1Threshold(const VectorXd& zone_1_threshold) {
         _vel_zone_1_threshold = zone_1_threshold;
     }
@@ -161,6 +166,10 @@ public:
         return _apf_torques;
     }
 
+    void setCollisionTime(const double time) {
+        _t_collision = time;
+    }
+
     VectorXd computePositionIntegration(const VectorXd& q, 
                                         const VectorXd& dq, 
                                         const double& t_delta) {
@@ -182,6 +191,36 @@ public:
     VectorXd getJointLimitDistances() {
         return _joint_distances;
     }
+
+    VectorXd getJointBlendingCoefficients() {
+        return _blending_coefficients;
+    }
+
+    void setVelocityTol(const double tol) {
+        _dq_exit_tol = tol;
+    }
+
+    void setTorqueTol(const double tol) {
+        _tau_thresh = tol;
+    }
+
+    void setDamping(const double kv) {
+        _kv_pos_limit = kv * VectorXd::Ones(_robot->dof());
+    }
+
+    // double getMaxVelocity() {
+        // return _max_vel_vector.minCoeff();
+    // }
+
+    // std::vector<double> getCoefficientsInViolation() {
+        // return _alpha_in_violation;
+    // }
+
+    void enableVariableVelocityZone(const bool flag) {
+        _variable_vel_zone = flag;
+    }
+
+    VectorXi getExitState(const VectorXd& torques);
 
 private:
 
@@ -213,12 +252,14 @@ private:
     double _t_delta;
     VectorXd _pos_entry_velocities;
     VectorXd _vel_entry_velocities;
+    std::vector<double> _alpha_in_violation;
 
     bool _enable_vel_limits;
     VectorXd _rho;
     VectorXd _rho_0;
     VectorXd _eta;
     VectorXd _apf_torques;
+    VectorXd _max_vel;
 
     // verbose output 
     std::vector<std::string> _constraint_description;
@@ -244,6 +285,8 @@ private:
     double _t_collision;
     VectorXd _entry_velocity;
     VectorXd _exit_velocity;
+    double _dq_exit_tol;
+    bool _variable_vel_zone;
 
 };
 

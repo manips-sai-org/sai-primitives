@@ -34,17 +34,18 @@ public:
     SelfCollision(std::shared_ptr<Sai2Model::Sai2Model> robot,
                   const std::string& mesh_yaml,
                   const bool& verbose = true,
-                  const double& distance_zone_1 = 0.1,
-                  const double& distance_zone_2 = 0.05,
-                  const double& f_thresh = 0.5);
+                  const double& distance_zone_1 = 0.15,  // 0.1 
+                  const double& distance_zone_2 = 0.1,
+                  const double& f_thresh = 1);
                 //   const double& distance_zone_1 = 0.05,
                 //   const double& distance_zone_2 = 0.02);
 
     int readMeshFile(const char* inputfile, gkFloat*** pts, int* out);
 
-    void updateTaskModel(const MatrixXd& N_prec);
+    void updateTaskModel(const MatrixXd& N_prec, const bool flag_baseline = false);
     VectorXd computeTorques(const VectorXd& torques,
-                            const bool constraint_only = false);
+                            const bool constraint_only = false,
+                            const bool flag_baseline = false);
 
     void enableCollisionFlag() {
         _enable_limit_flag = true; 
@@ -106,10 +107,16 @@ public:
     */
     void setPosZone1Threshold(const double& distance_zone_1) {
         _distance_zone_1 = distance_zone_1;
+        _pos_zone_1_threshold = _distance_zone_1 * VectorXd::Ones(_pos_zone_1_threshold.size());
+    }
+
+    void setPosZone1ThresholdIndex(const double& threshold, const int index) {
+        _pos_zone_1_threshold(index) = threshold;
     }
 
     void setPosZone2Threshold(const double& distance_zone_2) {
         _distance_zone_2 = distance_zone_2;
+        _pos_zone_2_threshold = _distance_zone_2 * VectorXd::Ones(_pos_zone_2_threshold.size());
     }
 
     void setDampingCoeff(const double& kv) {
@@ -119,6 +126,22 @@ public:
     void setForceMagnitude(const double& F_max) {
         _F_max = F_max;
     }
+
+    void setEta(const double eta) {
+        _eta = eta;
+    }
+
+    double getMaxVelocity() {
+        return _max_vel_vector.minCoeff();
+    }
+
+    void setForceThreshold(const double& F_thresh) {
+        _F_thresh = F_thresh;
+    }
+
+    // std::vector<double> getCoefficientsInViolation() {
+    //     return _alpha_in_violation;
+    // }
 
 private:
 
@@ -168,6 +191,10 @@ private:
     double _F_max;
     // double _F_max;
     double _F_thresh;
+    double _eta;
+    double _max_vel;
+    double _min_vel;
+    VectorXd _max_vel_vector;
 
     // safety
     double _distance_zone_1, _distance_zone_2;
@@ -203,6 +230,12 @@ private:
     MatrixXd _Lambda_c;
     MatrixXd _projected_jacobian;
     MatrixXd _current_task_range;
+
+    // collision handling
+    double _t_collision;
+    VectorXd _entry_velocity;
+    VectorXd _exit_velocity;
+    VectorXd _alpha;
 
 };
 

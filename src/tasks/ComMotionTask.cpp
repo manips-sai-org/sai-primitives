@@ -163,6 +163,7 @@ void ComMotionTask::initialSetup() {
 	enableInternalOtgAccelerationLimited(0.3, 1.0, M_PI / 3, M_PI);
 
 	// singularity handling
+	// _singularity_handler->disableSingularityHandling();
 	_singularity_handler = std::make_unique<SingularityHandler>(getConstRobotModel(), 
 																_link_name, 
 																_compliant_frame, 

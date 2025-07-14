@@ -1,0 +1,178 @@
+<?xml version="1.0" ?>
+
+<world name="demo_world" gravity="0.0 0.0 0.0">
+
+	<robot name="PANDA">
+		<!-- <model dir="${SAI2_MODEL_URDF_FOLDER}/panda" path="panda_arm_gripper_fixed.urdf" name="panda" /> -->
+		<!-- <model dir="${SAI2_MODEL_URDF_FOLDER}/mmp_panda" path="mmp_panda.urdf" name="panda" /> -->
+		<model dir="${SAI2_MODEL_URDF_FOLDER}/mmp_panda" path="mmp_newarm.urdf" name="panda" />
+		<origin xyz="0.822 -1.1 0.4" rpy="0 0 -1.5717" />
+	</robot>
+
+	<static_object name="Kitchen">
+		<origin xyz="2 0.5 0" rpy="0 0 0" />
+	    <visual>
+	        <origin xyz="0.0 0.0 0.0" rpy="0 0 0" />
+	        <geometry>
+	            <!-- <box size="3.0 3.0 0.1" /> -->
+                <mesh filename="../../../openGJK/utils/object_meshes/kitchen.obj" scale="1 1 0.8"/>
+	        </geometry>
+	        <material name="material_red">
+		        <color rgba="0.4 0.4 0.4 1.0" />
+	        </material>
+	    </visual>
+	</static_object>
+
+	<!-- <static_object name="ws-1">
+		<origin xyz="0.854406 -1.14437 0.720639" rpy="0 0 0" />
+	    <visual>
+	        <origin xyz="0.750417 -1.27219 0.249477" rpy="0 0 0" />
+	        <geometry>
+                <mesh filename="../../../openGJK/utils/object_meshes/workspace_full_red.obj" />
+	        </geometry>
+	    </visual>
+	</static_object> -->
+
+	<static_object name="Floor">
+		<origin xyz="0.0 0.0 -0.05" rpy="0 0 0" />
+	    <visual>
+	        <origin xyz="0.0 0.0 0.0" rpy="0 0 0" />
+	        <geometry>
+	            <box size="100 100.0 0.1" />
+	        </geometry>
+	        <material name="material_red">
+		        <color rgba="1 0.992 0.816 0.5" />
+	        </material>
+	    </visual>
+	</static_object>
+
+	<static_object name="wall-1">
+		<origin xyz="0.0 1.2 -0.05" rpy="0 0 0" />
+	    <visual>
+	        <origin xyz="0.0 0.0 0.0" rpy="0 0 0" />
+	        <geometry>
+	            <box size="10 0.1 10" />
+	        </geometry>
+	        <material name="material_red">
+		        <!-- <color rgba="0.5 0.2 0 1.0" /> -->
+		        <color rgba="1 0.992 0.816 1.0" />
+	        </material>
+	    </visual>
+	</static_object>
+
+	<static_object name="wall-2">
+		<origin xyz="2.5 0.0 -0.05" rpy="0 0 1.5717" />
+	    <visual>
+	        <origin xyz="0.0 0.0 0.0" rpy="0 0 0" />
+	        <geometry>
+	            <box size="10 0.1 10" />
+	        </geometry>
+	        <material name="material_red">
+		        <!-- <color rgba="0.5 0.2 0 1.0" /> -->
+		        <color rgba="1 0.992 0.816 1.0" />
+	        </material>
+	    </visual>
+	</static_object>
+
+	<static_object name="wall-3">
+		<origin xyz="0.9 -1.85 0.72" rpy="0 0 0" />
+	    <visual>
+	        <origin xyz="0.0 0.0 0.0" rpy="0 0 0" />
+	        <geometry>
+				<mesh filename="../../../openGJK/utils/object_meshes/cup.obj" scale="1 1 1"/>
+	        </geometry>
+	        <material name="material_red">
+		        <color rgba="0.5 0.2 0 1.0" />
+	        </material>
+	    </visual>
+	</static_object>
+
+	<static_object name="wall-4">
+		<origin xyz="0.9 -1.6 0.72" rpy="0 0 0" />
+	    <visual>
+	        <origin xyz="0.0 0.0 0.0" rpy="0 0 0" />
+	        <geometry>
+				<mesh filename="../../../openGJK/utils/object_meshes/bottle.obj" scale="0.7 0.7 0.7"/>
+	        </geometry>
+	        <material name="material_red">
+		        <color rgba="0.5 0.2 0 1.0" />
+	        </material>
+	    </visual>
+	</static_object>
+
+	<!-- <dynamic_object name="object">
+		<origin xyz="0.5 0.0 0.0" rpy="0 0 0" />
+		<inertial>
+			<mass value="10"/>
+			<inertia ixx="0.4" ixy="0.0" ixz="0.0" iyy="0.4" iyz="0.0" izz="0.2"/>
+		</inertial>
+	    <visual>
+	        <origin xyz="0.0 0.0 0.0" rpy="1.5717 0 0" />
+	        <geometry>
+	            <mesh filename="../../../openGJK/utils/object_meshes/snoopy_house.obj" scale="0.2 0.2 0.2"/>
+	        </geometry>
+	        <material name="material_red">
+		        <color rgba="0.1 0.1 0.1 1.0" />
+	        </material>
+	    </visual>
+	</dynamic_object> -->
+
+	<!-- <light name="light1" type="directional">
+		<position xyz="0 -2.0 2.0" />
+		<lookat xyz="0.0 0.0 0.0" />
+	</light> -->
+
+	<!-- <light name="light2" type="directional">
+		<position xyz="0.0 0.0 3.0" />
+		<lookat xyz="0.0 0.0 0.0" />
+	</light> -->
+
+	<light name="light3" type="directional">
+		<position xyz="0.5 1.5 4.0" />
+		<lookat xyz="0.5 1 0.0" />
+	</light>
+
+	<light name="light4" type="directional">
+		<position xyz="-0.6 -1.5 2.3" />
+		<lookat xyz="0.2 -1.5 1.8" />
+	</light>
+
+	<!-- <light name="light2" type="directional">
+		<position xyz="-2.0 2.0 2.0" />
+		<lookat xyz="0.0 0.0 0.0" />
+	</light> -->
+
+	<!-- <camera name="camera">
+		<position xyz="0.2 1.4 0.5" />
+		<vertical xyz="0.0 0.0 1.0" />
+		<lookat xyz="0.2 0.0 0.5" />
+	</camera> -->
+
+    <!-- <camera name="camera"> -->
+		<!-- <position xyz="1.0 1.2 0.5" /> -->
+		<!-- <position xyz="0.9 1.0 0.8" /> -->
+		<!-- <position xyz="1.0 -1.5 0.5" /> -->
+		<!-- <vertical xyz="0.0 0.0 1.0" /> -->
+		<!-- <lookat xyz="0 0.0 0.2" /> -->
+	<!-- </camera> -->
+
+	<!-- <camera name="camera">
+        <position xyz="0.919076 0.573171 0.563005" />
+        <lookat xyz="0.0957143 0.0264821  0.410668" />
+        <vertical xyz="-0.0933477  -0.134311   0.986533" />
+	</camera> -->
+
+<!-- <camera name="camera">
+	<position xyz=" 1.30533 0.694217 0.666715" />
+	<lookat xyz="0.481968 0.147528 0.514378" />
+	<vertical xyz="-0.0933479  -0.134311   0.986533" />
+</camera> -->
+
+<camera name="camera">
+	<position xyz= "-0.601243 -2.59461 2.15715" />
+	<lookat xyz= "-0.0301289 -1.88625 1.74235" />
+	<vertical xyz= "0.282911 0.304499 0.909528" />
+</camera>
+
+
+</world>

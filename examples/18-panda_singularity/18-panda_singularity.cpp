@@ -50,8 +50,8 @@ void simulation(shared_ptr<Sai2Model::Sai2Model> robot,
 /*
 	Control
 */
-// bool flag_simulation = true;
-bool flag_simulation = false;
+bool flag_simulation = true;
+// bool flag_simulation = false;
 Sai2Common::RedisClient* redis_client;
 std::string JOINT_ANGLES_KEY = "sai2::FrankaPanda::Romeo::sensors::q";
 std::string JOINT_VELOCITIES_KEY = "sai2::FrankaPanda::Romeo::sensors::dq";
@@ -165,6 +165,8 @@ void control(shared_ptr<Sai2Model::Sai2Model> robot,
 	motion_force_task->setPosControlGains(100, 20, 0);
 	motion_force_task->setOriControlGains(100, 20, 0);
 	VectorXd motion_force_task_torques = VectorXd::Zero(dof);
+
+	motion_force_task->disableSingularityHandling();
 
 	// no gains setting here, using the default task values
 	Matrix3d initial_orientation = robot->rotation(link_name);

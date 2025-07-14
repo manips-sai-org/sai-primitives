@@ -57,7 +57,7 @@ public:
 	 * generation and integral control.
 	 */
 	ComMotionTask(
-		std::shared_ptr<Sai2Model::Sai2Model>& robot, const string& link_name,
+		std::shared_ptr<Sai2Model::Sai2Model>& robot, const string& link_name = "",
 		const Affine3d& compliant_frame = Affine3d::Identity(),
 		const std::string& task_name = "com_motion_task",
 		const bool is_force_motion_parametrization_in_compliant_frame = false,
@@ -404,16 +404,16 @@ public:
 	bool goalOrientationReached(const double tolerance,
 								const bool verbose = false);
 
-	/**
-	 * @brief Set the Dynamic Decoupling Type. See the definition of the
-	 * DynamicDecouplingType enum for more details
-	 *
-	 *
-	 * @param type
-	 */
-	void setDynamicDecouplingType(const DynamicDecouplingType type) {
-		_singularity_handler->setDynamicDecouplingType(type);
-	}
+	// /**
+	//  * @brief Set the Dynamic Decoupling Type. See the definition of the
+	//  * DynamicDecouplingType enum for more details
+	//  *
+	//  *
+	//  * @param type
+	//  */
+	// void setDynamicDecouplingType(const DynamicDecouplingType type) {
+	// 	_singularity_handler->setDynamicDecouplingType(type);
+	// }
 
 	// -------- force control related methods --------
 
@@ -478,7 +478,7 @@ public:
 	 * @brief Parametrizes the moment space and rotational motion space.
 	 * The first argument is the dimension of the moment space (between
 	 * 0 and 3, 0 meaning the whole rotation is controlled in motion and 3
-	 * meaning the whole rotation is controlled in moments) and the second
+	 * meaning the whole angeotation is controlled in moments) and the second
 	 * argument is the axis defining the space of dimension one (unused if the
 	 * first parameter is 0 or 3, and representing the direction of the moment
 	 * space is the first parameter is 1, or the direction of the rotational
@@ -560,32 +560,136 @@ public:
 	}
 
 	/**
-	 * @brief Changes the bounds for the singularity blending. 			   
-	 * 
-	 * @param s_min		Upper bound to start blending  
-	 * @param s_max 	Lower bound to remove all singular task torque 
+	 * @brief 	Set the Dynamic Decoupling Type. See the definition of the
+	 * DynamicDecouplingType enum for more details
+	 *
+	 * @param type Dynamic decoupling type 
 	 */
+	void setDynamicDecouplingType(const DynamicDecouplingType type) {
+		_singularity_handler->setDynamicDecouplingType(type);
+	}
+
+	/**
+	 * @brief Set the threshold for the bounded inertia estimate
+	 * 
+	 * @param threshold threshold value 
+	 */
+	void setBoundedInertiaEstimateThreshold(const double threshold) {
+		_singularity_handler->setBoundedInertiaEstimateThreshold(threshold);
+	}
+
+	/**
+	 * @brief Get the threshold for the bounded inertia estimate
+	 * 
+	 * @return double threshold value 
+	 */
+	double getBoundedInertiaEstimateThreshold() {
+		return _singularity_handler->getBoundedInertiaEstimateThreshold();
+	}
+
+    /**
+     * @brief Enforces type 1 handling behavior if set to true, otherwise handle 
+     * type 1 or type 2 as usual
+     * 
+     * @param flag true to enforce type 1 handling behavior 
+     */
+	void handleAllSingularitiesAsType1(const bool flag) {
+		_singularity_handler->handleAllSingularitiesAsType1(flag);
+	}
+	
+	/**
+	 * @brief Set the desired posture for type 1 singularity handling  
+	 * 
+	 * @param q_des desired posture 
+	 */
+	void setType1Posture(const VectorXd& q_des) {
+		_singularity_handler->setType1Posture(q_des);
+	}
+
+	/**
+	 * @brief Enables singularity handling 
+	 * 
+	 */
+	void enableSingularityHandling() {
+		_singularity_handler->enableSingularityHandling();
+	}
+
+	/**
+	 * @brief Disables singularity handling 
+	 * 
+	 */
+	void disableSingularityHandling() {
+		_singularity_handler->disableSingularityHandling();
+	}
+
+    /**
+     * @brief Set the singularity bounds for torque blending based on the inverse of the condition number
+     * The linear blending coefficient \alpha is computed as \alpha = (s - _s_min) / (_s_max - _s_min),
+     * and is clamped between 0 and 1.
+     * 
+     * @param s_min lower bound
+     * @param s_max upper bound 
+     */
 	void setSingularityHandlingBounds(const double& s_min, const double& s_max) {
 		_singularity_handler->setSingularityHandlingBounds(s_min, s_max);
 	}
 
-	// // -------- getters for model parameters --------
+    /**
+     * @brief Set the gains for the partial joint task for the singularity strategy
+     * 
+     * @param kp_type_1 position gain for type 1 strategy
+     * @param kv_type_1 velocity damping gain for type 1 strategy
+     * @param kv_type_2 velocity damping gain for type 2 strategy
+     */
+	void setSingularityHandlingGains(const double& kp_type_1, const double& kv_type_1, const double& kp_type_2, const double& kv_type_2) {
+		_singularity_handler->setSingularityHandlingGains(kp_type_1, kv_type_1, kp_type_2, kv_type_2);
+	}
 
-	// VectorXd getUnitControlForces() {
-	// 	return _unit_mass_force;
-	// }
+	/**
+	 * @brief Set the Singularity Handling Params object
+	 * 
+	 * @param s_abs_tol 
+	 * @param type_1_tol 
+	 * @param type_2_torque_ratio 
+	 * @param type_2_angle_threshold 
+	 * @param perturb_step_size 
+	 * @param buffer_size 
+	 */
+	void setSingularityHandlingParams(const double& s_abs_tol,
+										const double& type_1_tol,
+										const double& type_2_torque_ratio,
+										const double& type_2_angle_threshold,
+										const double& perturb_step_size,
+										const int& buffer_size) {
+		_singularity_handler->setSingularityHandlingParams(s_abs_tol,
+															type_1_tol,
+															type_2_torque_ratio,
+															type_2_angle_threshold,
+															perturb_step_size,
+															buffer_size);
+	}
 
-	// MatrixXd getProjectedJacobian() {
-	// 	return _singularity_handler->getProjectedJacobian();
-	// }
+	void setSingularityHandlingType2Direction(const VectorXd& type_2_direction) {
+		_singularity_handler->setType2Direction(type_2_direction);
+	}
 
-	// MatrixXd getLambdaMatrix() {
-	// 	return _singularity_handler->getLambda();
-	// }
+	// -------- getters for model parameters --------
 
-	// MatrixXd getNonSingularTaskRange() {
-	// 	return _singularity_handler->getTaskRange();
-	// }
+	VectorXd getUnitControlForces() {
+		return _unit_mass_force;
+	}
+
+	MatrixXd getNonSingularJacobian() {
+		return _singularity_handler->getNonSingularJacobian();
+	}
+
+	MatrixXd getNonSingularLambda() {
+		return _singularity_handler->getNonSingularLambda();
+	}
+
+	MatrixXd getNonSingularTaskRange() {
+		return _singularity_handler->getNonSingularTaskRange();
+	}
 
 private:
 	/**

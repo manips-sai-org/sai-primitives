@@ -13,6 +13,23 @@
 
 namespace Sai2Primitives {
 
+inline int getSign(double value) {
+    if (value > 0) {
+        return 1;
+    } else if (value < 0) {
+        return -1;
+    } else {
+        return 0;
+    }
+}
+
+// sigmoid function for velocity saturation
+// alpha from 1 -> 0 as approaching constraint 
+inline double getMaxVelFunction(const double alpha, const double entry_vel, const double exit_vel) {
+    // return exit_vel + (entry_vel - exit_vel) * ((1 - cos(M_PI * (1 - alpha))) / 2);
+    return exit_vel + (entry_vel - exit_vel) * ((1 - cos(M_PI * (alpha))) / 2);
+}
+
 double** convertToDoublePointer(const vector<Vector3d>& vec) {
     int rows = vec.size();
     
@@ -33,7 +50,7 @@ double** convertToDoublePointer(const vector<Vector3d>& vec) {
     return array;
 }
 
-vector<Vector3d> readDatFile(const string& filename) {
+inline vector<Vector3d> readDatFile(const string& filename) {
     vector<Vector3d> points;
     ifstream file(filename);
 
@@ -175,9 +192,15 @@ Collision::Collision(std::shared_ptr<Sai2Model::Sai2Model> robot,
     _link_names = link_names;
     // _candidate_meshes = pairs;
     _n_meshes = _link_names.size();
-    _n_collision_checks = _n_meshes * _n_objects;
-    _F_max = 100;
-    _kv = 10;
+    // _n_collision_checks = _n_meshes * _n_objects;
+    _n_collision_checks = _n_meshes;  // just handle one object at a time 
+    // _F_max = 1000;
+    _F_max = 100000000000;
+    _kv = 20;
+    _eta = 0.1;
+    _active_object_idx = 0;  // default tracking the first object 
+    _max_vel = 0.5;
+    _min_vel = 0.2;
 
     for (int i = 0; i < _n_collision_checks; ++i) {
         _mesh_pair_flag.push_back(SAFE_OBJECT_COLLISION);
@@ -188,6 +211,7 @@ Collision::Collision(std::shared_ptr<Sai2Model::Sai2Model> robot,
         _mesh_pair_body_points.push_back(std::make_pair(Vector3d::Zero(), Vector3d::Zero()));
         // _mesh_pair_linear_jacobian_a.push_back(MatrixXd::Zero(1, 1));
         // _mesh_pair_linear_jacobian_b.push_back(MatrixXd::Zero(1, 1));
+        _alpha.push_back(1);
     }
 
     for (int i = 0; i < _n_meshes; ++i) {
@@ -218,6 +242,7 @@ void Collision::setObjectTransform(const Affine3d object_transform, const int in
     bd.coord = convertToDoublePointer(_object_bodies_centered[ind]);
     bd.numpoints = _object_bodies[ind].size();
     _object_bodies_polytope[ind] = bd;
+
 }
 
 int Collision::readMeshFile(const char* inputfile, gkFloat*** pts, int* out) {
@@ -267,7 +292,7 @@ void Collision::updateTaskModel(const MatrixXd& N_prec) {
     // update robot mesh transforms 
     for (int i = 0; i < _n_meshes; ++i) {
         _T_meshes[i] = _robot->transform(_link_names[i]);
-        if (i == _n_meshes - 1) {
+        if (i == _n_meshes - 1 && false) {  // enable for only the panda 
             Matrix3d rot_in_link = AngleAxisd(-M_PI / 4, Vector3d::UnitZ()).toRotationMatrix();
             _T_meshes[i] = _robot->transform(_link_names[i], Vector3d(0, 0, -0.107), rot_in_link);
         }
@@ -288,70 +313,97 @@ void Collision::updateTaskModel(const MatrixXd& N_prec) {
         
     }
 
+    // reset violating link names
+    _links_in_violation = {};
+    _curr_max_vel = {};
+    _alpha_in_violation = {};
+
+    // std::cout << _active_object_idx << "\n";
+
     // compute constraint jacobians from the mesh checks (all external objects -> all robot links)
     for (int i = 0; i < _n_objects; ++i) {
-        for (int j = 0; j < _n_meshes; ++j) {
 
-            gkSimplex s;
-            s.nvrtx = 0;
-            int mesh_a_id = i;  // object 
-            int mesh_b_id = j;  // robot mesh 
+        // hack to only use active object
+        if (i != _active_object_idx) {
+            continue;
+        } else {
 
-            double distance = compute_minimum_distance(_object_bodies_polytope[mesh_a_id], _bodies_polytope[mesh_b_id], &s);
-            if (isnan(distance)) {
-                // throw runtime_error("NAN distance");
-                distance = -1;
-                std::cout << "nan distance\n";
-            }
-        
-            // // DEBUG 
-            // std::cout << "pair: " << mesh_a_id << ", " << mesh_b_id << "\n";
-            // std::cout << "distance: " << distance << "\n";
+            for (int j = 0; j < _n_meshes; ++j) {
 
-            Vector3d constraint_direction = (Vector3d(s.witnesses[1][0], s.witnesses[1][1], s.witnesses[1][2]) - \
-                                                Vector3d(s.witnesses[0][0], s.witnesses[0][1], s.witnesses[0][2])).normalized();
+                gkSimplex s;
+                s.nvrtx = 0;
+                int mesh_a_id = i;  // object 
+                int mesh_b_id = j;  // robot mesh 
 
-            Vector3d robot_pos_in_link = _T_meshes[mesh_b_id].inverse() * Vector3d(s.witnesses[1][0], s.witnesses[1][1], s.witnesses[1][2]);
+                double distance = compute_minimum_distance(_object_bodies_polytope[mesh_a_id], _bodies_polytope[mesh_b_id], &s);
+                if (isnan(distance)) {
+                    // throw runtime_error("NAN distance");
+                    distance = -1;
+                    std::cout << "nan distance\n";
+                }
+            
+                // DEBUG 
+                if (_verbose) {
+                    std::cout << "pair: " << mesh_a_id << ", " << mesh_b_id << "\n";
+                    std::cout << "distance: " << distance << "\n";
+                }
 
-            // Vector3d body_a_pos_in_link = _T_meshes[mesh_a_id].linear().transpose() * Vector3d(s.witnesses[0][0], s.witnesses[0][1], s.witnesses[0][2]) - \
-                                                // _T_meshes[mesh_a_id].linear().transpose() * _T_meshes[mesh_a_id].translation();
+                Vector3d constraint_direction = (Vector3d(s.witnesses[1][0], s.witnesses[1][1], s.witnesses[1][2]) - \
+                                                    Vector3d(s.witnesses[0][0], s.witnesses[0][1], s.witnesses[0][2])).normalized();
 
-            // Vector3d body_b_pos_in_link = _T_meshes[mesh_b_id].linear().transpose() * Vector3d(s.witnesses[1][0], s.witnesses[1][1], s.witnesses[1][2]) - \
-                                                // _T_meshes[mesh_b_id].linear().transpose() * _T_meshes[mesh_b_id].translation();     
+                Vector3d robot_pos_in_link = _T_meshes[mesh_b_id].inverse() * Vector3d(s.witnesses[1][0], s.witnesses[1][1], s.witnesses[1][2]);
 
-            // Vector3d body_a_pos_in_link = _T_meshes[mesh_a_id].inverse() * Vector3d(s.witnesses[0][0], s.witnesses[0][1], s.witnesses[0][2]);
-            // Vector3d body_b_pos_in_link = _T_meshes[mesh_b_id].inverse() * Vector3d(s.witnesses[1][0], s.witnesses[1][1], s.witnesses[1][2]);
+                // Vector3d body_a_pos_in_link = _T_meshes[mesh_a_id].linear().transpose() * Vector3d(s.witnesses[0][0], s.witnesses[0][1], s.witnesses[0][2]) - \
+                                                    // _T_meshes[mesh_a_id].linear().transpose() * _T_meshes[mesh_a_id].translation();
 
-            _mesh_pair_body_points[i * _n_objects + j] = std::make_pair( Vector3d(s.witnesses[0][0], s.witnesses[0][1], s.witnesses[0][2]), \
-                                                        Vector3d(s.witnesses[1][0], s.witnesses[1][1], s.witnesses[1][2]) );
+                // Vector3d body_b_pos_in_link = _T_meshes[mesh_b_id].linear().transpose() * Vector3d(s.witnesses[1][0], s.witnesses[1][1], s.witnesses[1][2]) - \
+                                                    // _T_meshes[mesh_b_id].linear().transpose() * _T_meshes[mesh_b_id].translation();     
 
-            // collect information 
-            _mesh_pair_distance[i * _n_objects + j] = distance;
-            _mesh_pair_constraint_direction[i * _n_objects + j] = constraint_direction;
-            _mesh_pair_projected_jacobian[i * _n_objects + j] = _robot->Jv(_link_names[mesh_b_id], robot_pos_in_link) * _N_prec;
-            // _mesh_pair_projected_jacobian[i] = constraint_direction.transpose() * \
-            //     (_robot->Jv(_link_names[mesh_b_id], body_b_pos_in_link) - _robot->Jv(_link_names[mesh_a_id], body_a_pos_in_link)) * _N_prec;
-            // _mesh_pair_projected_jacobian[i] = 
-                // (_robot->Jv(_link_names[mesh_b_id], body_b_pos_in_link) - _robot->Jv(_link_names[mesh_a_id], body_a_pos_in_link)) * _N_prec;
-            // _mesh_pair_linear_jacobian_a[i] = _robot->Jv(_link_names[mesh_a_id], body_a_pos_in_link) * _N_prec;
-            // _mesh_pair_linear_jacobian_b[i] = _robot->Jv(_link_names[mesh_b_id], body_b_pos_in_link) * _N_prec;
+                // Vector3d body_a_pos_in_link = _T_meshes[mesh_a_id].inverse() * Vector3d(s.witnesses[0][0], s.witnesses[0][1], s.witnesses[0][2]);
+                // Vector3d body_b_pos_in_link = _T_meshes[mesh_b_id].inverse() * Vector3d(s.witnesses[1][0], s.witnesses[1][1], s.witnesses[1][2]);
 
-            if (distance < _distance_zone_2) {
-                // zone 2
-                _mesh_pair_flag[i * _n_objects + j] = ZONE_2_OBJECT_COLLISION;
-            } else if (distance < _distance_zone_1) {
-                // zone 1
-                _mesh_pair_flag[i * _n_objects + j] = ZONE_1_OBJECT_COLLISION;
-            } else if (distance > _safe_distance) {
-                // safe zone if sufficiently far away 
-                _mesh_pair_flag[i * _n_objects + j] = SAFE_OBJECT_COLLISION;
-            } else {
-            // } else {
-                // _mesh_pair_flag[i] = SAFE_OBJECT_COLLISION;  // only register safe collision when exiting zone 1 collision 
+                _mesh_pair_body_points[i * _n_objects * 0 + j] = std::make_pair( Vector3d(s.witnesses[0][0], s.witnesses[0][1], s.witnesses[0][2]), \
+                                                            Vector3d(s.witnesses[1][0], s.witnesses[1][1], s.witnesses[1][2]) );
 
-                // release the object colision if outside and no force is applied 
-                // _mesh_pair_flag[i * _n_objects + j] = CHECK_STATIONARY_COLLISION;
-                _check_mesh_pair_flag[i * _n_objects + j] = 1;  
+                // collect information 
+                _mesh_pair_distance[i * _n_objects * 0 + j] = distance;
+                _mesh_pair_constraint_direction[i * _n_objects * 0 + j] = constraint_direction;
+                _mesh_pair_projected_jacobian[i * _n_objects * 0 + j] = _robot->Jv(_link_names[mesh_b_id], robot_pos_in_link) * _N_prec;
+                
+                // _mesh_pair_projected_jacobian[i] = constraint_direction.transpose() * \
+                //     (_robot->Jv(_link_names[mesh_b_id], body_b_pos_in_link) - _robot->Jv(_link_names[mesh_a_id], body_a_pos_in_link)) * _N_prec;
+                // _mesh_pair_projected_jacobian[i] = 
+                    // (_robot->Jv(_link_names[mesh_b_id], body_b_pos_in_link) - _robot->Jv(_link_names[mesh_a_id], body_a_pos_in_link)) * _N_prec;
+                // _mesh_pair_linear_jacobian_a[i] = _robot->Jv(_link_names[mesh_a_id], body_a_pos_in_link) * _N_prec;
+                // _mesh_pair_linear_jacobian_b[i] = _robot->Jv(_link_names[mesh_b_id], body_b_pos_in_link) * _N_prec;
+
+                if (distance < _distance_zone_2) {
+                    // zone 2
+                    _mesh_pair_flag[i * _n_objects * 0 + j] = ZONE_2_OBJECT_COLLISION;
+                    _alpha[i * _n_objects * 0 + j] = 0;
+                    _alpha_in_violation.push_back(0);
+                    // _links_in_violation.push_back(_link_names[mesh_b_id]);
+                    // _curr_max_vel.push_back(_min_vel);  // saturate at minimum
+                } else if (distance < _distance_zone_1) {
+                    // zone 1
+                    _mesh_pair_flag[i * _n_objects * 0 + j] = ZONE_1_OBJECT_COLLISION;
+                    _alpha[i * _n_objects * 0 + j] = std::clamp((distance - _distance_zone_2) / (_distance_zone_1 - _distance_zone_2), 0.0, 1.0);
+                    _alpha_in_violation.push_back(std::clamp((distance - _distance_zone_2) / (_distance_zone_1 - _distance_zone_2), 0.0, 1.0));
+                    // _links_in_violation.push_back(_link_names[mesh_b_id]);
+                    // _curr_max_vel.push_back(getMaxVelFunction(_alpha[i * _n_objects * 0 + j], _max_vel, _min_vel));  // get schedule 
+                // } else if (distance > _safe_distance) {
+                } else {
+                    // safe zone if sufficiently far away 
+                    _mesh_pair_flag[i * _n_objects * 0 + j] = SAFE_OBJECT_COLLISION;
+                }
+                // } else {
+                // } else {
+                    // _mesh_pair_flag[i] = SAFE_OBJECT_COLLISION;  // only register safe collision when exiting zone 1 collision 
+
+                    // release the object colision if outside and no force is applied 
+                    // _mesh_pair_flag[i * _n_objects + j] = CHECK_STATIONARY_COLLISION;
+                    // _check_mesh_pair_flag[i * _n_objects + j] = 1;  
+                // }
             }
         }
     }
@@ -380,20 +432,24 @@ VectorXd Collision::computeTorques(const VectorXd& torques, const bool constrain
             MatrixXd projected_jacobian = _mesh_pair_projected_jacobian[i] * _N_prec;
             MatrixXd directed_projected_jacobian = _mesh_pair_constraint_direction[i].transpose() * projected_jacobian;
 
+            // matrix basis
+            MatrixXd U = Sai2Model::matrixRangeBasis(directed_projected_jacobian);
+            directed_projected_jacobian = U.transpose() * directed_projected_jacobian;
+
             // using 1-dof constraint jacobian
             MatrixXd task_inertia = _robot->taskInertiaMatrix(directed_projected_jacobian);
             VectorXd task_force = _robot->dynConsistentInverseJacobian(directed_projected_jacobian).transpose() * torques;
-            std::cout << "task force for mesh check: " << task_force.transpose() << "\n";
+            // std::cout << "task force for mesh check: " << task_force.transpose() << "\n";
             // Vector3d task_force = _robot->dynConsistentInverseJacobian(_mesh_pair_linear_jacobian_b[i]).transpose() * torques;
             double task_force_along_constraint = task_force(0);
             double task_velocity_along_constraint = (directed_projected_jacobian * _robot->dq())(0);
 
             // debug 
-            std::cout << "i: " << i << " " << std::abs(task_force_along_constraint) << "force " << std::abs(task_velocity_along_constraint) << " velocity\n";
+            // std::cout << "i: " << i << " " << std::abs(task_force_along_constraint) << "force " << std::abs(task_velocity_along_constraint) << " velocity\n";
 
             // if (std::abs(task_force_along_constraint) < _F_min && std::abs(task_velocity_along_constraint) < _dx_min) {
             if (std::abs(task_velocity_along_constraint) < _dx_min) {
-                std::cout << "Stationary collision release\n";
+                // std::cout << "Stationary collision release\n";
                 _mesh_pair_flag[i] = SAFE_OBJECT_COLLISION;
             } 
             _check_mesh_pair_flag[i] = 0;
@@ -428,13 +484,23 @@ VectorXd Collision::computeTorques(const VectorXd& torques, const bool constrain
                 MatrixXd projected_jacobian = _mesh_pair_projected_jacobian[i] * _N_prec;
                 MatrixXd directed_projected_jacobian = _mesh_pair_constraint_direction[i].transpose() * projected_jacobian;
 
+                // matrix basis
+                MatrixXd U = Sai2Model::matrixRangeBasis(directed_projected_jacobian);
+                directed_projected_jacobian = U.transpose() * directed_projected_jacobian;
+
                 // using 1-dof constraint jacobian
                 MatrixXd task_inertia = _robot->taskInertiaMatrixWithPseudoInv(directed_projected_jacobian);
                 VectorXd task_force = _robot->dynConsistentInverseJacobian(directed_projected_jacobian).transpose() * torques;
                 // Vector3d task_force = _robot->dynConsistentInverseJacobian(_mesh_pair_linear_jacobian_b[i]).transpose() * torques;
                 double task_force_along_constraint = task_force(0);
                 // Vector3d unit_mass_constraint_force = - (_kv * projected_jacobian * _robot->dq()) * _mesh_pair_constraint_direction[i];
-                double unit_mass_constraint_force = - (_kv * directed_projected_jacobian * _robot->dq())(0);
+                
+                // double unit_mass_constraint_force = - (_kv * directed_projected_jacobian * _robot->dq())(0);  // PREVIOUS SETUP
+
+                // _curr_max_vel.push_back(getMaxVelFunction(_alpha[i], _max_vel, _min_vel));  // current max velocity 
+                // double dx_curr = (directed_projected_jacobian * _robot->dq())(0);
+                // double vel_sat_force = - (task_inertia * _kv * (dx_curr - _curr_max_vel))(0);
+                // double unit_mass_constraint_force = - (_kv * directed_projected_jacobian * _robot->dq())(0);  // VELOCITY SATURATION SETUP
 
                 // MatrixXd task_inertia = _robot->taskInertiaMatrix(projected_jacobian);
                 // Vector3d task_force = _robot->dynConsistentInverseJacobian(projected_jacobian).transpose() * torques;
@@ -442,18 +508,40 @@ VectorXd Collision::computeTorques(const VectorXd& torques, const bool constrain
                 // double task_force_along_constraint = task_force.dot(_mesh_pair_constraint_direction[i]);
                 // Vector3d unit_mass_constraint_force = - (_kv * projected_jacobian * _robot->dq());
 
-                if (task_force_along_constraint > _F_thresh) {
-                    std::cout << "Zone 1 free\n";
-                    _mesh_pair_flag[i] = SAFE_OBJECT_COLLISION;  // exit nullspace 
-                } else {
-                    // self_collision_torques += 1 * projected_jacobian.transpose() * task_inertia * unit_mass_constraint_force;
-                    self_collision_torques += 1 * directed_projected_jacobian.transpose() * task_inertia * unit_mass_constraint_force;
-                    // self_collision_torques += 1 * directed_projected_jacobian.transpose() * unit_mass_constraint_force;
+                /*
+                    PASS THROUGH APPROACH AND SET VELOCITY SATURATION AT TASK SPACE
+                */
+                continue;
 
-                    // nullspace 
-                    _N_prec = _robot->nullspaceMatrix(directed_projected_jacobian) * _N_prec;
+                // // compute force saturation control
+                // if (std::abs(task_force_along_constraint) > std::abs(vel_sat_force)) {
+                //     // use velocity saturation force
+                //     self_collision_torques += directed_projected_jacobian.transpose() * vel_sat_force * getSign(task_force_along_constraint);
+                //     _N_prec = _robot->nullspaceMatrix(directed_projected_jacobian) * _N_prec;
+                // } else {
+                //     // use task force directly 
+                //     self_collision_torques += directed_projected_jacobian.transpose() * task_force_along_constraint;
+                //     _N_prec = _robot->nullspaceMatrix(directed_projected_jacobian) * _N_prec;
+                // }
 
-                }
+                // if (task_force_along_constraint > _F_thresh) {
+                //     // std::cout << "Zone 1 free\n";
+                //     // _mesh_pair_flag[i] = SAFE_OBJECT_COLLISION;  // exit nullspace
+
+                //     /*
+                //         REVISED METHOD: RETURN TO VELOCITY SATURATION CURVE
+                //     */
+                //     continue;
+
+                // } else {
+                //     // self_collision_torques += 1 * projected_jacobian.transpose() * task_inertia * unit_mass_constraint_force;
+                //     self_collision_torques += 1 * directed_projected_jacobian.transpose() * task_inertia * unit_mass_constraint_force;
+                //     // self_collision_torques += 1 * directed_projected_jacobian.transpose() * unit_mass_constraint_force;
+
+                //     // nullspace 
+                //     _N_prec = _robot->nullspaceMatrix(directed_projected_jacobian) * _N_prec;
+
+                // }
 
             } else if (_mesh_pair_flag[i] == ZONE_2_OBJECT_COLLISION) {
 
@@ -473,11 +561,19 @@ VectorXd Collision::computeTorques(const VectorXd& torques, const bool constrain
                 MatrixXd projected_jacobian = _mesh_pair_projected_jacobian[i] * _N_prec;
                 MatrixXd directed_projected_jacobian = _mesh_pair_constraint_direction[i].transpose() * projected_jacobian;
 
+                // matrix basis
+                MatrixXd U = Sai2Model::matrixRangeBasis(directed_projected_jacobian);
+                directed_projected_jacobian = U.transpose() * directed_projected_jacobian;
+
+                VectorXd task_force = _robot->dynConsistentInverseJacobian(projected_jacobian).transpose() * torques;
+                double task_force_along_constraint = task_force.dot(_mesh_pair_constraint_direction[i]);
+
                 // using 1-dof constraint jacobian
                 MatrixXd task_inertia = _robot->taskInertiaMatrixWithPseudoInv(directed_projected_jacobian);
-                VectorXd task_force = _robot->dynConsistentInverseJacobian(directed_projected_jacobian).transpose() * torques;
+                // VectorXd task_force = _robot->dynConsistentInverseJacobian(directed_projected_jacobian).transpose() * torques;  // old
+
                 // Vector3d task_force = _robot->dynConsistentInverseJacobian(_mesh_pair_linear_jacobian_b[i]).transpose() * torques;
-                double task_force_along_constraint = task_force(0);
+                // double task_force_along_constraint = task_force(0);  // PREVIOUS 
                 // Vector3d unit_mass_constraint_force = - (_kv * projected_jacobian * _robot->dq()) * _mesh_pair_constraint_direction[i];
                 double unit_mass_constraint_force = - (_kv * directed_projected_jacobian * _robot->dq())(0);
 
@@ -488,7 +584,7 @@ VectorXd Collision::computeTorques(const VectorXd& torques, const bool constrain
                 // Vector3d unit_mass_constraint_force = - (_kv * projected_jacobian * _robot->dq());
 
                 // apf force 
-                double eta = 0.1;
+                double eta = _eta;
                 double rho = _mesh_pair_distance[i];
                 double rho_0 = _distance_zone_2;
                 double apf_force = eta * ((1 / rho) - (1 / rho_0)) * (1 / std::pow(rho, 2));
@@ -502,16 +598,23 @@ VectorXd Collision::computeTorques(const VectorXd& torques, const bool constrain
                 // self_collision_torques += 1 * projected_jacobian.transpose() * apf_force * _mesh_pair_constraint_direction[i];
                 // self_collision_torques += 1 * projected_jacobian.transpose() * task_inertia * apf_force * _mesh_pair_constraint_direction[i];
                 // self_collision_torques += 1 * directed_projected_jacobian.transpose() * task_inertia * apf_force;
-                self_collision_torques += 1 * directed_projected_jacobian.transpose() * weighted_apf_force;
+                self_collision_torques += 1 * directed_projected_jacobian.transpose() * U.transpose() * weighted_apf_force;
                 // self_collision_torques += 1 * directed_projected_jacobian.transpose() * apf_force;
 
                 if (task_force_along_constraint > _F_thresh) {
-                    std::cout << "Zone 2 free\n";
-                    _mesh_pair_flag[i] = SAFE_OBJECT_COLLISION;
+                    // std::cout << "Zone 2 free\n";
+                    // _mesh_pair_flag[i] = SAFE_OBJECT_COLLISION;  // original implementation 
+
+                    _mesh_pair_flag[i] = ZONE_1_OBJECT_COLLISION;  // switch to zone 1 handling
+
+                    // nullspace 
+                    self_collision_torques += 1 * directed_projected_jacobian.transpose() * U.transpose() * task_inertia * unit_mass_constraint_force;
+                    // _N_prec = _robot->nullspaceMatrix(directed_projected_jacobian) * _N_prec;  // release nullspace
+
                 } else {
                     // damping 
                     // self_collision_torques += 1 * projected_jacobian.transpose() * task_inertia * unit_mass_constraint_force;
-                    self_collision_torques += 1 * directed_projected_jacobian.transpose() * task_inertia * unit_mass_constraint_force;
+                    self_collision_torques += 1 * directed_projected_jacobian.transpose() * U.transpose() * task_inertia * unit_mass_constraint_force;
                     // self_collision_torques += 1 * directed_projected_jacobian.transpose() * unit_mass_constraint_force;
 
                     // nullspace 

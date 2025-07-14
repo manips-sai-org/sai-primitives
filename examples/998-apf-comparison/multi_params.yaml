@@ -1,0 +1,70 @@
+# Config
+object_config:
+  # start: [-0.6, -1]
+  start: [-0.6, -1.2]
+  # end: [0.95, 0.8]
+  # end: [0.55, 0.8]
+  end: [0.65, 1.0]
+  goal: [0.95, 0.8]
+  # # eta: 1000
+  # eta: 400  # oscillations (high eta)
+  # eta: 500  # oscillations (high eta)
+  # eta: 0.03 # bad tuning 
+  eta_0: 0.01
+  eta_1: 0.01
+  # eta: 0.2 # standard 
+  # eta: 0.1
+  # eta: 0.0001
+  # a: 0.2
+  # b: 0.1
+  a_0: 0.3
+  b_0: 0.1
+  a_1: 0.3
+  b_1: 0.1
+  # eta: 0.1
+  rho0_0: 0.2
+  rho0_1: 0.2
+  # rho: 0.4
+  # rho: 0.2
+  # rho_1: 0.8
+  rho1_0: 0.75
+  rho1_1: 0.75
+  apf_center_0_x: 0
+  apf_center_0_y: 0
+  apf_center_1_x: 0.9
+  apf_center_1_y: 0
+  # vel: 0.5 # default
+  # vel: 1.0
+  # vel: 1.5  # BASELINE
+  # vel: 2.5 # current setup 
+  vel: 5 # deflection
+  # vel: 4
+  # vel: 0.3
+  # vel: 10
+  # vel: 0.3 # before change 
+  # vel: 0.1
+  min_vel: 0.8
+  # vel: 0.5
+  sf_0: 4
+  sf_1: 4
+  vel_sf: 7
+  # mass: 0.000001  # off by 1
+  mass: 1
+  # kv: 10
+  # kv: 100
+  # kv: 9 #deflection
+  kv: 20
+  # kv: 10
+  # kv: 0
+  wait: 1
+  length: 0.3
+  radius: 0.01
+  tip_length: 0.05
+  tip_radius: 0.05
+  t_position_change: 1.5
+  enable_position_change: false
+  vel_sat: true  # first reduce velocity for high-velocity entry
+  nullspace: true  # second is to remove in-fighting
+  exit: true  # finally to introduce the exit
+  enable_arrow: false
+  thickness: 0.1

@@ -14,7 +14,7 @@ if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
   message(STATUS "Setting build type to 'Release' as none was specified.")
 
   set(CMAKE_BUILD_TYPE
-      Release 
+      RelWithDebInfo 
       CACHE STRING "Choose the type of build." FORCE)
   set_property(CACHE CMAKE_BUILD_TYPE PROPERTY STRINGS "Debug" "Release"
                                                "MinSizeRel" "RelWithDebInfo")
@@ -41,7 +41,7 @@ find_library(
 # include openGJK for collision detection 
 set(OPENGJK_LOCAL_DIR ${PROJECT_SOURCE_DIR}/openGJK)
 set(OPENGJK_INCLUDE_DIR ${OPENGJK_LOCAL_DIR}/include/openGJK)
-set(OPENGJK_LIBRARIES ${PROJECT_SOURCE_DIR}/openGJK/build/libopengjk_ce.so)
+set(OPENGJK_LIBRARIES ${PROJECT_SOURCE_DIR}/openGJK/build/libopengjk_ce.dylib)
 
 # yaml-cpp
 find_package(yaml-cpp REQUIRED)
@@ -49,6 +49,7 @@ find_package(yaml-cpp REQUIRED)
 # add tasks
 set(CONTROLLERS_SOURCE
     ${PROJECT_SOURCE_DIR}/src/RobotController.cpp
+    ${PROJECT_SOURCE_DIR}/src/tasks/ComMotionTask.cpp
     ${PROJECT_SOURCE_DIR}/src/tasks/MotionForceTask.cpp
     ${PROJECT_SOURCE_DIR}/src/tasks/JointTask.cpp
     ${PROJECT_SOURCE_DIR}/src/tasks/SingularityHandler.cpp

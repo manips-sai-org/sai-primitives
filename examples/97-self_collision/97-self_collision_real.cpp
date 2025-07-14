@@ -41,8 +41,8 @@ mutex mutex_torques;
 mutex mutex_robot;
 
 // flag simulation
-// bool flag_simulation = true;
-bool flag_simulation = false;
+bool flag_simulation = true;
+// bool flag_simulation = false;
 
 // simulation and control loop
 void control(shared_ptr<Sai2Model::Sai2Model> robot,

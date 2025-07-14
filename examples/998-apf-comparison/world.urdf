@@ -1,0 +1,123 @@
+<?xml version="1.0" ?>
+
+<world name="demo_world" gravity="0.0 0.0 0.0">
+
+	<robot name="ppbot">
+		<!-- <model dir="${SAI2_MODEL_URDF_FOLDER}/panda" path="panda_arm_gripper_fixed.urdf" name="panda" /> -->
+		<!-- <model dir="${SAI2_MODEL_URDF_FOLDER}/mmp_panda" path="mmp_panda.urdf" name="panda" /> -->
+		<model dir="${EXAMPLE_998_FOLDER}" path="ppbot.urdf" name="ppbot" />
+		<origin xyz="0 0 0" rpy="0 0 0" />
+	</robot>
+
+	<dynamic_object name="goal">
+		<origin xyz="0.65 1.0 0" rpy="0 0 0" />
+		<inertial>
+			<mass value="10"/>
+			<inertia ixx="0.4" ixy="0.0" ixz="0.0" iyy="0.4" iyz="0.0" izz="0.2"/>
+		</inertial>
+	    <visual>
+	        <origin xyz="0.0 0.0 0.0" rpy="0 0 0" />
+			<geometry>
+				<cylinder radius="0.03" length="0.035"/>
+			</geometry>
+	        <material name="material_red">
+		        <color rgba="0 1 0 1.0" />
+	        </material>
+	    </visual>
+	</dynamic_object>
+
+	<dynamic_object name="closest_point">
+		<origin xyz="0 0.0 0.1" rpy="0 0 0" />
+		<inertial>
+			<mass value="10"/>
+			<inertia ixx="0.4" ixy="0.0" ixz="0.0" iyy="0.4" iyz="0.0" izz="0.2"/>
+		</inertial>
+	    <visual>
+	        <origin xyz="0.0 0.0 0.0" rpy="0 0 0" />
+			<geometry>
+				<sphere radius="0.015"/>
+			</geometry>
+	        <material name="material_red">
+		        <color rgba="0 0 0 1.0" />
+	        </material>
+	    </visual>
+	</dynamic_object>
+
+	<dynamic_object name="closest_point_2">
+		<origin xyz="100 0.0 0.1" rpy="0 0 0" />
+		<inertial>
+			<mass value="10"/>
+			<inertia ixx="0.4" ixy="0.0" ixz="0.0" iyy="0.4" iyz="0.0" izz="0.2"/>
+		</inertial>
+	    <visual>
+	        <origin xyz="0.0 0.0 0.0" rpy="0 0 0" />
+			<geometry>
+				<sphere radius="0.015"/>
+			</geometry>
+	        <material name="material_red">
+		        <color rgba="0 0 0 1.0" />
+	        </material>
+	    </visual>
+	</dynamic_object>
+
+	<!-- <camera name="camera">
+		<position xyz= "0 0 2.66727" />
+		<lookat xyz= "0 0 0" />
+		<vertical xyz= "0 1 0" />
+	</camera> -->
+
+	<!-- <camera name="camera">
+		<position xyz= "0.566305 -1.69614   1.2786" />
+		<lookat xyz= "0.258442 -0.970411   0.66335" />
+		<vertical xyz= "-0.179579  0.590711  0.786646" />
+	</camera> -->
+
+	<!-- <camera name="camera">
+		<position xyz= "0.75752 -1.19331  1.72102" />
+		<lookat xyz= "0.432043 -0.710898  0.907794" />
+		<vertical xyz= "-0.290568  0.767414  0.571529" />
+	</camera> -->
+
+	<!-- <camera name="camera_top_view">
+		<position xyz= "-0.0255288   -1.96108    1.94958" />
+		<lookat xyz= "-0.0556494   -1.32199    1.18103" />
+		<vertical xyz= "-0.00602814     0.76876    0.639509" />
+	</camera> -->
+
+	<!-- <camera name="camera">
+		<position xyz= "0.858095 -1.44889  1.07333" />
+		<lookat xyz= "0.336387 -0.822039  0.494652" />
+		<vertical xyz= "-0.302345  0.498431  0.812499" />
+	</camera> -->
+
+	<!-- SINGLE -->
+	<!-- <camera name="camera">
+		<position xyz= "0.694045 -1.66138  1.19439" />
+		<lookat xyz= "0.300288 -0.978971  0.578547" />
+		<vertical xyz= "-0.168224   0.60516  0.778127" />
+	</camera> 
+
+	<light name="light3" type="directional">
+		<position xyz="4 -4 6" />
+		<lookat xyz="0 0 0" />
+	</light> -->
+
+	<!-- DOUBLE -->
+	<camera name="camera">
+		<position xyz= "1.21302 -1.77035  1.39133" />
+		<lookat xyz= "0.819265 -1.08793 0.775487" />
+		<vertical xyz= "-0.168223  0.605159  0.778128" />
+	</camera> 
+
+	<light name="light4" type="directional">
+		<position xyz="-2 -4 6" />
+		<lookat xyz="0 0 0" />
+	</light>
+
+<!-- 
+	<light name="light4" type="directional">
+		<position xyz="10 0 -100" />
+		<lookat xyz="0 0 0" />
+	</light> -->
+
+</world>

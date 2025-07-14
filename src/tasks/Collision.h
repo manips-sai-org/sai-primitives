@@ -34,9 +34,9 @@ public:
 
     Collision(std::shared_ptr<Sai2Model::Sai2Model> robot,
                 const std::string& mesh_yaml,
-                const bool& verbose = true,
-                const double& distance_zone_1 = 0.2,
-                const double& distance_zone_2 = 0.15,
+                const bool& verbose = false,
+                const double& distance_zone_1 = 0.25,
+                const double& distance_zone_2 = 0.2,
                 const double& safe_distance = 0.3,
                 const double& f_apf_max = 50,
                 const double& f_thresh = 1.0,
@@ -64,6 +64,7 @@ public:
     }
 
     void setObjectTransform(const Affine3d object_transform, const int ind);
+
     /*
         Collision information
     */
@@ -81,6 +82,10 @@ public:
 
     std::vector<double> getDistances() {
         return _mesh_pair_distance;
+    }
+
+    void setActiveObjectIdx(const int idx) {
+        _active_object_idx = idx;
     }
 
     // void setJointSelection(const std::vector<int>& joint_selection) {
@@ -126,6 +131,42 @@ public:
         _F_max = F_max;
     }
 
+    void setForceThreshold(const double& F_thresh) {
+        _F_thresh = F_thresh;
+    }
+
+    void setEta(const double& eta) {
+        _eta = eta;
+    }
+
+    void setKv(const double& kv) {
+        _kv = kv;
+    }
+
+    void setActiveObject(const int idx) {
+        _active_object_idx = idx;
+    }
+
+    void setMaxVel(const double vel) {
+        _max_vel = vel;
+    }
+
+    void setMinVel(const double vel) {
+        _min_vel = vel;
+    }
+
+    std::vector<double> getCurrMaxVel() {
+        return _curr_max_vel;
+    }
+
+    std::vector<std::string> getLinksInViolation() {
+        return _links_in_violation;
+    }
+
+    std::vector<double> getCoefficientsInViolation() {
+        return _alpha_in_violation;
+    }
+
 private:
 
     std::shared_ptr<Sai2Model::Sai2Model> _robot;
@@ -160,10 +201,14 @@ private:
     std::vector<Affine3d> _T_meshes;
     std::vector<Affine3d> _T_object_meshes;
     std::vector<std::string> _link_names;    
+    std::vector<std::string> _links_in_violation;
     int _n_collision_checks;  // number of candidate mesh pairs 
     int _n_meshes;
     int _n_objects;
+    int _active_object_idx;
 
+    std::vector<double> _alpha;
+    std::vector<double> _alpha_in_violation;  // violating alpha only
     std::vector<CollisionState> _mesh_pair_flag;
     std::vector<int> _check_mesh_pair_flag;
     std::vector<double> _mesh_pair_distance;
@@ -184,6 +229,11 @@ private:
     double _dx_min;
     double _safe_distance;
     double _F_apf_max;
+    double _eta;
+    double _max_vel;
+    double _min_vel;
+    // double _curr_max_vel;
+    std::vector<double> _curr_max_vel;
 
     // safety
     double _distance_zone_1, _distance_zone_2;

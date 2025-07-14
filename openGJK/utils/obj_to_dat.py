@@ -3,6 +3,7 @@ import numpy as np
 import pyvista as pv
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
+import os 
 
 def read_obj(file_path):
     """Reads an OBJ file and extracts unique surface vertices."""
@@ -51,18 +52,46 @@ def visualize_vertices_matplotlib(vertices):
     ax.set_title('Extracted Surface Vertices')
     plt.show()
 
+# if __name__ == "__main__":
+#     parser = argparse.ArgumentParser(description="Extract unique surface vertices from an OBJ file and save them in a .dat file.")
+#     parser.add_argument("obj_file", type=str, help="Path to the input OBJ file.")
+#     parser.add_argument("dat_file", type=str, help="Path to the output .dat file.")
+
+#     args = parser.parse_args()
+
+#     # Process OBJ
+#     vertices = read_obj(args.obj_file)
+#     write_dat(vertices, args.dat_file)
+#     print(f"Saved {len(vertices)} unique vertices to {args.dat_file}")
+
+#     # Visualize results
+#     visualize_obj_and_vertices(args.obj_file, vertices)
+#     visualize_vertices_matplotlib(vertices)
+
+
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Extract unique surface vertices from an OBJ file and save them in a .dat file.")
-    parser.add_argument("obj_file", type=str, help="Path to the input OBJ file.")
-    parser.add_argument("dat_file", type=str, help="Path to the output .dat file.")
+    parser = argparse.ArgumentParser(description="Process all OBJ files in a folder.")
+    parser.add_argument("folder", type=str, help="Path to the folder containing OBJ files.")
+    parser.add_argument("--visualize", action="store_true", help="Visualize the results using PyVista and Matplotlib.")
 
     args = parser.parse_args()
 
-    # Process OBJ
-    vertices = read_obj(args.obj_file)
-    write_dat(vertices, args.dat_file)
-    print(f"Saved {len(vertices)} unique vertices to {args.dat_file}")
+    obj_files = [f for f in os.listdir(args.folder) if f.lower().endswith('.obj')]
+    obj_files.sort()  # Optional: process in alphabetical order
 
-    # Visualize results
-    visualize_obj_and_vertices(args.obj_file, vertices)
-    visualize_vertices_matplotlib(vertices)
+    if not obj_files:
+        print("No OBJ files found in the specified folder.")
+        exit(1)
+
+    for obj_file in obj_files:
+        obj_path = os.path.join(args.folder, obj_file)
+        dat_path = os.path.splitext(obj_path)[0] + ".dat"
+
+        print(f"Processing: {obj_file}")
+        vertices = read_obj(obj_path)
+        write_dat(vertices, dat_path)
+        print(f"  → Saved {len(vertices)} unique vertices to {os.path.basename(dat_path)}")
+
+        if args.visualize:
+            visualize_obj_and_vertices(obj_path, vertices)
+            visualize_vertices_matplotlib(vertices)

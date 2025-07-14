@@ -1023,6 +1023,7 @@ private:
 	Vector3d _user_step_position_error;
 	Vector3d _user_step_orientation_error;
 	bool _is_floating;
+
 };
 
 } /* namespace Sai2Primitives */

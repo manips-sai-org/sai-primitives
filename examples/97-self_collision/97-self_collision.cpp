@@ -31,7 +31,7 @@ using namespace chai3d;
 const string world_file = "${EXAMPLE_18_FOLDER}/world_2.urdf";
 const string robot_file =
 	"${SAI2_MODEL_URDF_FOLDER}/panda/panda_arm_gripper_fixed.urdf";
-const std::string mesh_yaml = "/home/william/OpenSai/core/sai2-primitives/examples/97-self_collision/config.yaml";
+const std::string mesh_yaml = "/Users/william/sai2/core/sai2-primitives/examples/97-self_collision/config.yaml";
 const string robot_name = "PANDA";
 
 // ui torques and control torques
@@ -139,9 +139,9 @@ int main(int argc, char** argv) {
 	for (int i = 0; i < n_collision_pairs; ++i) {
 		chai_spheres.push_back(std::make_pair(new cShapeSphere(radius), new cShapeSphere(radius)));
 		chai_lines.push_back(new cShapeLine(cVector3d(0, 0, 0), cVector3d(0, 0, 0)));
-		addSphere(graphics->getWorld(), chai_spheres.back().first, cVector3d(0, 0, 0), cColorf(1, 0, 0));
-		addSphere(graphics->getWorld(), chai_spheres.back().second, cVector3d(0, 0, 0), cColorf(1, 0, 0));
-		addLine(graphics->getWorld(), chai_lines.back(), cVector3d(0, 0, 0), cVector3d(0, 0, 0), cColorf(1, 0, 0), cColorf(1, 0, 0));
+		addSphere(graphics->_world, chai_spheres.back().first, cVector3d(0, 0, 0), cColorf(1, 0, 0));
+		addSphere(graphics->_world, chai_spheres.back().second, cVector3d(0, 0, 0), cColorf(1, 0, 0));
+		addLine(graphics->_world, chai_lines.back(), cVector3d(0, 0, 0), cVector3d(0, 0, 0), cColorf(1, 0, 0), cColorf(1, 0, 0));
 
 		collision_pairs.push_back(std::make_pair(Vector3d::Zero(), Vector3d::Zero()));
 		collision_states.push_back(Sai2Primitives::SelfCollisionState::SAFE_COLLISION);

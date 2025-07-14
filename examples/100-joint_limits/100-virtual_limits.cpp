@@ -55,8 +55,8 @@ void simulation(shared_ptr<Sai2Model::Sai2Model> robot,
 /*
 	Control
 */
-// bool flag_simulation = true;
-bool flag_simulation = false;
+bool flag_simulation = true;
+// bool flag_simulation = false;
 Sai2Common::RedisClient* redis_client;
 std::string JOINT_ANGLES_KEY = "sai2::FrankaPanda::Romeo::sensors::q";
 std::string JOINT_VELOCITIES_KEY = "sai2::FrankaPanda::Romeo::sensors::dq";
@@ -366,7 +366,8 @@ void control(shared_ptr<Sai2Model::Sai2Model> robot,
             {
                 lock_guard<mutex> lock(mutex_robot);
                 joint_handler->updateTaskModel(N_prec);
-                motion_force_task->updateTaskModel(N_prec);
+				motion_force_task->updateTaskModel(joint_handler->getTaskAndPreviousNullspace());
+                // motion_force_task->updateTaskModel(N_prec);
                 joint_task->updateTaskModel(motion_force_task->getTaskAndPreviousNullspace());
             }
 
@@ -385,8 +386,8 @@ void control(shared_ptr<Sai2Model::Sai2Model> robot,
             // compute torques 
             {
                 lock_guard<mutex> lock(mutex_torques);
-                // control_torques = joint_handler_constraint_torques + motion_force_task_torques + joint_task_torques;
-                control_torques = joint_handler->computeTorques(motion_force_task_torques_without_handler + joint_task_torques_without_handler);
+                control_torques = joint_handler_constraint_torques + motion_force_task_torques + joint_task_torques;
+                // control_torques = joint_handler->computeTorques(motion_force_task_torques_without_handler + joint_task_torques_without_handler);
 
                 if (!flag_simulation) {
 				    redis_client->setEigen(JOINT_TORQUES_COMMANDED_KEY, control_torques);

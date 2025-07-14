@@ -317,8 +317,8 @@ void control(shared_ptr<Sai2Model::Sai2Model> robot,
 	Sai2Common::Logger logger("joints", false);
 	VectorXd svalues = VectorXd::Zero(6);
     VectorXd robot_q = robot->q();
-	Vector3d ee_pos = motion_force_task->getCurrentPosition();
-	Vector3d goal_pos = motion_force_task->getGoalPosition();
+	// Vector3d ee_pos = motion_force_task->getCurrentPosition();
+	// Vector3d goal_pos = motion_force_task->getGoalPosition();
 	VectorXi collision_state = VectorXi::Zero(n_meshes);
 	VectorXd collision_distance = VectorXd::Zero(n_meshes);	
 	Vector3d closest_point_in_world = Vector3d::Zero();
@@ -326,8 +326,8 @@ void control(shared_ptr<Sai2Model::Sai2Model> robot,
 
 	// logger.addToLog(svalues, "svalues");
     logger.addToLog(robot_q, "robot_q");
-	logger.addToLog(ee_pos, "ee_pos");
-	logger.addToLog(goal_pos, "goal_pos");
+	// logger.addToLog(ee_pos, "ee_pos");
+	// logger.addToLog(goal_pos, "goal_pos");
 	logger.addToLog(constraint_flag, "constraint_flag");
 	logger.addToLog(collision_state, "collision_state");
 	logger.addToLog(collision_distance, "collision_distance");

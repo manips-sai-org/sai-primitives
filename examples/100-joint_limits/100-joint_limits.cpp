@@ -55,8 +55,8 @@ void simulation(shared_ptr<Sai2Model::Sai2Model> robot,
 /*
 	Control
 */
-// bool flag_simulation = true;
-bool flag_simulation = false;
+bool flag_simulation = true;
+// bool flag_simulation = false;
 Sai2Common::RedisClient* redis_client;
 std::string JOINT_ANGLES_KEY = "sai2::FrankaPanda::Romeo::sensors::q";
 std::string JOINT_VELOCITIES_KEY = "sai2::FrankaPanda::Romeo::sensors::dq";
@@ -331,6 +331,12 @@ void control(shared_ptr<Sai2Model::Sai2Model> robot,
                 joint_task->updateTaskModel(N_prec);
             }
 
+			// get joint status
+			VectorXi joint_status = joint_handler->getJointLimitState();
+			VectorXd joint_distance = joint_handler->getJointLimitDistances();
+
+			// std::cout << "joint status: " << joint_status(3) << "\n";
+
             // compute torques 
             bool flag_joint_handler = true;
             bool flag_baseline = false;
@@ -338,9 +344,18 @@ void control(shared_ptr<Sai2Model::Sai2Model> robot,
                 lock_guard<mutex> lock(mutex_torques);
                 if (flag_joint_handler) {
 
+					// if (joint_status(3) == Sai2Primitives::MIN_SOFT_POS || joint_status(3) == Sai2Primitives::MAX_SOFT_POS) {
+					// 	std::cout << "0.2 velocity saturation\n";
+					// 	joint_task->enableVelocitySaturation(0.2);
+					// } else if (joint_status(3) == Sai2Primitives::SAFE) {
+					// 	std::cout << "Safe velocity saturation\n";
+					// 	joint_task->enableVelocitySaturation(1.2);
+					// } 
+
                     control_torques = joint_handler->computeTorques(joint_task->computeTorques());
                     // joint_handler->setEta(0.01);
-                    joint_handler->setEta(0.003);
+                    // joint_handler->setEta(0.003);
+					joint_handler->setEta(0.1);
 
                 } else if (flag_baseline) {
                     // default computation with APF added directly 

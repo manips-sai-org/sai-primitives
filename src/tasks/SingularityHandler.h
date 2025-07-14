@@ -188,6 +188,10 @@ public:
         _type_2_direction = type_2_direction;
     }
 
+    void enableForceDecoupling(const bool flag) {
+        _enable_force_decoupling = flag;
+    }
+
     /**
      * @brief Getters 
      * 
@@ -209,7 +213,7 @@ public:
     }
 
     VectorXd getJointSingularityHandlingTorques() {
-        return (1 - _alpha) * _joint_strategy_torques;
+        return _joint_strategy_torques;
     }
 
     double getBlendingCoefficient() {
@@ -303,6 +307,7 @@ private:
     VectorXd _joint_strategy_torques;
     VectorXd _impedance_force_torques;
     VectorXd _task_torques_with_singularity;
+    bool _enable_force_decoupling;
 };
 
 }  // namespace

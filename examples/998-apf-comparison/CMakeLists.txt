@@ -1,0 +1,15 @@
+set(EXAMPLE_NAME 998-apf-comparison)
+# create an executable
+ADD_EXECUTABLE (${EXAMPLE_NAME} ${EXAMPLE_NAME}.cpp)
+ADD_EXECUTABLE (998-multi-apf-comparison 998-multi-apf-comparison.cpp)
+
+# and link the library against the executable
+TARGET_LINK_LIBRARIES (${EXAMPLE_NAME}
+	${SAI2-PRIMITIVES_LIBRARIES}
+	${SAI2-PRIMITIVES_EXAMPLES_COMMON_LIBRARIES}
+	)
+
+TARGET_LINK_LIBRARIES (998-multi-apf-comparison
+	${SAI2-PRIMITIVES_LIBRARIES}
+	${SAI2-PRIMITIVES_EXAMPLES_COMMON_LIBRARIES}
+	)
