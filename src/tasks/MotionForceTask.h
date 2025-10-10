@@ -30,6 +30,7 @@
 #include "Sai2Model.h"
 #include "TemplateTask.h"
 #include "SingularityHandler.h"
+#include <adrbdl/adrbdl.h>
 
 using namespace Eigen;
 using namespace std;
@@ -43,6 +44,7 @@ public:
 		static constexpr DynamicDecouplingType dynamic_decoupling_type =
 			DynamicDecouplingType::BOUNDED_INERTIA_ESTIMATES;
 		static constexpr double bie_threshold = 0.1;
+		static constexpr double singularity_bie_threshold = 0.5;
 		static constexpr double kp_pos = 100.0;
 		static constexpr double kv_pos = 20.0;
 		static constexpr double ki_pos = 0.0;
@@ -74,6 +76,8 @@ public:
 		static constexpr bool internal_otg_jerk_limited = false;
 		static constexpr double otg_max_linear_jerk = 10.0;
 		static constexpr double otg_max_angular_jerk = 10.0 * M_PI;
+		static constexpr double singularity_pos_exit_tol = 5e-2;
+		static constexpr double singularity_ori_exit_tol = 10 * M_PI / 180;
 	};
 
 	//------------------------------------------------
@@ -442,7 +446,12 @@ public:
 
 	bool getInternalOtgEnabled() const { return _use_internal_otg_flag; }
 
+	void enableTrackingMode() { _tracking_mode = true; }
+	void disableTrackingMode() { _tracking_mode = false; }
+
 	const OTG_6dof_cartesian& getInternalOtg() const { return *_otg; }
+
+	void setTrackingMode(const bool tracking_mode) { _tracking_mode = tracking_mode; };
 
 	// Velocity saturation flag and saturation values
 	void enableVelocitySaturation(const double linear_vel_sat = 0.3,
@@ -689,8 +698,8 @@ public:
 	 * 
 	 * @param threshold threshold value 
 	 */
-	void setBoundedInertiaEstimateThreshold(const double threshold) {
-		_singularity_handler->setBoundedInertiaEstimateThreshold(threshold);
+	void setBoundedInertiaEstimateThreshold(const double threshold, const double singularity_threshold) {
+		_singularity_handler->setBoundedInertiaEstimateThreshold(threshold, singularity_threshold);
 	}
 
 	/**
@@ -788,6 +797,10 @@ public:
 		_singularity_handler->setType2Direction(type_2_direction);
 	}
 
+	bool isExistingSingularity() {
+		return _singularity_handler->isExitingSingularity();
+	}
+
 	/**
 	 * @brief Set the Floating object
 	 * 
@@ -858,6 +871,28 @@ public:
 
 	double getBlendingCoefficient() {
 		return _singularity_handler->getBlendingCoefficient();
+	}
+
+    bool isFullySingularTask() {
+        return _singularity_handler->isFullySingularTask();
+    }
+
+	void setPosSingularityExit(const double tol) {
+		_singularity_pos_exit_tol = tol;
+	}
+
+	void setOriSingularityExitTol(const double tol) {
+		_singularity_ori_exit_tol = tol;
+	}
+
+	void setSingularityExitInterpolatorNorm(const double pos_exit_tol, const double ori_exit_tol) {
+		_singularity_pos_exit_tol = pos_exit_tol;
+		_singularity_ori_exit_tol = ori_exit_tol;
+	}
+
+	void setCompliantFrame(const Vector3d& pos_in_link, const Matrix3d& rot_in_link = Matrix3d::Identity()) {
+		_compliant_frame.translation() = pos_in_link;
+		_compliant_frame.linear() = rot_in_link;
 	}
 
 	// -------- override step computation ----------
@@ -1017,12 +1052,29 @@ private:
 	// singularity handler
 	std::unique_ptr<SingularityHandler> _singularity_handler;
 
+	// // pino model
+	// std::shared_ptr<pinocchio::Model> _pino_model;
+	// std::shared_ptr<pinocchio::Data> _pino_data;
+
 	// manual stepping
 	bool _use_user_step_position_flag;
 	bool _use_user_step_orientation_flag;
 	Vector3d _user_step_position_error;
 	Vector3d _user_step_orientation_error;
 	bool _is_floating;
+
+	bool _tracking_mode;
+
+	// exit singularity transition 
+	// std::shared_ptr<AutoDiffRigidBodyDynamics::Model> _ad_robot;
+	std::vector<int> _joint_dependency;
+	double _singularity_pos_exit_tol, _singularity_ori_exit_tol;
+	bool _default_use_internal_otg;
+	bool _handle_singularity_exit;
+	bool _is_in_singularity;
+	bool _prev_is_in_singularity;
+
+	bool _prev_velocity_saturation;
 
 };
 

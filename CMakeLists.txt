@@ -14,7 +14,7 @@ if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
   message(STATUS "Setting build type to 'Release' as none was specified.")
 
   set(CMAKE_BUILD_TYPE
-      RelWithDebInfo 
+      Release 
       CACHE STRING "Choose the type of build." FORCE)
   set_property(CACHE CMAKE_BUILD_TYPE PROPERTY STRINGS "Debug" "Release"
                                                "MinSizeRel" "RelWithDebInfo")
@@ -26,6 +26,9 @@ endif()
 
 # include Eigen
 find_package(Eigen3 REQUIRED)
+
+# Include urdf-reader
+find_package(SAI2-URDF REQUIRED)
 
 # include sai2-model
 find_package(SAI2-MODEL REQUIRED)
@@ -45,6 +48,12 @@ set(OPENGJK_LIBRARIES ${PROJECT_SOURCE_DIR}/openGJK/build/libopengjk_ce.dylib)
 
 # yaml-cpp
 find_package(yaml-cpp REQUIRED)
+
+# - pinocchio 
+# find_package(pinocchio REQUIRED)
+
+# - adrbdl
+# find_package(adrbdl REQUIRED)
 
 # add tasks
 set(CONTROLLERS_SOURCE
@@ -74,8 +83,9 @@ set(SAI2-PRIMITIVES_INCLUDE_DIRS ${PROJECT_SOURCE_DIR}/src
 
 # Add the include directory to the include paths
 include_directories(
+  ${SAI2-URDF_INCLUDE_DIRS}
 	${SAI2-PRIMITIVES_INCLUDE_DIRS}
-	${EIGEN3_INCLUDE_DIR}
+	${EIGEN3_INCLUDE_DIR} 
 	${SAI2-MODEL_INCLUDE_DIRS}
 	${RUCKIG_INCLUDE_DIR}
   ${OPENGJK_INCLUDE_DIR})

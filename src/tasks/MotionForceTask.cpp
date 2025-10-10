@@ -135,7 +135,7 @@ void MotionForceTask::initialSetup() {
 	setClosedLoopForceControl(DefaultParameters::closed_loop_force_control);
 	setClosedLoopMomentControl(DefaultParameters::closed_loop_moment_control);
 
-	// initialize matrices sizes
+	// initialize matrices sizes`
 	_jacobian.setZero(6, dof);
 	_projected_jacobian.setZero(6, dof);
 	_Lambda.setZero(6, 6);
@@ -189,20 +189,45 @@ void MotionForceTask::initialSetup() {
 		disableInternalOtg();
 	}
 
+	// get joint dependency
+	MatrixXd joint_selection_matrix = getConstRobotModel()->linkDependency(_link_name);
+
+	for (int row = 0; row < joint_selection_matrix.rows(); ++row) {
+        for (int col = 0; col < joint_selection_matrix.cols(); ++col) {
+            if (joint_selection_matrix(row, col) == 1) {
+                _joint_dependency.push_back(col); 
+            }
+        }
+    }
+
 	// singularity handler
-	_singularity_handler = std::make_unique<SingularityHandler>(getConstRobotModel(), 
+	_singularity_handler = std::make_unique<SingularityHandler>(getConstRobotModel(),
+																getConstRobotModel()->getAdRobot(),
 		      													_link_name,
 																_compliant_frame,
-																_pos_range + _ori_range);
+																_pos_range + _ori_range,
+															    _joint_dependency,
+															    getLoopTimestep());
 	setSingularityHandlingBounds(6e-3, 6e-2); 
 	setDynamicDecouplingType(DefaultParameters::dynamic_decoupling_type);
-	setBoundedInertiaEstimateThreshold(DefaultParameters::bie_threshold);
+	setBoundedInertiaEstimateThreshold(DefaultParameters::bie_threshold, DefaultParameters::singularity_bie_threshold);
 
+	// set flags 
 	_use_user_step_position_flag = false;
 	_use_user_step_orientation_flag = false;
 	_is_floating = false;
+	_prev_is_in_singularity = false;
+	_is_in_singularity = false;
+	_handle_singularity_exit = false;
+	_prev_velocity_saturation = false;  // velocity saturation 
+
+	// tracking mode (internal otg off) 
+	_tracking_mode = true;  // trajectory tracking mode 
+
+	setSingularityExitInterpolatorNorm(DefaultParameters::singularity_pos_exit_tol, DefaultParameters::singularity_ori_exit_tol);
 
 	reInitializeTask();	
+
 }
 
 void MotionForceTask::reInitializeTask() {
@@ -244,8 +269,10 @@ void MotionForceTask::reInitializeTask() {
 
 	_task_force.setZero(6);
 	_unit_mass_force.setZero(6);
+	_impedance_force.setZero(6);  
 
 	_otg->reInitialize(_current_position, _current_orientation);
+
 }
 
 void MotionForceTask::updateTaskModel(const MatrixXd& N_prec) {
@@ -265,16 +292,7 @@ void MotionForceTask::updateTaskModel(const MatrixXd& N_prec) {
 	_jacobian = _partial_task_projection *
 				getConstRobotModel()->JWorldFrame(
 					_link_name, _compliant_frame.translation());
-	// if (_is_floating) {
-		// _jacobian.leftCols(3).setZero();
-		// _jacobian.block(0, 0, 3, 3).setZero();
-		// _jacobian.leftCols(3).setZero();
-	// }
 	_projected_jacobian = _jacobian * _N_prec;
-	// std::cout << "projected jac: \n" << _projected_jacobian << "\n";
-	// if (_is_floating) {
-		// _projected_jacobian.leftCols(3).setZero();
-	// }
 	_singularity_handler->updateTaskModel(_projected_jacobian, _N_prec, _is_floating);
 	_N = _singularity_handler->getNullspace();  
 
@@ -285,8 +303,7 @@ VectorXd MotionForceTask::computeTorques() {
 	_jacobian = _partial_task_projection *
 				getConstRobotModel()->JWorldFrame(
 					_link_name, _compliant_frame.translation());
-	// _projected_jacobian = _jacobian * _N_prec;
-	_projected_jacobian = _jacobian;
+	_projected_jacobian = _jacobian * _N_prec;
 
 	// update controller state
 	_current_position = getConstRobotModel()->positionInWorld(
@@ -387,6 +404,88 @@ VectorXd MotionForceTask::computeTorques() {
 	{
 		moment_feedback_related_force =
 			sigma_moment * (-_kv_moment * _current_angular_velocity);
+	}
+
+	// start otg interpolation when exiting singularity with matching velocity conditions
+	_is_in_singularity = _singularity_handler->getSingularityStatus();  
+	if (!_is_in_singularity && _prev_is_in_singularity) {
+
+		std::cout << "Entering singularity interpolation exit\n";
+		
+		if (!_use_internal_otg_flag) {
+			// compute current velocities and accelerations for otg settings 
+			double max_linear_velocity = _current_linear_velocity.norm();
+			double max_angular_velocity = _current_angular_velocity.norm();
+			VectorXd curr_acceleration = getConstRobotModel()->acceleration6d(_link_name, _compliant_frame.translation());
+			double max_linear_acceleration = curr_acceleration.head(3).norm();
+			double max_angular_acceleration = curr_acceleration.tail(3).norm();
+
+			if (max_linear_velocity < DefaultParameters::otg_max_linear_velocity) {
+				max_linear_velocity = DefaultParameters::otg_max_linear_velocity;
+			}
+			if (max_angular_velocity < DefaultParameters::otg_max_angular_velocity) {
+				max_angular_velocity = DefaultParameters::otg_max_angular_velocity;
+			}
+			if (max_linear_acceleration < DefaultParameters::otg_max_linear_acceleration) {
+				max_linear_acceleration = DefaultParameters::otg_max_linear_acceleration;
+			}
+			if (max_angular_acceleration < DefaultParameters::otg_max_angular_acceleration) {
+				max_angular_acceleration = DefaultParameters::otg_max_angular_acceleration;
+			}
+
+			enableInternalOtgAccelerationLimited(max_linear_velocity,
+												 max_linear_acceleration,
+												 max_angular_velocity,
+												 max_angular_acceleration);
+
+			if (_use_velocity_saturation_flag) {
+				_prev_velocity_saturation = true;
+			}
+			disableVelocitySaturation();  // for otg trajectory tracking 
+
+		}
+
+		_handle_singularity_exit = true;
+
+		// reinitialize otg
+		_otg->reInitialize(_current_position, _current_orientation, _current_linear_velocity, _current_angular_velocity);
+
+		// set goal position 
+		_otg->setGoalPosition(_goal_position);
+		_otg->setGoalOrientation(_goal_orientation);
+
+	}
+	_prev_is_in_singularity = _is_in_singularity;
+
+	// compute pos + ori error and revert to trajectory following
+	// if close, then turn off interpolator 
+	// if (goalPositionReached(_singularity_pos_exit_tol) && goalOrientationReached(_singularity_ori_exit_tol)) {
+	if (_otg->isGoalReached()) {
+		if (_handle_singularity_exit) {
+			// std::cout << "Exiting singularity interpolation exit\n";
+			_handle_singularity_exit = false;
+
+			if (_tracking_mode) {
+				disableInternalOtg();
+			} else {
+				if (DefaultParameters::internal_otg_jerk_limited) {
+					enableInternalOtgJerkLimited(DefaultParameters::otg_max_linear_velocity,
+												 DefaultParameters::otg_max_linear_acceleration,
+												 DefaultParameters::otg_max_linear_jerk,
+												 DefaultParameters::otg_max_angular_velocity,
+												 DefaultParameters::otg_max_angular_acceleration,
+												 DefaultParameters::otg_max_angular_jerk);
+				} else {
+					enableInternalOtgAccelerationLimited(DefaultParameters::otg_max_linear_velocity,
+														 DefaultParameters::otg_max_linear_acceleration,
+														 DefaultParameters::otg_max_angular_velocity,
+														 DefaultParameters::otg_max_angular_acceleration);
+				}
+			}
+			if (_prev_velocity_saturation) {
+				_use_velocity_saturation_flag = true; 
+			}
+		}
 	}
 
 	// motion related terms

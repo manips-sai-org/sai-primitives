@@ -574,8 +574,8 @@ public:
 	 * 
 	 * @param threshold threshold value 
 	 */
-	void setBoundedInertiaEstimateThreshold(const double threshold) {
-		_singularity_handler->setBoundedInertiaEstimateThreshold(threshold);
+	void setBoundedInertiaEstimateThreshold(const double threshold, const double singularity_threshold) {
+		_singularity_handler->setBoundedInertiaEstimateThreshold(threshold, singularity_threshold);
 	}
 
 	/**

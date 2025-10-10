@@ -50,10 +50,14 @@ public:
 	 * @param[in]  initial_orientation  The initial orientation
 	 */
 	void reInitialize(const Vector3d& initial_position,
-					  const Matrix3d& initial_orientation);
+					  const Matrix3d& initial_orientation,
+					  const Vector3d& initial_linear_velocity = Vector3d::Zero(),
+					  const Vector3d& initial_angular_velocity = Vector3d::Zero());
 
-	void reInitializeLinear(const Vector3d& initial_position);
-	void reInitializeAngular(const Matrix3d& initial_orientation);
+	void reInitializeLinear(const Vector3d& initial_position, 
+							const Vector3d& initial_velocity = Vector3d::Zero());
+	void reInitializeAngular(const Matrix3d& initial_orientation,
+	 					     const Vector3d& initial_velocity = Vector3d::Zero());
 
 	/**
 	 * @brief      Sets the maximum linear velocity for the trajectory generator

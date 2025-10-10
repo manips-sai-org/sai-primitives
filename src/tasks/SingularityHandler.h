@@ -18,6 +18,7 @@
 #include <Eigen/Dense>
 #include <queue>
 #include <memory>
+#include <adrbdl/adrbdl.h>
 
 using namespace Eigen;
 namespace Sai2Primitives {
@@ -42,9 +43,12 @@ public:
      * @param verbose set to true to print singularity status every timestep 
      */
     SingularityHandler(std::shared_ptr<Sai2Model::Sai2Model> robot,
+                       std::shared_ptr<AutoDiffRigidBodyDynamics::Model> ad_robot,
                        const std::string& link_name,
                        const Affine3d& compliant_frame,
                        const int& task_rank,
+                       const std::vector<int> joint_dependency,
+                       const double& dt,
                        const bool& verbose = false);
 
     /**
@@ -78,11 +82,13 @@ public:
         _dynamic_decoupling_type = type;
     }
 
-	void setBoundedInertiaEstimateThreshold(const double& threshold) {
+	void setBoundedInertiaEstimateThreshold(const double& threshold,
+                                            const double& singularity_threshold) {
 		if(threshold < 0){
 			_bie_threshold = 0;
 		}
 		_bie_threshold = threshold;
+        _singularity_bie_threshold = threshold;
 	}
 
 	double getBoundedInertiaEstimateThreshold() {
@@ -240,6 +246,18 @@ public:
         return _task_torques_with_singularity;
     }
 
+    bool isFullySingularTask() {
+        return _fully_singular_task;
+    }
+
+    bool isExitingSingularity() {
+        return _handle_singularity_exit;
+    }
+
+    bool getSingularityStatus() {
+        return _is_in_singularity;
+    }
+
 private:
 
     /**
@@ -248,13 +266,16 @@ private:
      * @param singular_task_range Singular task range corresponding to the columns of U from SVD
      * @param singular_joint_task_range Singular task range corresponding to the columns of V from SVD
      */
-    void classifySingularity(const MatrixXd& singular_task_range, 
-                             const MatrixXd& singular_joint_task_range);
+    void classifySingularity(const MatrixXd& projected_jacobian,
+                             const MatrixXd& singular_task_range, 
+                             const MatrixXd& singular_joint_task_range,
+                             const std::vector<MatrixXd>& dJdq);
 
     // singularity setup
     std::shared_ptr<Sai2Model::Sai2Model> _robot;
     DynamicDecouplingType _dynamic_decoupling_type;
 	double _bie_threshold;
+    double _singularity_bie_threshold;
     std::string _link_name;
     Affine3d _compliant_frame;
     int _task_rank;
@@ -262,6 +283,7 @@ private:
     VectorXd _joint_midrange, _q_upper, _q_lower, _tau_upper, _tau_lower, _dq_max;
     bool _enforce_type_1_strategy;
     bool _enforce_handling_strategy;
+    double _dt;
     bool _verbose;
 
     // singularity information
@@ -308,6 +330,20 @@ private:
     VectorXd _impedance_force_torques;
     VectorXd _task_torques_with_singularity;
     bool _enable_force_decoupling;
+
+    bool _is_in_singularity;
+    bool _fully_singular_task;
+    bool _handle_singularity_exit;  // handle exit when leaving singularity handling
+
+    // pino model for higher-order Jacobian derivatives 
+    std::shared_ptr<AutoDiffRigidBodyDynamics::Model> _ad_robot;
+    std::vector<int> _joint_dependency;
+    std::deque<double> _alpha_history;  // singular value ratio history   
+    VectorXd _q_target;  // posture target for type 1 and type 2 singularities 
+    std::vector<VectorXd> _dsdq_vec;
+    std::deque<bool> _motion_towards_singularity_history;
+    int _motion_towards_singularity_buffer_size;
+
 };
 
 }  // namespace

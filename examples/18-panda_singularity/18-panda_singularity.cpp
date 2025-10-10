@@ -28,14 +28,15 @@ using namespace Eigen;
 // config file names and object names
 const string world_file = "${EXAMPLE_18_FOLDER}/world.urdf";
 // const string robot_file =
-// 	"${SAI2_MODEL_URDF_FOLDER}/panda/panda_arm_sphere.urdf";
-const string robot_file =
-	"${SAI2_MODEL_URDF_FOLDER}/panda/panda_arm_gripper_fixed.urdf";
+	// "${SAI2_MODEL_URDF_FOLDER}/panda/panda_arm_sphere.urdf";
+const string robot_file = std::string(SAI2_MODEL_URDF_FOLDER) + "/panda/panda_arm_gripper_fixed.urdf";
+	// "${SAI2_MODEL_URDF_FOLDER}/panda/panda_arm_gripper_fixed.urdf";
 const string robot_name = "PANDA";
 
 // ui torques and control torques
 VectorXd ui_torques;
 VectorXd control_torques;
+VectorXd robot_curr_q;
 
 // mutex for global variables between different threads
 mutex mutex_torques;
@@ -92,6 +93,8 @@ int main(int argc, char** argv) {
 	// robot->setQ(sim->getJointPositions(robot_name));
 	robot->updateModel();
 
+	robot_curr_q = robot->q();
+
 	// sim->setJointPositions(robot_name, 0 * robot->q());
 
 	// intitialize global torques variables
@@ -113,7 +116,7 @@ int main(int argc, char** argv) {
 	while (graphics->isWindowOpen()) {
 		{
 			lock_guard<mutex> lock(mutex_robot);
-			graphics->updateRobotGraphics(robot_name, robot->q());
+			graphics->updateRobotGraphics(robot_name, robot_curr_q);
 		}
 		graphics->renderGraphicsWorld();
 		{
@@ -160,13 +163,14 @@ void control(shared_ptr<Sai2Model::Sai2Model> robot,
 	// motion_force_task->setSingularityGains(20, 20);
 
     motion_force_task->disableInternalOtg();
+	motion_force_task->enableTrackingMode();
     motion_force_task->enableVelocitySaturation(0.4, M_PI);
 	motion_force_task->setSingularityHandlingBounds(7e-3, 7e-2);
 	motion_force_task->setPosControlGains(100, 20, 0);
 	motion_force_task->setOriControlGains(100, 20, 0);
 	VectorXd motion_force_task_torques = VectorXd::Zero(dof);
 
-	motion_force_task->disableSingularityHandling();
+	// motion_force_task->disableSingularityHandling();
 
 	// no gains setting here, using the default task values
 	Matrix3d initial_orientation = robot->rotation(link_name);
@@ -196,8 +200,8 @@ void control(shared_ptr<Sai2Model::Sai2Model> robot,
 
     // desired position offsets 
     vector<Vector3d> desired_offsets {Vector3d(2, 0, 0), Vector3d(0, 0, 0), 
-                                      Vector3d(0, 2, 0), Vector3d(0, 0, 0), 
-                                      Vector3d(0, -2, 0), Vector3d(0, 0, 0),
+                                      Vector3d(0, -2, 0), Vector3d(0, 0, 0), 
+                                      Vector3d(0, 2, 0), Vector3d(0, 0, 0),
                                       Vector3d(0, 0, 2), Vector3d(0, 0, 0)};
     // vector<Vector3d> desired_offsets {Vector3d(2, 0, 0)};
 	double t_initial = 2;
@@ -277,6 +281,8 @@ void control(shared_ptr<Sai2Model::Sai2Model> robot,
 		// alpha = motion_force_task->getBlendingCoefficient();
 		// singular_direction = motion_force_task->getSingularTaskRange().col(0);
 
+		robot_curr_q = robot_q;
+
 		// state machine
 		if (state == POSTURE) {
 
@@ -338,8 +344,11 @@ void control(shared_ptr<Sai2Model::Sai2Model> robot,
 				prev_time = time;
 				if (cnt == max_cnt) cnt = max_cnt - 1;				
 			}
-			motion_force_task->setGoalLinearVelocity(Vector3d::Zero());
-			motion_force_task->setGoalLinearAcceleration(Vector3d::Zero());
+			// motion_force_task->setGoalLinearVelocity(Vector3d::Zero());
+			// motion_force_task->setGoalLinearAcceleration(Vector3d::Zero());
+
+			// debug
+			// std::cout << "desired offset: " << desired_offsets[cnt].transpose() << "\n";
 
 			// // move singularity 
 			// if (cnt != 0) {

@@ -133,6 +133,8 @@ JointHandler::JointHandler(std::shared_ptr<Sai2Model::Sai2Model> robot,
 
     _max_vel = - 1 * VectorXd::Ones(_dof);
     _variable_vel_zone = false;
+
+    _apf_thresh = true;
 }
 
 /**
@@ -510,7 +512,7 @@ VectorXd JointHandler::computeTorques(const VectorXd& torques,
                 constrained_joint = true;
 
                 // check exit
-                if (projected_torques_in_constraint(i) > _tau_thresh && !baseline) {
+                if (projected_torques_in_constraint(i) > _tau_thresh && !baseline && !_apf_thresh) {
                     std::cout << "MIN SOFT SAFE EXIT\n";
                     con_task_torques(cnt) = projected_torques_in_constraint(i);
                     con_unit_damping_torques(cnt) = 0;
@@ -572,7 +574,7 @@ VectorXd JointHandler::computeTorques(const VectorXd& torques,
                 // if (projected_torques_in_constraint(i) > _tau_thresh && std::abs(dq(i)) < 0.01) {
                 // if (projected_torques_in_constraint(i) > con_apf_torques(cnt)) {
                 // if (projected_torques_in_constraint(i) > _tau_thresh && std::abs(dq(i)) < _dq_exit_tol && !baseline) {
-                if (projected_torques_in_constraint(i) > _tau_thresh && !baseline) {
+                if (projected_torques_in_constraint(i) > _tau_thresh && !baseline && !_apf_thresh) {
                     std::cout << "MIN HARD SAFE EXIT; RETURNING TO MIN SOFT POS USING SAME VELOCITY CURVE AS BEFORE\n";
 
                     // _joint_state(i) = MIN_SOFT_POS;
@@ -606,7 +608,7 @@ VectorXd JointHandler::computeTorques(const VectorXd& torques,
                 constrained_joint = true;
 
                 // check exit
-                if (projected_torques_in_constraint(i) < - _tau_thresh && !baseline) {
+                if (projected_torques_in_constraint(i) < - _tau_thresh && !baseline && !_apf_thresh) {
                     std::cout << "MAX SOFT SAFE EXIT\n";
                     con_task_torques(cnt) = projected_torques_in_constraint(i);
                     con_unit_damping_torques(cnt) = 0;
@@ -669,7 +671,7 @@ VectorXd JointHandler::computeTorques(const VectorXd& torques,
                 // dot product check
                 // if (projected_torques_in_constraint(i) < - _tau_thresh && std::abs(dq(i)) < 0.01) {
                 // if (projected_torques_in_constraint(i) < -_tau_thresh && std::abs(dq(i)) < _dq_exit_tol && !baseline) {
-                if (projected_torques_in_constraint(i) < -_tau_thresh && !baseline) {
+                if (projected_torques_in_constraint(i) < -_tau_thresh && !baseline && !_apf_thresh) {
 
                     std::cout << "MIN HARD SAFE EXIT; RETURNING TO MIN SOFT POS USING SAME VELOCITY CURVE AS BEFORE\n";
                     // _joint_state(i) = MAX_SOFT_POS;
@@ -748,6 +750,47 @@ VectorXd JointHandler::computeTorques(const VectorXd& torques,
 
         _apf_torques = 1 * (_current_task_range.transpose() * _projected_jacobian).transpose() * \
                                     _Lambda_c * _current_task_range.transpose() * (1 * con_apf_torques);
+
+        _damping_torques = 1 * (_current_task_range.transpose() * _projected_jacobian).transpose() * \
+                                    _Lambda_c * _current_task_range.transpose() * (1 * con_unit_damping_torques);
+
+        // revise joint torques based on tolerance
+        if (_apf_thresh) {
+            cnt = 0;  // reset count
+            for (int i = 0; i < _dof; ++i) {
+                if (_joint_state(i) != SAFE) {
+
+                    if (_joint_state(i) == MIN_SOFT_POS) {
+                        if (projected_torques_in_constraint(i) > _damping_torques(cnt) && \
+                            projected_torques_in_constraint(i) > 0 && !baseline) {
+                            std::cout << "MIN SOFT SAFE EXIT\n";
+                            con_task_torques(cnt) = projected_torques_in_constraint(i);
+                            con_unit_damping_torques(cnt) = 0;
+                        }
+                    } else if (_joint_state(i) == MAX_SOFT_POS) {
+                        if (projected_torques_in_constraint(i) < _damping_torques(cnt) && \
+                            projected_torques_in_constraint(i) < 0 && !baseline) {
+                            std::cout << "MAX SOFT SAFE EXIT\n";
+                            con_task_torques(cnt) = projected_torques_in_constraint(i);
+                            con_unit_damping_torques(cnt) = 0;
+                        }
+                    } else if (_joint_state(i) == MIN_HARD_POS) {
+                        if (projected_torques_in_constraint(i) > _apf_torques(cnt) && !baseline) {
+                            std::cout << "MIN HARD SAFE EXIT\n";
+                            con_task_torques(cnt) = projected_torques_in_constraint(i);
+                            con_apf_torques(cnt) = 0;
+                        }
+                    } else if (_joint_state(i) == MAX_HARD_POS) {
+                        if (projected_torques_in_constraint(i) < _apf_torques(cnt) && !baseline) {
+                            std::cout << "MAX HARD SAFE EXIT\n";
+                            con_task_torques(cnt) = projected_torques_in_constraint(i);;
+                            con_apf_torques(cnt) = 0;
+                        }
+                    }
+                    cnt++;
+                }
+            }
+        }
 
         // std::cout << "APF TORQUES TO MOTOR: " << _apf_torques.transpose() << "\n";
 

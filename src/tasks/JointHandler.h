@@ -33,7 +33,7 @@ class JointHandler {
 public:
 
     JointHandler(std::shared_ptr<Sai2Model::Sai2Model> robot,
-                 const bool& verbose = true,
+                 const bool& verbose = false,
                  const bool& truncation_flag = false,
                  const bool& is_floating = false,
                  const double& pos_zone_1 = 8,
@@ -222,6 +222,10 @@ public:
 
     VectorXi getExitState(const VectorXd& torques);
 
+    void setApfThreshFlag(const bool flag) {
+        _apf_thresh = flag;
+    }
+
 private:
 
     std::shared_ptr<Sai2Model::Sai2Model> _robot;
@@ -259,6 +263,7 @@ private:
     VectorXd _rho_0;
     VectorXd _eta;
     VectorXd _apf_torques;
+    VectorXd _damping_torques;
     VectorXd _max_vel;
 
     // verbose output 
@@ -287,6 +292,7 @@ private:
     VectorXd _exit_velocity;
     double _dq_exit_tol;
     bool _variable_vel_zone;
+    bool _apf_thresh;
 
 };
 

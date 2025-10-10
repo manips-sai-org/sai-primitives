@@ -40,9 +40,14 @@ OTG_6dof_cartesian::OTG_6dof_cartesian(const Vector3d& initial_position,
 }
 
 void OTG_6dof_cartesian::reInitialize(const Vector3d& initial_position,
-									  const Matrix3d& initial_orientation) {
-	setGoalPosition(initial_position);
-	setGoalOrientation(initial_orientation);
+									  const Matrix3d& initial_orientation,
+									  const Vector3d& initial_linear_velocity,
+									  const Vector3d& initial_angular_velocity) {
+	// setGoalPosition(initial_position);
+	// setGoalOrientation(initial_orientation);
+
+	setGoalPositionAndLinearVelocity(initial_position, initial_linear_velocity);
+	setGoalOrientationAndAngularVelocity(initial_orientation, initial_angular_velocity);
 
 	_input.current_position = _input.target_position;
 	_input.current_velocity.setZero();
@@ -53,11 +58,13 @@ void OTG_6dof_cartesian::reInitialize(const Vector3d& initial_position,
 	_output.new_acceleration.setZero();
 }
 
-void OTG_6dof_cartesian::reInitializeLinear(const Vector3d& initial_position) {
+void OTG_6dof_cartesian::reInitializeLinear(const Vector3d& initial_position, 
+										    const Vector3d& initial_velocity) {
 	setGoalPosition(initial_position);
 
 	_input.current_position.head<3>() = _input.target_position.head<3>();
-	_input.current_velocity.head<3>().setZero();
+	// _input.current_velocity.head<3>().setZero();
+	_input.current_velocity.head<3>() = initial_velocity;
 	_input.current_acceleration.head<3>().setZero();
 
 	_output.new_position.head<3>() = _input.target_position.head<3>();
@@ -65,12 +72,13 @@ void OTG_6dof_cartesian::reInitializeLinear(const Vector3d& initial_position) {
 	_output.new_acceleration.head<3>().setZero();
 }
 
-void OTG_6dof_cartesian::reInitializeAngular(
-	const Matrix3d& initial_orientation) {
+void OTG_6dof_cartesian::reInitializeAngular(const Matrix3d& initial_orientation,
+											 const Vector3d& initial_velocity) {
 	setGoalOrientation(initial_orientation);
 
 	_input.current_position.tail<3>() = _input.target_position.tail<3>();
-	_input.current_velocity.tail<3>().setZero();
+	// _input.current_velocity.tail<3>().setZero();
+	_input.current_velocity.tail<3>() = initial_velocity;
 	_input.current_acceleration.tail<3>().setZero();
 
 	_output.new_position.tail<3>() = _input.target_position.tail<3>();

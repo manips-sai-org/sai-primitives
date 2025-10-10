@@ -36,6 +36,7 @@ const string robot_name = "PANDA";
 // ui torques and control torques
 VectorXd ui_torques;
 VectorXd control_torques;
+VectorXd curr_robot_q;
 
 // mutex for global variables between different threads
 mutex mutex_torques;
@@ -50,8 +51,8 @@ void simulation(shared_ptr<Sai2Model::Sai2Model> robot,
 /*
 	Control
 */
-// bool flag_simulation = true;
-bool flag_simulation = false;
+bool flag_simulation = true;
+// bool flag_simulation = false;
 Sai2Common::RedisClient* redis_client;
 std::string JOINT_ANGLES_KEY = "sai2::FrankaPanda::Romeo::sensors::q";
 std::string JOINT_VELOCITIES_KEY = "sai2::FrankaPanda::Romeo::sensors::dq";
@@ -88,6 +89,8 @@ int main(int argc, char** argv) {
 	robot->setQ(sim->getJointPositions(robot_name));
 	robot->updateModel();
 
+	curr_robot_q = robot->q();
+
 	// sim->setJointPositions(robot_name, 0 * robot->q());
 
 	// intitialize global torques variables
@@ -109,7 +112,7 @@ int main(int argc, char** argv) {
 	while (graphics->isWindowOpen()) {
 		{
 			lock_guard<mutex> lock(mutex_robot);
-			graphics->updateRobotGraphics(robot_name, robot->q());
+			graphics->updateRobotGraphics(robot_name, curr_robot_q);
 		}
 		graphics->renderGraphicsWorld();
 		{
@@ -168,6 +171,7 @@ void control(shared_ptr<Sai2Model::Sai2Model> robot,
     motion_force_task->setPosControlGains(100, 20, 0);
     motion_force_task->setOriControlGains(100, 20, 0);
 	motion_force_task->disableInternalOtg();
+	motion_force_task->enableTrackingMode();
     motion_force_task->disableVelocitySaturation();
     motion_force_task->setSingularityHandlingBounds(7e-3, 7e-2);
     // motion_force_task->enableVelocitySaturation(1.0, M_PI / 3);
@@ -292,6 +296,7 @@ void control(shared_ptr<Sai2Model::Sai2Model> robot,
 		// singular_direction = motion_force_task->getSingularTaskRange().col(0);
 		alpha = motion_force_task->getBlendingCoefficient();
 		ori_error = motion_force_task->getOrientationError();
+		curr_robot_q = robot_q;
 
 		// std::cout << "s values: " << svalues.transpose() << "\n";
 

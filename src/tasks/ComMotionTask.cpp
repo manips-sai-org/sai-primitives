@@ -162,14 +162,27 @@ void ComMotionTask::initialSetup() {
 		_current_position, _current_orientation, getLoopTimestep());
 	enableInternalOtgAccelerationLimited(0.3, 1.0, M_PI / 3, M_PI);
 
-	// singularity handling
-	// _singularity_handler->disableSingularityHandling();
-	_singularity_handler = std::make_unique<SingularityHandler>(getConstRobotModel(), 
-																_link_name, 
-																_compliant_frame, 
-																_pos_range + _ori_range);
+	// ad-rbdl model
+	auto ad_robot = std::make_shared<AutoDiffRigidBodyDynamics::Model>(getConstRobotModel()->getFilename());
+
+	// full joint dependency
+	std::vector<int> joint_dependency;
+	for (int i = 0; i < getConstRobotModel()->dof(); ++i) {
+		joint_dependency.push_back(i);
+	}
+
+	// singularity handler
+	_singularity_handler = std::make_unique<SingularityHandler>(getConstRobotModel(),
+																ad_robot,
+		      													_link_name,
+																_compliant_frame,
+																_pos_range + _ori_range,
+															    joint_dependency,
+															    getLoopTimestep());
 	setSingularityHandlingBounds(6e-3, 6e-2);  
 	setDynamicDecouplingType(BOUNDED_INERTIA_ESTIMATES);
+
+	_singularity_handler->disableSingularityHandling();
 
 	reInitializeTask();	
 }
