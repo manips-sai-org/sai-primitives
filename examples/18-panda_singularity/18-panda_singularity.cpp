@@ -166,6 +166,7 @@ void control(shared_ptr<Sai2Model::Sai2Model> robot,
 	motion_force_task->enableTrackingMode();
     motion_force_task->enableVelocitySaturation(0.4, M_PI);
 	motion_force_task->setSingularityHandlingBounds(7e-3, 7e-2);
+	// motion_force_task->setSingularityHandlingBounds(1e-2, 1e-1);
 	motion_force_task->setPosControlGains(100, 20, 0);
 	motion_force_task->setOriControlGains(100, 20, 0);
 	VectorXd motion_force_task_torques = VectorXd::Zero(dof);

@@ -207,7 +207,8 @@ void MotionForceTask::initialSetup() {
 																_compliant_frame,
 																_pos_range + _ori_range,
 															    _joint_dependency,
-															    getLoopTimestep());
+															    getLoopTimestep(), 
+															    true);
 	setSingularityHandlingBounds(6e-3, 6e-2); 
 	setDynamicDecouplingType(DefaultParameters::dynamic_decoupling_type);
 	setBoundedInertiaEstimateThreshold(DefaultParameters::bie_threshold, DefaultParameters::singularity_bie_threshold);
@@ -414,11 +415,12 @@ VectorXd MotionForceTask::computeTorques() {
 		
 		if (!_use_internal_otg_flag) {
 			// compute current velocities and accelerations for otg settings 
-			double max_linear_velocity = _current_linear_velocity.norm();
-			double max_angular_velocity = _current_angular_velocity.norm();
+			double tol_buffer = 1e-3;
+			double max_linear_velocity = _current_linear_velocity.norm() + tol_buffer;
+			double max_angular_velocity = _current_angular_velocity.norm() + tol_buffer;
 			VectorXd curr_acceleration = getConstRobotModel()->acceleration6d(_link_name, _compliant_frame.translation());
-			double max_linear_acceleration = curr_acceleration.head(3).norm();
-			double max_angular_acceleration = curr_acceleration.tail(3).norm();
+			double max_linear_acceleration = curr_acceleration.head(3).norm() + tol_buffer;
+			double max_angular_acceleration = curr_acceleration.tail(3).norm() + tol_buffer;
 
 			if (max_linear_velocity < DefaultParameters::otg_max_linear_velocity) {
 				max_linear_velocity = DefaultParameters::otg_max_linear_velocity;

@@ -268,8 +268,7 @@ private:
      */
     void classifySingularity(const MatrixXd& projected_jacobian,
                              const MatrixXd& singular_task_range, 
-                             const MatrixXd& singular_joint_task_range,
-                             const std::vector<MatrixXd>& dJdq);
+                             const MatrixXd& singular_joint_task_range);
 
     // singularity setup
     std::shared_ptr<Sai2Model::Sai2Model> _robot;
@@ -343,6 +342,13 @@ private:
     std::vector<VectorXd> _dsdq_vec;
     std::deque<bool> _motion_towards_singularity_history;
     int _motion_towards_singularity_buffer_size;
+    std::vector<MatrixXd> _dJdq;
+
+    MatrixXd _alpha_blending_matrix;
+
+    // degenerate singularity gracking
+    bool _is_degenerate_singularity;
+    VectorXd _prev_singular_vector;
 
 };
 

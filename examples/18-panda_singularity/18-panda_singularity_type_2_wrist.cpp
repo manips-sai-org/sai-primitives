@@ -29,8 +29,9 @@ using namespace Eigen;
 const string world_file = "${EXAMPLE_18_FOLDER}/world.urdf";
 // const string robot_file =
 // 	"${SAI2_MODEL_URDF_FOLDER}/panda/panda_arm_sphere.urdf";
-const string robot_file =
-	"${SAI2_MODEL_URDF_FOLDER}/panda/panda_arm_gripper_fixed.urdf";
+// const string robot_file =
+	// "${SAI2_MODEL_URDF_FOLDER}/panda/panda_arm_gripper_fixed.urdf";
+const string robot_file = std::string(SAI2_MODEL_URDF_FOLDER) + "/panda/panda_arm_gripper_fixed.urdf";
 const string robot_name = "PANDA";
 
 // ui torques and control torques

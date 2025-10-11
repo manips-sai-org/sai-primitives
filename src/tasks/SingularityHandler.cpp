@@ -131,6 +131,9 @@ SingularityHandler::SingularityHandler(std::shared_ptr<Sai2Model::Sai2Model> rob
     _handle_singularity_exit = false;
     _is_in_singularity = false;
 
+    _alpha_blending_matrix = MatrixXd::Zero(1, 1);
+    _prev_singular_vector = VectorXd::Zero(_task_rank);
+
 }
 
 void SingularityHandler::updateTaskModel(MatrixXd& projected_jacobian, const MatrixXd& N_prec, const bool& is_floating) {
@@ -144,12 +147,12 @@ void SingularityHandler::updateTaskModel(MatrixXd& projected_jacobian, const Mat
     // compute jacobian derivatives 
     VectorXdual q_dual = _robot->q().cast<dual>();
     Vector3dual pos_in_link_dual = _compliant_frame.translation().cast<dual>();
-    auto dJdq = jacobianDerivative(_ad_robot, 
-                                   q_dual, 
-                                   _link_name, 
-                                   pos_in_link_dual, 
-                                   AutoDiffRigidBodyDynamics::BOTH, 
-                                   _joint_dependency);
+    _dJdq = jacobianDerivative(_ad_robot, 
+                                q_dual, 
+                                _link_name, 
+                                pos_in_link_dual, 
+                                AutoDiffRigidBodyDynamics::BOTH, 
+                                _joint_dependency);
 
     // svd check
     _fully_singular_task = false;
@@ -175,6 +178,8 @@ void SingularityHandler::updateTaskModel(MatrixXd& projected_jacobian, const Mat
 					_robot->MInv() * 
 					_projected_jacobian_s.transpose()).completeOrthogonalDecomposition().pseudoInverse();
 
+        _alpha_blending_matrix = MatrixXd::Zero(_task_rank, _task_rank);
+
         // update flags 
         _is_in_singularity = true;
 
@@ -183,6 +188,7 @@ void SingularityHandler::updateTaskModel(MatrixXd& projected_jacobian, const Mat
             double inv_condition_number = _svd_s(i) / _svd_s(0);
 
             if (inv_condition_number < _s_max) {
+
                 // task enters singularity blending region
                 _alpha = std::clamp((inv_condition_number - _s_min) / (_s_max - _s_min), 0., 1.);
 
@@ -200,6 +206,17 @@ void SingularityHandler::updateTaskModel(MatrixXd& projected_jacobian, const Mat
                 _joint_task_range_s = _svd_V.block(0, i, _svd_V.rows(), _task_rank - i);
                 _projected_jacobian_s = _task_range_s.transpose() * projected_jacobian;  
                 _Lambda_s = (_projected_jacobian_s * _robot->MInv() * _projected_jacobian_s.transpose()).inverse();
+
+                int n_singularities = _task_range_s.cols();
+                _alpha_blending_matrix = MatrixXd::Zero(n_singularities, n_singularities);
+                for (int j = 0; j < n_singularities; ++j) {
+                    double curr_inv_condition_number = _svd_s(i + j) / _svd_s(0);
+                    _alpha_blending_matrix(j, j) = std::clamp((curr_inv_condition_number - _s_min) / (_s_max - _s_min), 0., 1.);
+                }
+
+                if (_verbose) {
+                    std::cout << "alpha blending matrix: \n" << _alpha_blending_matrix << "\n";
+                }
 
                 // update flags 
                 _is_in_singularity = true;
@@ -223,6 +240,8 @@ void SingularityHandler::updateTaskModel(MatrixXd& projected_jacobian, const Mat
                 _joint_task_range_s = MatrixXd::Zero(_dof, 1);
                 _projected_jacobian_s = MatrixXd::Zero(_task_rank, _dof);
                 _Lambda_s = MatrixXd::Zero(_task_rank, _task_rank);
+
+                _alpha_blending_matrix = MatrixXd::Zero(_task_rank, _task_rank);
 
                 // update flags 
                 _is_in_singularity = false;
@@ -319,13 +338,12 @@ void SingularityHandler::updateTaskModel(MatrixXd& projected_jacobian, const Mat
         }
 	}
 
-    classifySingularity(projected_jacobian, _task_range_s, _joint_task_range_s, dJdq);
+    classifySingularity(projected_jacobian, _task_range_s, _joint_task_range_s);
 }
 
 void SingularityHandler::classifySingularity(const MatrixXd& projected_jacobian,
                                              const MatrixXd& singular_task_range,
-                                             const MatrixXd& singular_joint_task_range,
-                                             const std::vector<MatrixXd>& dJdq) {
+                                             const MatrixXd& singular_joint_task_range) {
     // memory of entering conditions 
     if (_singularity_types.size() == 0 || (_type_2_counter > _type_1_counter) || _enforce_type_1_strategy) {
         _q_prior = _robot->q();
@@ -353,7 +371,7 @@ void SingularityHandler::classifySingularity(const MatrixXd& projected_jacobian,
     for (int i = 0; i < singular_task_range.cols(); ++i) {
         VectorXd dsdq = VectorXd::Zero(_robot->dof());
         for (int j = 0; j < _robot->dof(); ++j) {
-            dsdq(j) = singular_task_range.col(i).transpose() * dJdq[j] * singular_joint_task_range.col(i);
+            dsdq(j) = singular_task_range.col(i).transpose() * _dJdq[j] * singular_joint_task_range.col(i);
         }
         _dsdq_vec.push_back(dsdq);
 
@@ -404,6 +422,11 @@ void SingularityHandler::classifySingularity(const MatrixXd& projected_jacobian,
         }
         _singularity_history.pop_front();
         _alpha_history.pop_front();
+    }
+
+    // initialize previous singular vector if zero
+    if (_prev_singular_vector.isZero()) {
+        _prev_singular_vector = singular_task_range.col(0);
     }
 
 }
@@ -469,9 +492,13 @@ VectorXd SingularityHandler::computeTorques(const VectorXd& unit_mass_force, con
         Vector3d normalized_angular_moment = (unit_mass_force + force_related_terms).tail(3).normalized();
         VectorXd normalized_force_moment(6);
         normalized_force_moment << normalized_linear_force, normalized_angular_moment;
+        
+        _is_degenerate_singularity = false;
 
         // handle 1 singularity at a time based on counter 
         if (_type_1_counter > _type_2_counter || _enforce_type_1_strategy) {
+
+            VectorXd u_proj = _task_range_s.col(0);
 
             VectorXd dsdq = VectorXd::Zero(_robot->dof());
             // higher-order singularities, compute dsdq in closest singular direction
@@ -489,17 +516,38 @@ VectorXd SingularityHandler::computeTorques(const VectorXd& unit_mass_force, con
                 // if degenerate singular values, then compute projection
                 // otherwise, use the smallest singular value 
                 // assumes the smallest singular value is degenerate (only smallest singular value is addressed)
+                // compute the dsdq most closesly aligned with current task direction for determining approaching/leaving singularity
                 if (std::abs(_svd_s(0) - _svd_s(1)) < DEGENERATE_TOL) {
+                    _is_degenerate_singularity = true;
+
                     // VectorXd u_proj = _task_range_s * _task_range_s.transpose() * normalized_force_moment;
-                    VectorXd u_coeff = task_range_s_type_1.transpose() * normalized_force_moment;
-                    for (int i = 0; i < task_range_s_type_1.cols(); ++i) {
-                        dsdq += u_coeff(i) * _dsdq_vec[i];
+                    // VectorXd u_coeff = task_range_s_type_1.transpose() * normalized_force_moment;
+                    u_proj = _task_range_s * _task_range_s.transpose() * _prev_singular_vector;  // use previous singular vector
+                    VectorXd u_coeff = task_range_s_type_1.transpose() * _prev_singular_vector;
+                    VectorXd v_proj = VectorXd::Zero(_robot->dof());
+                    for (int i = 0; i < u_coeff.size(); ++i) {
+                        v_proj += u_coeff(i) * _joint_task_range_s.col(i);
                     }
+
+                    // re-compute the weighted dsdq 
+                    for (int i = 0; i < _robot->dof(); ++i) {
+                        dsdq(i) = u_proj.transpose() * _dJdq[i] * v_proj;
+                    }
+
+                    // for (int i = 0; i < task_range_s_type_1.cols(); ++i) {
+                        // dsdq += u_coeff(i) * _dsdq_vec[i];
+                    // }
                 } else {
                     dsdq = _dsdq_vec[type_1_indices[0]];
+                    u_proj = task_range_s_type_1.col(0);
                 }
             } else {
                 dsdq = _dsdq_vec[0];
+                u_proj = _task_range_s.col(0);
+            }
+
+            if (!_is_degenerate_singularity) {
+                _prev_singular_vector = u_proj;
             }
 
             // determine if approaching or leaving type 1 singularity 
@@ -557,8 +605,9 @@ VectorXd SingularityHandler::computeTorques(const VectorXd& unit_mass_force, con
                 // velocity-saturated towards holding posture (entering posture) 
                 // VectorXd dq_des = vel_scaling * (_kp_type_1 / _kv_type_1) * (_q_prior - q_curr);
                 VectorXd dq_des = (_kp_type_1 / _kv_type_1) * (_q_prior - q_curr);
-                if (dq_des.norm() > TYPE_1_STEP_VEL) {
-                    dq_des = TYPE_1_STEP_VEL * dq_des.normalized();
+                double vel_scaling = std::clamp((unit_mass_force + force_related_terms).norm() / MAX_FORCE_NORM, 0.0, 1.0);
+                if (dq_des.norm() > vel_scaling * TYPE_1_STEP_VEL) {
+                    dq_des = vel_scaling * TYPE_1_STEP_VEL * dq_des.normalized();
                 }
                 unit_torques = - _kv_type_1 * (_robot->dq() - dq_des);
 
@@ -609,11 +658,17 @@ VectorXd SingularityHandler::computeTorques(const VectorXd& unit_mass_force, con
                     // if degenerate singular values, then compute projection
                     // otherwise, use the smallest singular value 
                     if (std::abs(_svd_s(0) - _svd_s(1)) < DEGENERATE_TOL) {
+                        _is_degenerate_singularity = true;
                         // get the singular direction in the singular task range closest to force direction
-                        u_proj = task_range_s_type_2 * task_range_s_type_2.transpose() * normalized_force_moment;
+                        // u_proj = task_range_s_type_2 * task_range_s_type_2.transpose() * normalized_force_moment;
+                        u_proj = task_range_s_type_2 * task_range_s_type_2.transpose() * _prev_singular_vector;
                     } else {
                         u_proj = task_range_s_type_2.col(type_2_indices[0]);  // if not degenerate, then default type 2 singularity 
                     }
+                } 
+
+                if (!_is_degenerate_singularity) {
+                    _prev_singular_vector = u_proj;
                 }
 
                 double fTd = normalized_force_moment.dot(u_proj);
@@ -637,8 +692,11 @@ VectorXd SingularityHandler::computeTorques(const VectorXd& unit_mass_force, con
         }
 
         // combine non-singular torques and blended singular torques with joint strategy torques
-        _singular_task_torques = _projected_jacobian_s.transpose() * (_Lambda_s_modified * _task_range_s.transpose() * unit_mass_force + \
-                                            _task_range_s.transpose() * force_related_terms);
+        // _singular_task_torques = _projected_jacobian_s.transpose() * (_Lambda_s_modified * _task_range_s.transpose() * unit_mass_force + \
+        //                                     _task_range_s.transpose() * force_related_terms);
+        _singular_task_torques = _projected_jacobian_s.transpose() * \
+                                    (_Lambda_s_modified * _alpha_blending_matrix * _task_range_s.transpose() * unit_mass_force + \
+                                    _task_range_s.transpose() * force_related_terms);
 
         _task_torques_with_singularity = tau_ns + _singular_task_torques;
 
@@ -656,7 +714,8 @@ VectorXd SingularityHandler::computeTorques(const VectorXd& unit_mass_force, con
         }
 
         // return tau_ns + _alpha * _singular_task_torques + (1 - _alpha) * _joint_strategy_torques;
-        return tau_ns + _alpha * _singular_task_torques + 1 * _joint_strategy_torques;
+        // return tau_ns + _alpha * _singular_task_torques + 1 * _joint_strategy_torques;
+        return tau_ns + _singular_task_torques + _joint_strategy_torques;
     }
 }
 
