@@ -17,7 +17,7 @@ namespace {
     double TYPE_2_TORQUE_RATIO = 1e-2;
     double TYPE_2_ANGLE_THRESHOLD = 15 * M_PI / 180;
     double TYPE_2_VEL_RATIO = 1e-2;
-    double TYPE_2_MAX_VEL = M_PI / 3;
+    double TYPE_2_MAX_VEL = M_PI / 2;
     double BUFFER_SIZE = 200;
     double MOTION_TOWARDS_SINGULARITY_BUFFER_SIZE = 1;
     double KP_TYPE_1 = 100;
@@ -29,7 +29,7 @@ namespace {
     // double DIRECTION_STEP_SIZE = 5e0;  // to determine motion direction for towards/away from type 1 singularity 
     // double Q_LIMIT_DELTA = 5 * M_PI / 180;
     // double TYPE_1_DIR_TOL = 1e-3;
-    double MAX_FORCE_NORM = 5;  // admittance force -> velocity scaling
+    double MAX_FORCE_NORM = 1;  // admittance force -> velocity scaling
     double JOINT_LIMIT_BUFFER = 5 * M_PI / 180;
     double DEGENERATE_TOL = 1e-1;  // when two singular values are close enough
     double BIE_THRESHOLD = 0.5;
@@ -133,6 +133,7 @@ SingularityHandler::SingularityHandler(std::shared_ptr<Sai2Model::Sai2Model> rob
 
     _alpha_blending_matrix = MatrixXd::Zero(1, 1);
     _prev_singular_vector = VectorXd::Zero(_task_rank);
+    _type_1_retracting = false;
 
 }
 
@@ -253,15 +254,19 @@ void SingularityHandler::updateTaskModel(MatrixXd& projected_jacobian, const Mat
     if (_task_range_s.norm() == 0 || !_enforce_handling_strategy) {
         _N = _N_ns;  
         _Lambda_joint_s = MatrixXd::Zero(1, 1);  // placeholder
+        _N_Vs = MatrixXd::Zero(1, 1);
     } else if (_task_range_ns.norm() == 0) {
         _N = N_prec;  // if task is fully singular, then pass through the task 
         _Lambda_joint_s = MatrixXd::Zero(1, 1);  // placeholder
+        _N_Vs = MatrixXd::Identity(1, 1);
     } else {
         _posture_projected_jacobian = _joint_task_range_s.transpose() * _N_ns * N_prec;
         Sai2Model::OpSpaceMatrices op_space_matrices =
             _robot->operationalSpaceMatrices(_posture_projected_jacobian);
         _Lambda_joint_s = op_space_matrices.Lambda;
         _N = op_space_matrices.N * _N_ns; 
+        _N_Vs = op_space_matrices.N;  // only nullspace of Vs
+
     }
 
     switch (_dynamic_decoupling_type) {
@@ -495,6 +500,12 @@ VectorXd SingularityHandler::computeTorques(const VectorXd& unit_mass_force, con
         
         _is_degenerate_singularity = false;
 
+        // compute a target desired singular joint space velocity from the singular task force 
+        // velocity-impedance scaling 
+        // singular joint-space directionality from transfer
+        // VectorXd singular_task_force = _Lambda_s_modified * _task_range_s.transpose() * unit_mass_force;
+        // VectorXd dq_des = std::clamp(singular_task_force.norm() / max_force, 0.0, 1.0);
+
         // handle 1 singularity at a time based on counter 
         if (_type_1_counter > _type_2_counter || _enforce_type_1_strategy) {
 
@@ -575,8 +586,15 @@ VectorXd SingularityHandler::computeTorques(const VectorXd& unit_mass_force, con
                 std::cout << "singular direction: " << _task_range_s.transpose() << "\n";
             }
 
+            // determine the directionality of u that is aligned with the maximizing direction
+            Vector3d u_proj_maximizing = u_proj;
+            if (delta_vector.head(3).normalized().transpose() * u_proj_maximizing < 0) {
+                u_proj_maximizing *= -1;
+            }
+
             // double motion_toward_singularity = delta_vector.normalized().transpose() * (unit_mass_force + force_related_terms).normalized();
-            double motion_toward_singularity = delta_vector.head(3).normalized().transpose() * normalized_linear_force;
+            // double motion_toward_singularity = delta_vector.head(3).normalized().transpose() * normalized_linear_force;
+            double motion_toward_singularity = u_proj_maximizing.transpose() * normalized_linear_force;
             _motion_towards_singularity_history.push_back(motion_toward_singularity > 0);
             // pop oldest if greater than buffer size
             if (_motion_towards_singularity_history.size() > _motion_towards_singularity_buffer_size) {
@@ -586,6 +604,7 @@ VectorXd SingularityHandler::computeTorques(const VectorXd& unit_mass_force, con
 
             if (is_moving_towards_singularity) {
                 // command is towards singularity, thus should approach in singular joint space
+                _type_1_retracting = false;
 
                 // pure damping (allow admittance from force scaling towards type 1 singularity)
                 unit_torques = - _kv_type_1 * _robot->dq();
@@ -599,6 +618,8 @@ VectorXd SingularityHandler::computeTorques(const VectorXd& unit_mass_force, con
                 }
             } else {
 
+                _type_1_retracting = true;
+
                 // command to move away from singularity
                 // in this case, prefer to move towards the entering conditions (q_prior)
 
@@ -606,9 +627,10 @@ VectorXd SingularityHandler::computeTorques(const VectorXd& unit_mass_force, con
                 // VectorXd dq_des = vel_scaling * (_kp_type_1 / _kv_type_1) * (_q_prior - q_curr);
                 VectorXd dq_des = (_kp_type_1 / _kv_type_1) * (_q_prior - q_curr);
                 double vel_scaling = std::clamp((unit_mass_force + force_related_terms).norm() / MAX_FORCE_NORM, 0.0, 1.0);
+                // double vel_scaling = std::clamp(1 - _alpha, 0.0, 1.0);
                 if (dq_des.norm() > vel_scaling * TYPE_1_STEP_VEL) {
                     dq_des = vel_scaling * TYPE_1_STEP_VEL * dq_des.normalized();
-                }
+                } 
                 unit_torques = - _kv_type_1 * (_robot->dq() - dq_des);
 
                 if (_verbose) {
@@ -694,9 +716,29 @@ VectorXd SingularityHandler::computeTorques(const VectorXd& unit_mass_force, con
         // combine non-singular torques and blended singular torques with joint strategy torques
         // _singular_task_torques = _projected_jacobian_s.transpose() * (_Lambda_s_modified * _task_range_s.transpose() * unit_mass_force + \
         //                                     _task_range_s.transpose() * force_related_terms);
-        _singular_task_torques = _projected_jacobian_s.transpose() * \
-                                    (_Lambda_s_modified * _alpha_blending_matrix * _task_range_s.transpose() * unit_mass_force + \
-                                    _task_range_s.transpose() * force_related_terms);
+
+        // further project the singular task within the nullspace of Vs 
+
+        if (_is_in_singularity) {
+            if (_type_1_retracting) {
+                // _singular_task_torques = _N_Vs.transpose() * _projected_jacobian_s.transpose() * \
+                //                             (_Lambda_s_modified * _alpha_blending_matrix * _task_range_s.transpose() * unit_mass_force + \
+                //                             _task_range_s.transpose() * force_related_terms);
+                _singular_task_torques = _projected_jacobian_s.transpose() * \
+                                            (_Lambda_s_modified * _alpha_blending_matrix * _task_range_s.transpose() * unit_mass_force + \
+                                            _task_range_s.transpose() * force_related_terms);
+                std::cout << "singular task torques norm: " << _singular_task_torques.norm() << "\n";
+                // issue is that _N_Vs will always cut task in region
+                // task force != joint space dynamics 
+                // characterize task conflict
+            } else {
+                _singular_task_torques = _projected_jacobian_s.transpose() * \
+                                            (_Lambda_s_modified * _alpha_blending_matrix * _task_range_s.transpose() * unit_mass_force + \
+                                            _task_range_s.transpose() * force_related_terms);
+            }
+        } else {
+            _singular_task_torques.setZero();
+        }
 
         _task_torques_with_singularity = tau_ns + _singular_task_torques;
 

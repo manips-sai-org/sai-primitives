@@ -314,6 +314,7 @@ private:
     double _s_min, _s_max;
     double _alpha;
     MatrixXd _N;
+    MatrixXd _N_Vs;
     MatrixXd _task_range_ns, _task_range_s, _joint_task_range_s;
     MatrixXd _projected_jacobian_ns, _projected_jacobian_s;
     MatrixXd _Lambda_ns, _Jbar_ns, _N_ns;
@@ -349,6 +350,7 @@ private:
     // degenerate singularity gracking
     bool _is_degenerate_singularity;
     VectorXd _prev_singular_vector;
+    bool _type_1_retracting;
 
 };
 
