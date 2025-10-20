@@ -202,7 +202,6 @@ void MotionForceTask::initialSetup() {
 
 	// singularity handler
 	_singularity_handler = std::make_unique<SingularityHandler>(getConstRobotModel(),
-																getConstRobotModel()->getAdRobot(),
 		      													_link_name,
 																_compliant_frame,
 																_pos_range + _ori_range,
@@ -294,7 +293,7 @@ void MotionForceTask::updateTaskModel(const MatrixXd& N_prec) {
 				getConstRobotModel()->JWorldFrame(
 					_link_name, _compliant_frame.translation());
 	_projected_jacobian = _jacobian * _N_prec;
-	_singularity_handler->updateTaskModel(_projected_jacobian, _N_prec, _is_floating);
+	_singularity_handler->updateTaskModel(_projected_jacobian, _N_prec);
 	_N = _singularity_handler->getNullspace();  
 
 }
@@ -408,7 +407,7 @@ VectorXd MotionForceTask::computeTorques() {
 	}
 
 	// start otg interpolation when exiting singularity with matching velocity conditions
-	_is_in_singularity = _singularity_handler->getSingularityStatus();  
+	_is_in_singularity = _singularity_handler->getSingularityStatus() && _handle_singularity;  
 	if (!_is_in_singularity && _prev_is_in_singularity) {
 
 		std::cout << "Entering singularity interpolation exit\n";
@@ -462,7 +461,7 @@ VectorXd MotionForceTask::computeTorques() {
 	// compute pos + ori error and revert to trajectory following
 	// if close, then turn off interpolator 
 	// if (goalPositionReached(_singularity_pos_exit_tol) && goalOrientationReached(_singularity_ori_exit_tol)) {
-	if (_otg->isGoalReached()) {
+	if (_otg->isGoalReached() && _handle_singularity) {
 		if (_handle_singularity_exit) {
 			// std::cout << "Exiting singularity interpolation exit\n";
 			_handle_singularity_exit = false;

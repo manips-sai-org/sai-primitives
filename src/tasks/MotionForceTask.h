@@ -30,7 +30,6 @@
 #include "Sai2Model.h"
 #include "TemplateTask.h"
 #include "SingularityHandler.h"
-#include <adrbdl/adrbdl.h>
 
 using namespace Eigen;
 using namespace std;
@@ -735,6 +734,7 @@ public:
 	 * 
 	 */
 	void enableSingularityHandling() {
+		_handle_singularity = true;
 		_singularity_handler->enableSingularityHandling();
 	}
 
@@ -743,6 +743,7 @@ public:
 	 * 
 	 */
 	void disableSingularityHandling() {
+		_handle_singularity = false;
 		_singularity_handler->disableSingularityHandling();
 	}
 
@@ -1066,7 +1067,6 @@ private:
 	bool _tracking_mode;
 
 	// exit singularity transition 
-	// std::shared_ptr<AutoDiffRigidBodyDynamics::Model> _ad_robot;
 	std::vector<int> _joint_dependency;
 	double _singularity_pos_exit_tol, _singularity_ori_exit_tol;
 	bool _default_use_internal_otg;
@@ -1075,6 +1075,7 @@ private:
 	bool _prev_is_in_singularity;
 
 	bool _prev_velocity_saturation;
+	bool _handle_singularity;
 
 };
 

@@ -162,9 +162,6 @@ void ComMotionTask::initialSetup() {
 		_current_position, _current_orientation, getLoopTimestep());
 	enableInternalOtgAccelerationLimited(0.3, 1.0, M_PI / 3, M_PI);
 
-	// ad-rbdl model
-	auto ad_robot = std::make_shared<AutoDiffRigidBodyDynamics::Model>(getConstRobotModel()->getFilename());
-
 	// full joint dependency
 	std::vector<int> joint_dependency;
 	for (int i = 0; i < getConstRobotModel()->dof(); ++i) {
@@ -173,7 +170,6 @@ void ComMotionTask::initialSetup() {
 
 	// singularity handler
 	_singularity_handler = std::make_unique<SingularityHandler>(getConstRobotModel(),
-																ad_robot,
 		      													_link_name,
 																_compliant_frame,
 																_pos_range + _ori_range,

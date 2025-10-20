@@ -18,7 +18,6 @@
 #include <Eigen/Dense>
 #include <queue>
 #include <memory>
-#include <adrbdl/adrbdl.h>
 
 using namespace Eigen;
 namespace Sai2Primitives {
@@ -43,7 +42,6 @@ public:
      * @param verbose set to true to print singularity status every timestep 
      */
     SingularityHandler(std::shared_ptr<Sai2Model::Sai2Model> robot,
-                       std::shared_ptr<AutoDiffRigidBodyDynamics::Model> ad_robot,
                        const std::string& link_name,
                        const Affine3d& compliant_frame,
                        const int& task_rank,
@@ -57,7 +55,7 @@ public:
      * @param projected_jacobian Projected jacobian from motion force task
      * @param N_prec Nullspace of preceding tasks from motion force task
      */
-    void updateTaskModel(MatrixXd& projected_jacobian, const MatrixXd& N_prec, const bool& is_floating = false);
+    void updateTaskModel(MatrixXd& projected_jacobian, const MatrixXd& N_prec);
 
     /**
      * @brief Computes the torques from the singularity handling. If the projected jacobian isn't classified singular, then
@@ -284,6 +282,7 @@ private:
     bool _enforce_handling_strategy;
     double _dt;
     bool _verbose;
+    int _n_floating;
 
     // singularity information
     std::vector<SingularityType> _singularity_types;
@@ -321,6 +320,7 @@ private:
     MatrixXd _Lambda_s;
     MatrixXd _Lambda_ns_modified, _Lambda_s_modified;
     MatrixXd _Lambda_joint_s, _Lambda_joint_s_modified;
+    VectorXd _svd_s_singular;
 
     // joint task quantities 
     MatrixXd _posture_projected_jacobian, _M_partial;
@@ -336,7 +336,6 @@ private:
     bool _handle_singularity_exit;  // handle exit when leaving singularity handling
 
     // pino model for higher-order Jacobian derivatives 
-    std::shared_ptr<AutoDiffRigidBodyDynamics::Model> _ad_robot;
     std::vector<int> _joint_dependency;
     std::deque<double> _alpha_history;  // singular value ratio history   
     VectorXd _q_target;  // posture target for type 1 and type 2 singularities 
