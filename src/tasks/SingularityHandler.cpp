@@ -183,6 +183,7 @@ void SingularityHandler::updateTaskModel(MatrixXd& projected_jacobian, const Mat
         _is_in_singularity = true;
 
     } else {
+        // iterate through only up to the task rank (do not consider the zero singular values from the task projection)
         for (int i = 1; i < _task_rank; ++i) {
             double inv_condition_number = _svd_s(i) / _svd_s(0);
 
@@ -522,6 +523,14 @@ VectorXd SingularityHandler::computeTorques(const VectorXd& unit_mass_force, con
                     }
                 }
 
+                // if empty, then in transition to type 2 singularities
+                // use the entire task range 
+                if (type_1_indices.empty()) {
+                    for (int i = 0; i < _singularity_types.size(); ++i) {
+                        type_1_indices.push_back(i);
+                    }
+                }
+
                 MatrixXd task_range_s_type_1 = collectColumns(_task_range_s, type_1_indices);  // collect only type 1 task rank
 
                 // if degenerate singular values, then compute projection
@@ -669,6 +678,14 @@ VectorXd SingularityHandler::computeTorques(const VectorXd& unit_mass_force, con
                     std::vector<int> type_2_indices;
                     for (int i = 0; i < _singularity_types.size(); ++i) {
                         if (_singularity_types[i] == TYPE_2_SINGULARITY) {
+                            type_2_indices.push_back(i);
+                        }
+                    }
+
+                    // if empty, then in transition to type 1 singularities
+                    // use the entire task range 
+                    if (type_2_indices.empty()) {
+                        for (int i = 0; i < _singularity_types.size(); ++i) {
                             type_2_indices.push_back(i);
                         }
                     }

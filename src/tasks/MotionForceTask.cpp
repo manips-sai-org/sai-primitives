@@ -207,7 +207,7 @@ void MotionForceTask::initialSetup() {
 																_pos_range + _ori_range,
 															    _joint_dependency,
 															    getLoopTimestep(), 
-															    true);
+															    false);
 	setSingularityHandlingBounds(6e-3, 6e-2); 
 	setDynamicDecouplingType(DefaultParameters::dynamic_decoupling_type);
 	setBoundedInertiaEstimateThreshold(DefaultParameters::bie_threshold, DefaultParameters::singularity_bie_threshold);
