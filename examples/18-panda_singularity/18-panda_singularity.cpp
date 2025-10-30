@@ -393,6 +393,8 @@ void control(shared_ptr<Sai2Model::Sai2Model> robot,
 			alpha = motion_force_task->getBlendingCoefficient();
 			singular_direction = motion_force_task->getSingularTaskRange().col(0);
 
+			std::cout << "singular values: " << svalues.transpose() << "\n";
+
 			// MatrixXd Jc = MatrixXd::Zero(1, robot->dof());
 			// Jc(0) = 1;
 			// MatrixXd force_projection = Jc * robot->dynConsistentInverseJacobian(Jc);

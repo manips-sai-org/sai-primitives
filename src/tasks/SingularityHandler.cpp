@@ -157,6 +157,7 @@ void SingularityHandler::updateTaskModel(MatrixXd& projected_jacobian, const Mat
 
     if (_svd_s(0) < _s_abs_tol) {
         std::cout << "WARNING: Fully singular task\n";
+        std::cout << "Singular value: " << _svd_s(0) << " < " << _s_abs_tol << "\n";
 
         _fully_singular_task = true;
 
@@ -448,7 +449,8 @@ VectorXd SingularityHandler::computeTorques(const VectorXd& unit_mass_force, con
     }
 
     // setup containers 
-    _impedance_force_torques = _projected_jacobian_ns.transpose() * _task_range_ns.transpose() * force_related_terms;
+    _impedance_force_torques = VectorXd::Zero(_dof);
+    // _impedance_force_torques = _projected_jacobian_ns.transpose() * _task_range_ns.transpose() * force_related_terms;
     _singular_task_torques = VectorXd::Zero(_dof);
     _joint_strategy_torques = VectorXd::Zero(_dof);
     VectorXd tau_ns = VectorXd::Zero(_dof);
@@ -467,7 +469,6 @@ VectorXd SingularityHandler::computeTorques(const VectorXd& unit_mass_force, con
         return _projected_jacobian_ns.transpose() * (_task_range_ns.transpose() * unit_mass_force + \
                     _task_range_ns.transpose() * force_related_terms);
     } else {
-        VectorXd tau_ns = VectorXd::Zero(_dof);
 
         // compute non-singular torques 
         if (_fully_singular_task) {
