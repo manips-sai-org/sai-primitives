@@ -200,11 +200,13 @@ void MotionForceTask::initialSetup() {
         }
     }
 
+	int task_rank = (_pos_range + _ori_range < _joint_dependency.size()) ? (_pos_range + _ori_range) : _joint_dependency.size();
+
 	// singularity handler
 	_singularity_handler = std::make_unique<SingularityHandler>(getConstRobotModel(),
 		      													_link_name,
 																_compliant_frame,
-																_pos_range + _ori_range,
+																task_rank,
 															    _joint_dependency,
 															    getLoopTimestep(), 
 															    false);
