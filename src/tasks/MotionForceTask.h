@@ -917,6 +917,26 @@ public:
 		_user_step_orientation_error = user_step_orientation_error;
 	}
 
+	/*
+		Force coupling
+	*/
+    void enableForceDecoupling(const bool flag) {
+		_singularity_handler->enableForceDecoupling(flag);
+	}
+
+	/*
+		Zero crossing 
+	*/
+    void enableZeroForceCrossing() { _zero_force_crossing_flag = true; }
+    void enableZeroMomentCrossing() { _zero_moment_crossing_flag = true; }
+    void disableZeroForceCrossing() { _zero_force_crossing_flag = false; }
+    void disableZeroMomentCrossing() { _zero_moment_crossing_flag = false; }
+
+	void enableZeroPositionCrossing() { _zero_position_crossing_flag = true; }
+    void enableZeroOrientationCrossing() { _zero_orientation_crossing_flag = true; }
+    void disableZeroPositionCrossing() { _zero_position_crossing_flag = false; }
+    void disableZeroOrientationCrossing() { _zero_orientation_crossing_flag = false; }
+
 private:
 	/**
 	 * @brief Initial setup of the task, called in the constructor to avoid
@@ -1076,6 +1096,16 @@ private:
 
 	bool _prev_velocity_saturation;
 	bool _handle_singularity;
+
+	// zero crossing 
+	bool _zero_force_crossing_flag;
+	bool _zero_moment_crossing_flag;
+	bool _zero_position_crossing_flag;
+	bool _zero_orientation_crossing_flag;
+	Vector3d _prev_force_error;
+	Vector3d _prev_moment_error;
+	Vector3d _prev_position_error;
+	Vector3d _prev_orientation_error;
 
 };
 

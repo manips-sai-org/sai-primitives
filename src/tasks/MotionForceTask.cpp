@@ -222,7 +222,18 @@ void MotionForceTask::initialSetup() {
 	_prev_velocity_saturation = false;  // velocity saturation 
 
 	// tracking mode (internal otg off) 
-	_tracking_mode = true;  // trajectory tracking mode 
+	enableTrackingMode();
+
+	// zero crossing
+	_prev_force_error = Vector3d::Zero();
+	_prev_moment_error = Vector3d::Zero();
+	_prev_position_error = Vector3d::Zero();
+	_prev_orientation_error = Vector3d::Zero();
+
+	enableZeroForceCrossing();
+	enableZeroMomentCrossing();
+	enableZeroPositionCrossing();
+	enableZeroOrientationCrossing();
 
 	setSingularityExitInterpolatorNorm(DefaultParameters::singularity_pos_exit_tol, DefaultParameters::singularity_ori_exit_tol);
 
@@ -348,6 +359,19 @@ VectorXd MotionForceTask::computeTorques() {
 
 	// force related terms
 	if (_closed_loop_force_control) {
+
+		Vector3d curr_force_error = _sensed_force_control_world_frame - _goal_force;
+
+		if (_zero_force_crossing_flag) {
+			for (int i = 0; i < 3; ++i) {
+				if (_prev_force_error(i) * curr_force_error(i) < 0) {
+					_integrated_force_error(i) = 0;
+				}
+			}
+		}
+
+		_prev_force_error = curr_force_error;
+
 		// update the integrated error
 		_integrated_force_error +=
 			sigma_force * (_sensed_force_control_world_frame - goal_force) *
@@ -378,6 +402,19 @@ VectorXd MotionForceTask::computeTorques() {
 
 	// moment related terms
 	if (_closed_loop_moment_control) {
+
+		Vector3d curr_moment_error = _sensed_moment_control_world_frame - goal_moment;
+
+		if (_zero_moment_crossing_flag) {
+			for (int i = 0; i < 3; ++i) {
+				if (_prev_moment_error(i) * curr_moment_error(i) < 0) {
+					_integrated_moment_error(i) = 0;
+				}
+			}
+		}
+
+		_prev_moment_error = curr_moment_error;
+
 		// update the integrated error
 		_integrated_moment_error +=
 			sigma_moment * (_sensed_moment_control_world_frame - goal_moment) *
@@ -521,6 +558,16 @@ VectorXd MotionForceTask::computeTorques() {
 	}
 
 	// update integrated error for I term
+	if (_zero_position_crossing_flag) {
+		for (int i = 0; i < 3; ++i) {
+			if (_prev_position_error(i) * step_position_error(i) < 0) {
+				_integrated_position_error(i) = 0;
+			}
+		}
+	}
+	
+	_prev_position_error = step_position_error;
+
 	_integrated_position_error += sigma_position *
 								  (step_position_error) *
 								  getLoopTimestep();
@@ -560,6 +607,16 @@ VectorXd MotionForceTask::computeTorques() {
 	}
 
 	// update integrated error for I term
+	if (_zero_orientation_crossing_flag) {
+		for (int i = 0; i < 3; ++i) {
+			if (_prev_orientation_error(i) * step_orientation_error(i) < 0) {
+				_integrated_orientation_error(i) = 0;
+			}
+		}
+	}
+
+	_prev_orientation_error = step_orientation_error;
+
 	_integrated_orientation_error += step_orientation_error * getLoopTimestep();
 
 	// final contribution
