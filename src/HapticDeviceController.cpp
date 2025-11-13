@@ -150,9 +150,9 @@ HapticDeviceController::HapticDeviceController(
 // Haptic controllers for all the sypported controler types
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-HapticControllerOtuput HapticDeviceController::computeHapticControl(
+HapticControllerOutput HapticDeviceController::computeHapticControl(
 	const HapticControllerInput& input, const bool verbose) {
-	HapticControllerOtuput output;
+	HapticControllerOutput output;
 	_latest_input = input;
 	switch (_haptic_control_type) {
 		case HapticControlType::CLUTCH:
@@ -176,7 +176,7 @@ HapticControllerOtuput HapticDeviceController::computeHapticControl(
 	return output;
 }
 
-void HapticDeviceController::validateOutput(HapticControllerOtuput& output,
+void HapticDeviceController::validateOutput(HapticControllerOutput& output,
 											const bool verbose) {
 	if (output.device_command_force.norm() > _device_limits.max_force) {
 		if (verbose) {
@@ -198,9 +198,9 @@ void HapticDeviceController::validateOutput(HapticControllerOtuput& output,
 	}
 }
 
-HapticControllerOtuput HapticDeviceController::computeClutchControl(
+HapticControllerOutput HapticDeviceController::computeClutchControl(
 	const HapticControllerInput& input) {
-	HapticControllerOtuput output;
+	HapticControllerOutput output;
 	output.robot_goal_position = _latest_output.robot_goal_position;
 	output.robot_goal_orientation = _latest_output.robot_goal_orientation;
 
@@ -211,10 +211,10 @@ HapticControllerOtuput HapticDeviceController::computeClutchControl(
 	return output;
 }
 
-HapticControllerOtuput HapticDeviceController::computeHomingControl(
+HapticControllerOutput HapticDeviceController::computeHomingControl(
 	const HapticControllerInput& input) {
 	_device_homed = false;
-	HapticControllerOtuput output;
+	HapticControllerOutput output;
 	output.robot_goal_position = _latest_output.robot_goal_position;
 	output.robot_goal_orientation = _latest_output.robot_goal_orientation;
 
@@ -255,9 +255,9 @@ HapticControllerOtuput HapticDeviceController::computeHomingControl(
 	return output;
 }
 
-HapticControllerOtuput HapticDeviceController::computeMotionMotionControl(
+HapticControllerOutput HapticDeviceController::computeMotionMotionControl(
 	const HapticControllerInput& input) {
-	HapticControllerOtuput output;
+	HapticControllerOutput output;
 	output.robot_goal_position = _latest_output.robot_goal_position;
 	output.robot_goal_orientation = _latest_output.robot_goal_orientation;
 
@@ -278,7 +278,7 @@ HapticControllerOtuput HapticDeviceController::computeMotionMotionControl(
 }
 
 void HapticDeviceController::motionMotionControlPosition(
-	const HapticControllerInput& input, HapticControllerOtuput& output) {
+	const HapticControllerInput& input, HapticControllerOutput& output) {
 	// Compute robot goal position
 	Vector3d device_home_to_current_position =
 		input.device_position -
@@ -368,7 +368,7 @@ void HapticDeviceController::motionMotionControlPosition(
 }
 
 void HapticDeviceController::motionMotionControlOrientation(
-	const HapticControllerInput& input, HapticControllerOtuput& output) {
+	const HapticControllerInput& input, HapticControllerOutput& output) {
 	if (!_orientation_teleop_enabled) {
 		return;
 	}
@@ -446,9 +446,9 @@ void HapticDeviceController::motionMotionControlOrientation(
 		_sigma_proxy_moment_feedback * haptic_moments_proxy;
 }
 
-HapticControllerOtuput HapticDeviceController::computeForceMotionControl(
+HapticControllerOutput HapticDeviceController::computeForceMotionControl(
 	const HapticControllerInput& input) {
-	HapticControllerOtuput output;
+	HapticControllerOutput output;
 	output.robot_goal_position = _latest_output.robot_goal_position;
 	output.robot_goal_orientation = _latest_output.robot_goal_orientation;
 
@@ -573,7 +573,7 @@ void HapticDeviceController::applyLineGuidanceForce(
 }
 
 void HapticDeviceController::applyWorkspaceVirtualLimitsForceMoment(
-	const HapticControllerInput& input, HapticControllerOtuput& output) {
+	const HapticControllerInput& input, HapticControllerOutput& output) {
 	if (!_device_workspace_virtual_limits_enabled) {
 		return;
 	}
@@ -616,52 +616,52 @@ void HapticDeviceController::applyWorkspaceVirtualLimitsForceMoment(
 
 double HapticDeviceController::computeKvPosVariableDamping(
 	const double device_velocity) const {
-	if (_variable_damping_linvel_thresholds.empty()) {
+	if (_variable_damping_linvel_thresholds.size() == 0) {
 		return 0;
 	}
 
-	if (device_velocity < _variable_damping_linvel_thresholds.at(0)) {
+	if (device_velocity < _variable_damping_linvel_thresholds(0)) {
 		double interpolation_coeff = computeInterpolationCoeff(
-			device_velocity, 0, _variable_damping_linvel_thresholds.at(0));
-		return interpolation_coeff * _variable_damping_gains_pos.at(0);
+			device_velocity, 0, _variable_damping_linvel_thresholds(0));
+		return interpolation_coeff * _variable_damping_gains_pos(0);
 	}
 
 	for (int i = 1; i < _variable_damping_linvel_thresholds.size(); ++i) {
-		if (device_velocity < _variable_damping_linvel_thresholds.at(i)) {
+		if (device_velocity < _variable_damping_linvel_thresholds(i)) {
 			double interpolation_coeff = computeInterpolationCoeff(
-				device_velocity, _variable_damping_linvel_thresholds.at(i - 1),
-				_variable_damping_linvel_thresholds.at(i));
-			return interpolation_coeff * _variable_damping_gains_pos.at(i) +
+				device_velocity, _variable_damping_linvel_thresholds(i - 1),
+				_variable_damping_linvel_thresholds(i));
+			return interpolation_coeff * _variable_damping_gains_pos(i) +
 				   (1 - interpolation_coeff) *
-					   _variable_damping_gains_pos.at(i - 1);
+					   _variable_damping_gains_pos(i - 1);
 		}
 	}
-	return _variable_damping_gains_pos.back();
+	return _variable_damping_gains_pos(_variable_damping_gains_pos.size() - 1);
 }
 
 double HapticDeviceController::computeKvOriVariableDamping(
 	const double device_velocity) const {
-	if (_variable_damping_angvel_thresholds.empty()) {
+	if (_variable_damping_angvel_thresholds.size() == 0) {
 		return 0;
 	}
 
-	if (device_velocity < _variable_damping_angvel_thresholds.at(0)) {
+	if (device_velocity < _variable_damping_angvel_thresholds(0)) {
 		double interpolation_coeff = computeInterpolationCoeff(
-			device_velocity, 0, _variable_damping_angvel_thresholds.at(0));
-		return interpolation_coeff * _variable_damping_gains_ori.at(0);
+			device_velocity, 0, _variable_damping_angvel_thresholds(0));
+		return interpolation_coeff * _variable_damping_gains_ori(0);
 	}
 
 	for (int i = 1; i < _variable_damping_angvel_thresholds.size(); ++i) {
-		if (device_velocity < _variable_damping_angvel_thresholds.at(i)) {
+		if (device_velocity < _variable_damping_angvel_thresholds(i)) {
 			double interpolation_coeff = computeInterpolationCoeff(
-				device_velocity, _variable_damping_angvel_thresholds.at(i - 1),
-				_variable_damping_angvel_thresholds.at(i));
-			return interpolation_coeff * _variable_damping_gains_ori.at(i) +
+				device_velocity, _variable_damping_angvel_thresholds(i - 1),
+				_variable_damping_angvel_thresholds(i));
+			return interpolation_coeff * _variable_damping_gains_ori(i) +
 				   (1 - interpolation_coeff) *
-					   _variable_damping_gains_ori.at(i - 1);
+					   _variable_damping_gains_ori(i - 1);
 		}
 	}
-	return _variable_damping_gains_ori.back();
+	return _variable_damping_gains_ori(_variable_damping_gains_ori.size());
 }
 
 ///////////////////////////////////////////////////////////////////////////////////
@@ -1070,8 +1070,8 @@ void HapticDeviceController::enableHapticWorkspaceVirtualLimits(
 }
 
 void HapticDeviceController::setVariableDampingGainsPos(
-	const vector<double>& velocity_thresholds,
-	const vector<double>& variable_damping_gains) {
+	const VectorXd& velocity_thresholds,
+	const VectorXd& variable_damping_gains) {
 	if (velocity_thresholds.size() != variable_damping_gains.size()) {
 		cout << "Warning: velocity thresholds and variable damping gains must "
 				"have the same size in "
@@ -1096,7 +1096,7 @@ void HapticDeviceController::setVariableDampingGainsPos(
 		}
 		if (variable_damping_gains[i] > _device_limits.max_linear_damping) {
 			cout << "Warning: variable damping gains must be lower than the "
-					"device max linear damping in "
+					"device max linear damping in "	
 					"HapticDeviceController::setVariableDampingGainsPos. "
 					"Ignoring setting of the variable damping gains."
 				 << endl;
@@ -1116,8 +1116,8 @@ void HapticDeviceController::setVariableDampingGainsPos(
 }
 
 void HapticDeviceController::setVariableDampingGainsOri(
-	const vector<double>& velocity_thresholds,
-	const vector<double>& variable_damping_gains) {
+	const VectorXd& velocity_thresholds,
+	const VectorXd& variable_damping_gains) {
 	if (velocity_thresholds.size() != variable_damping_gains.size()) {
 		cout << "Warning: velocity thresholds and variable damping gains must "
 				"have the same size in "
