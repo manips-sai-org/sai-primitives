@@ -174,14 +174,14 @@ void runControl(shared_ptr<Sai2Simulation::Sai2Simulation> sim) {
 			device_limits, robot->transformInWorld(link_name));
 	haptic_controller->setScalingFactors(3.5);
 	haptic_controller->setReductionFactorForce(0.7);
-	haptic_controller->setVariableDampingGainsPos(vector<double>{0.25, 0.35},
-												  vector<double>{0, 20});
+	haptic_controller->setVariableDampingGainsPos(Vector2d(0.25, 0.35),
+												  Vector2d(0, 20));
 	haptic_controller->setHapticControlType(
 		Sai2Primitives::HapticControlType::HOMING);
 	haptic_controller->disableOrientationTeleop();
 
 	Sai2Primitives::HapticControllerInput haptic_input;
-	Sai2Primitives::HapticControllerOtuput haptic_output;
+	Sai2Primitives::HapticControllerOutput haptic_output;
 	bool haptic_button_was_pressed = false;
 	int haptic_button_is_pressed = 0;
 	redis_client.setInt(createRedisKey(SWITCH_PRESSED_KEY_SUFFIX, 0),

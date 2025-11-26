@@ -44,7 +44,7 @@ find_library(
 # include openGJK for collision detection 
 set(OPENGJK_LOCAL_DIR ${PROJECT_SOURCE_DIR}/openGJK)
 set(OPENGJK_INCLUDE_DIR ${OPENGJK_LOCAL_DIR}/include/openGJK)
-set(OPENGJK_LIBRARIES ${PROJECT_SOURCE_DIR}/openGJK/build/libopengjk_ce.dylib)
+set(OPENGJK_LIBRARIES ${PROJECT_SOURCE_DIR}/openGJK/build/libopengjk_ce.so)
 
 # yaml-cpp
 find_package(yaml-cpp REQUIRED)
