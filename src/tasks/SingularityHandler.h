@@ -345,11 +345,14 @@ private:
     std::vector<MatrixXd> _dJdq;
 
     MatrixXd _alpha_blending_matrix;
+    VectorXd _condition_ratio_vec;
+    VectorXd _alpha_vec;
 
     // degenerate singularity gracking
     bool _is_degenerate_singularity;
     VectorXd _prev_singular_vector;
     bool _type_1_retracting;
+    double _max_condition_ratio;
 
 };
 

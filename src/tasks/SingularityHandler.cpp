@@ -24,7 +24,9 @@ namespace {
     double KV_TYPE_1 = 20;
     double KP_TYPE_2 = 100;
     double KV_TYPE_2 = 20;
-    double TYPE_1_STEP_VEL = M_PI / 3;  // type 1 approach
+    double TYPE_1_STEP_VEL_APPROACH = M_PI / 6;  // type 1 approach
+    double TYPE_1_STEP_SIZE_TOWARDS_SINGULARITY = 1e-1;
+    double TYPE_1_STEP_VEL = M_PI / 3;  // type 1 retract
     double DIRECTION_STEP_SIZE = 1e-3;  // to determine motion direction for towards/away from type 1 singularity 
     // double DIRECTION_STEP_SIZE = 5e0;  // to determine motion direction for towards/away from type 1 singularity 
     // double Q_LIMIT_DELTA = 5 * M_PI / 180;
@@ -33,6 +35,7 @@ namespace {
     double JOINT_LIMIT_BUFFER = 5 * M_PI / 180;
     double DEGENERATE_TOL = 1e-1;  // when two singular values are close enough
     double BIE_THRESHOLD = 0.5;
+    double MAX_CONDITION_RATIO = 1e-6;
 
     // functions
     int sign(double x) {
@@ -138,6 +141,7 @@ SingularityHandler::SingularityHandler(std::shared_ptr<Sai2Model::Sai2Model> rob
     _alpha_blending_matrix = MatrixXd::Zero(1, 1);
     _prev_singular_vector = VectorXd::Zero(_task_rank);
     _type_1_retracting = false;
+    _max_condition_ratio = MAX_CONDITION_RATIO;
 
 }
 
@@ -179,6 +183,8 @@ void SingularityHandler::updateTaskModel(MatrixXd& projected_jacobian, const Mat
         _svd_s_singular = _svd_s;
 
         _alpha_blending_matrix = MatrixXd::Zero(_task_rank, _task_rank);
+        _alpha_vec = VectorXd::Zero(_task_rank);
+        _condition_ratio_vec = VectorXd::Zero(_task_rank);
 
         // update flags 
         _is_in_singularity = true;
@@ -211,9 +217,13 @@ void SingularityHandler::updateTaskModel(MatrixXd& projected_jacobian, const Mat
 
                 int n_singularities = _task_range_s.cols();
                 _alpha_blending_matrix = MatrixXd::Zero(n_singularities, n_singularities);
+                _alpha_vec = VectorXd::Zero(n_singularities);
+                _condition_ratio_vec = VectorXd::Zero(n_singularities);
                 for (int j = 0; j < n_singularities; ++j) {
                     double curr_inv_condition_number = _svd_s(i + j) / _svd_s(0);
                     _alpha_blending_matrix(j, j) = std::clamp((curr_inv_condition_number - _s_min) / (_s_max - _s_min), 0., 1.);
+                    _alpha_vec(j) = _alpha_blending_matrix(j, j);
+                    _condition_ratio_vec(j) = curr_inv_condition_number / _s_min;
                 }
 
                 if (_verbose) {
@@ -245,6 +255,8 @@ void SingularityHandler::updateTaskModel(MatrixXd& projected_jacobian, const Mat
                 _svd_s_singular = VectorXd::Zero(_task_rank);
 
                 _alpha_blending_matrix = MatrixXd::Zero(_task_rank, _task_rank);
+                _alpha_vec = VectorXd::Zero(_task_rank);
+                _condition_ratio_vec = VectorXd::Zero(_task_rank);
 
                 // update flags 
                 _is_in_singularity = false;
@@ -505,7 +517,8 @@ VectorXd SingularityHandler::computeTorques(const VectorXd& unit_mass_force, con
         Vector3d normalized_angular_moment = (unit_mass_force + force_related_terms).tail(3).normalized();
         VectorXd normalized_force_moment(6);
         normalized_force_moment << normalized_linear_force, normalized_angular_moment;
-        
+        VectorXd singular_task_force = _task_range_s * _task_range_s.transpose() * (unit_mass_force + force_related_terms);
+
         _is_degenerate_singularity = false;
 
         // handle 1 singularity 
@@ -614,8 +627,32 @@ VectorXd SingularityHandler::computeTorques(const VectorXd& unit_mass_force, con
                 // command is towards singularity, thus should approach in singular joint space
                 _type_1_retracting = false;
 
-                // pure damping (allow admittance from force scaling towards type 1 singularity)
-                unit_torques = - _kv_type_1 * _robot->dq();
+                if (_alpha_vec.minCoeff() != 0) {
+                    // pure damping (allow admittance from force scaling towards type 1 singularity)
+                    unit_torques = - _kv_type_1 * _robot->dq();
+                } else {
+                    // gradient descent towards singularity
+                    // scaled by the force magnitude and condition number (take the min of the two coefficients)
+                    // VectorXd singular_task_force = _task_range_s * _task_range_s.transpose() * (unit_mass_force + force_related_terms);
+                    double force_vel_scaling = std::clamp(singular_task_force.norm() / MAX_FORCE_NORM, 0.0, 1.0);
+                    double condition_number_scaling = std::clamp(_condition_ratio_vec.minCoeff(), 0.0, 1.0);
+                    double vel_scaling = std::min(force_vel_scaling, condition_number_scaling);
+
+                    VectorXd q_des = q_curr - TYPE_1_STEP_SIZE_TOWARDS_SINGULARITY * dsdq;
+                    // VectorXd q_des = q_toward_singularity;
+                    VectorXd dq_des = (_kp_type_1 / _kv_type_1) * (q_des - q_curr);
+                    // double vel_scaling = std::clamp((_task_range_s.transpose() * (unit_mass_force + force_related_terms)).norm() / MAX_FORCE_NORM, 0.0, 1.0);
+                    // double vel_scaling = std::clamp(1 - _alpha, 0.0, 1.0);
+                    if (dq_des.norm() > vel_scaling * TYPE_1_STEP_VEL_APPROACH) {
+                        dq_des = vel_scaling * TYPE_1_STEP_VEL_APPROACH * dq_des.normalized();
+                    } 
+                    unit_torques = - _kv_type_1 * (_robot->dq() - dq_des);
+
+                    std::cout << "Type 1 gradient descent\n";
+                    std::cout << "Force vel scaling: " << force_vel_scaling << "\n";
+                    std::cout << "Condition number scaling: " << condition_number_scaling << "\n";
+
+                }
 
                 if (_verbose) {
                     std::cout << "Type 1: Towards Singularity\n";
@@ -634,7 +671,8 @@ VectorXd SingularityHandler::computeTorques(const VectorXd& unit_mass_force, con
                 // velocity-saturated towards holding posture (entering posture) 
                 // VectorXd dq_des = vel_scaling * (_kp_type_1 / _kv_type_1) * (_q_prior - q_curr);
                 VectorXd dq_des = (_kp_type_1 / _kv_type_1) * (_q_prior - q_curr);
-                double vel_scaling = std::clamp((unit_mass_force + force_related_terms).norm() / MAX_FORCE_NORM, 0.0, 1.0);
+                // VectorXd singular_task_force = _task_range_s * _task_range_s.transpose() * (unit_mass_force + force_related_terms);
+                double vel_scaling = std::clamp(singular_task_force.norm() / MAX_FORCE_NORM, 0.0, 1.0);
                 // double vel_scaling = std::clamp(1 - _alpha, 0.0, 1.0);
                 if (dq_des.norm() > vel_scaling * TYPE_1_STEP_VEL) {
                     dq_des = vel_scaling * TYPE_1_STEP_VEL * dq_des.normalized();
@@ -653,7 +691,7 @@ VectorXd SingularityHandler::computeTorques(const VectorXd& unit_mass_force, con
         } else {
 
             // type 2 handling 
-            if ((unit_mass_force + force_related_terms).norm() < _type_2_force_threshold) {
+            if (singular_task_force.norm() < _type_2_force_threshold) {
                 // damping only if force is small (deadband)
                 unit_torques = - _kv_type_2 * _robot->dq();
 
