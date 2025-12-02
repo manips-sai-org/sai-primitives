@@ -160,8 +160,8 @@ void SingularityHandler::updateTaskModel(MatrixXd& projected_jacobian, const Mat
     _fully_singular_task = false;
 
     if (_svd_s(0) < _s_abs_tol) {
-        std::cout << "WARNING: Fully singular task\n";
-        std::cout << "Singular value: " << _svd_s(0) << " < " << _s_abs_tol << "\n";
+        // std::cout << "WARNING: Fully singular task\n";
+        // std::cout << "Singular value: " << _svd_s(0) << " < " << _s_abs_tol << "\n";
 
         _fully_singular_task = true;
 
@@ -639,6 +639,10 @@ VectorXd SingularityHandler::computeTorques(const VectorXd& unit_mass_force, con
                     double vel_scaling = std::min(force_vel_scaling, condition_number_scaling);
 
                     VectorXd q_des = q_curr - TYPE_1_STEP_SIZE_TOWARDS_SINGULARITY * dsdq;
+
+                    // saturate within joint limits 
+                    q_des = saturateBox(q_des, _q_lower, _q_upper);
+
                     // VectorXd q_des = q_toward_singularity;
                     VectorXd dq_des = (_kp_type_1 / _kv_type_1) * (q_des - q_curr);
                     // double vel_scaling = std::clamp((_task_range_s.transpose() * (unit_mass_force + force_related_terms)).norm() / MAX_FORCE_NORM, 0.0, 1.0);
