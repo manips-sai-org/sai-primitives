@@ -82,7 +82,7 @@ public:
 
 	void setBoundedInertiaEstimateThreshold(const double& threshold,
                                             const double& singularity_threshold) {
-		if(threshold < 0){
+		if (threshold < 0){
 			_bie_threshold = 0;
 		}
 		_bie_threshold = threshold;
@@ -324,6 +324,7 @@ private:
 
     // joint task quantities 
     MatrixXd _posture_projected_jacobian, _M_partial;
+    MatrixXd _M_inv_BIE_SINGULARITY;
     
     VectorXd _singular_task_torques;
     VectorXd _joint_strategy_torques;
@@ -353,6 +354,11 @@ private:
     VectorXd _prev_singular_vector;
     bool _type_1_retracting;
     double _max_condition_ratio;
+
+    // multi-singularity handling containers 
+    std::vector<MatrixXd> _posture_projected_jacobian_vec;
+    MatrixXd _prev_task_range_s;
+    MatrixXd _N_sjs_init;
 
 };
 
