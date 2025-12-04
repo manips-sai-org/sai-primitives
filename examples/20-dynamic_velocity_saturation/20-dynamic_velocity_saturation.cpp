@@ -393,7 +393,7 @@ void control(shared_ptr<Sai2Model::Sai2Model> robot,
 			// log
 			svalues = motion_force_task->getSingularValues();
 			singular_task_torques = motion_force_task->getSingularTaskTorques();
-			alpha = motion_force_task->getBlendingCoefficient();
+			// alpha = motion_force_task->getBlendingCoefficient();
 			singular_direction = motion_force_task->getSingularTaskRange().col(0);
 
 			// MatrixXd Jc = MatrixXd::Zero(1, robot->dof());

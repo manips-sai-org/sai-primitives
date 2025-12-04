@@ -593,8 +593,8 @@ public:
      * 
      * @param flag true to enforce type 1 handling behavior 
      */
-	void handleAllSingularitiesAsType1(const bool flag) {
-		_singularity_handler->handleAllSingularitiesAsType1(flag);
+	void handleAllSingularitiesAsTypeOne(const bool flag) {
+		_singularity_handler->handleAllSingularitiesAsTypeOne(flag);
 	}
 	
 	/**
@@ -602,8 +602,8 @@ public:
 	 * 
 	 * @param q_des desired posture 
 	 */
-	void setType1Posture(const VectorXd& q_des) {
-		_singularity_handler->setType1Posture(q_des);
+	void setTypeOnePosture(const VectorXd& q_des) {
+		_singularity_handler->setTypeOnePosture(q_des);
 	}
 
 	/**
@@ -645,32 +645,8 @@ public:
 		_singularity_handler->setSingularityHandlingGains(kp_type_1, kv_type_1, kp_type_2, kv_type_2);
 	}
 
-	/**
-	 * @brief Set the Singularity Handling Params object
-	 * 
-	 * @param s_abs_tol 
-	 * @param type_1_tol 
-	 * @param type_2_torque_ratio 
-	 * @param type_2_angle_threshold 
-	 * @param perturb_step_size 
-	 * @param buffer_size 
-	 */
-	void setSingularityHandlingParams(const double& s_abs_tol,
-										const double& type_1_tol,
-										const double& type_2_torque_ratio,
-										const double& type_2_angle_threshold,
-										const double& perturb_step_size,
-										const int& buffer_size) {
-		_singularity_handler->setSingularityHandlingParams(s_abs_tol,
-															type_1_tol,
-															type_2_torque_ratio,
-															type_2_angle_threshold,
-															perturb_step_size,
-															buffer_size);
-	}
-
-	void setSingularityHandlingType2Direction(const VectorXd& type_2_direction) {
-		_singularity_handler->setType2Direction(type_2_direction);
+	void setSingularityHandlingTypeTwoDirection(const VectorXd& type_2_direction) {
+		_singularity_handler->setTypeTwoDirection(type_2_direction);
 	}
 
 	// -------- getters for model parameters --------

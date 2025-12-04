@@ -242,7 +242,7 @@ void control(shared_ptr<Sai2Model::Sai2Model> robot,
     Matrix3d ee_ori = Matrix3d::Identity();
 	Vector3d goal_pos = Vector3d::Zero();
     VectorXd singular_task_torques = VectorXd::Zero(robot->dof());
-    double alpha = 1;
+	VectorXd alpha = VectorXd::Ones(6);
     Vector3d ori_error = Vector3d::Zero();
     VectorXd singular_direction = VectorXd::Zero(6);
 	logger.addToLog(robot_q, "robot_q");
@@ -295,7 +295,9 @@ void control(shared_ptr<Sai2Model::Sai2Model> robot,
 		// svalues = motion_force_task->getSingularValues();
 		// singular_task_torques = motion_force_task->getSingularTaskTorques();
 		// singular_direction = motion_force_task->getSingularTaskRange().col(0);
-		alpha = motion_force_task->getBlendingCoefficient();
+		if (motion_force_task->getNumSingularities() > 0) {
+			alpha.head(motion_force_task->getNumSingularities()) = motion_force_task->getBlendingVector();
+		}
 		ori_error = motion_force_task->getOrientationError();
 		curr_robot_q = robot_q;
 

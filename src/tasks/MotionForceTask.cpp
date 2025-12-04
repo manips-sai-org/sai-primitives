@@ -446,8 +446,10 @@ VectorXd MotionForceTask::computeTorques() {
 	}
 
 	// start otg interpolation when exiting singularity with matching velocity conditions
-	_is_in_singularity = _singularity_handler->getSingularityStatus() && _handle_singularity;  
-	if (!_is_in_singularity && _prev_is_in_singularity) {
+	// also handles the case when still in singularity, but going down
+	_is_in_singularity = _singularity_handler->getSingularityStatus() && _handle_singularity;
+	// if (!_is_in_singularity && _prev_is_in_singularity || _singularity_handler->getSingularityTransitionStatus()) {
+	if (_singularity_handler->getSingularityTransitionStatus() && _handle_singularity) {
 
 		std::cout << "Entering singularity interpolation exit\n";
 		

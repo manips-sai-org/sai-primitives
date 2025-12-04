@@ -227,7 +227,7 @@ void control(shared_ptr<Sai2Model::Sai2Model> robot,
 	Vector3d goal_pos = Vector3d::Zero();
 	VectorXd singular_task_torques = VectorXd::Zero(robot->dof());
 	Vector3d ori_error = Vector3d::Zero();
-	double alpha = 1;
+	VectorXd alpha = VectorXd::Ones(1);
 	VectorXd singular_direction = VectorXd::Zero(6);
 	logger.addToLog(robot_q, "robot_q");
 	logger.addToLog(robot_dq, "robot_dq");
@@ -390,7 +390,9 @@ void control(shared_ptr<Sai2Model::Sai2Model> robot,
 			// log
 			svalues = motion_force_task->getSingularValues();
 			singular_task_torques = motion_force_task->getSingularTaskTorques();
-			alpha = motion_force_task->getBlendingCoefficient();
+			if (motion_force_task->getNumSingularities() > 0) {
+				alpha.head(motion_force_task->getNumSingularities()) = motion_force_task->getBlendingVector();
+			}
 			singular_direction = motion_force_task->getSingularTaskRange().col(0);
 
 			std::cout << "singular values: " << svalues.transpose() << "\n";
