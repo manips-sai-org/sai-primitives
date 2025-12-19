@@ -553,7 +553,7 @@ void SingularityHandler::updateTaskModel(MatrixXd& projected_jacobian, const Mat
                     double curr_inv_condition_number = _svd_s(i + j) / _svd_s(0);
                     _alpha_blending_matrix(j, j) = std::clamp((curr_inv_condition_number - _s_min) / (_s_max - _s_min), 0., 1.);
                     _alpha_vec(j) = _alpha_blending_matrix(j, j);
-                    _condition_ratio_vec(j) = curr_inv_condition_number / _s_min;
+                    _condition_ratio_vec(j) = curr_inv_condition_number;
                 }
 
                 // update flags 

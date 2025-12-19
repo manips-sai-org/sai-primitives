@@ -104,15 +104,17 @@ public:
 
         // gains
         // static constexpr double kv_damping = 10;  // panda
-        static constexpr double kv_damping = 10;  // puma
+        static constexpr double kv_damping = 5;  // puma
         static constexpr double kp_type_1 = 100;
         static constexpr double kv_type_1 = 20;
         static constexpr double kp_type_2 = 100;
         // static constexpr double kv_type_2 = 20;  // panda
         static constexpr double kv_type_2 = 5;  // puma
 
-        // type 1 parameters
+        // singularity parameters
         static constexpr double s_abs_tol = 1e-3;  
+
+        // type 1 parameters
         static constexpr double type_1_tol = 0.5;
         // static constexpr double type_1_tol = 0.1;
         static constexpr double perturb_step_size = 5e0;
@@ -120,7 +122,7 @@ public:
         
         static constexpr double type_1_buffer_size = 1;
         static constexpr double type_1_max_vel_away_from_singularity = 30 * M_PI / 180;  // type 1 retract
-        static constexpr double type_1_max_vel_towards_singularity = 30 * M_PI / 180;  
+        static constexpr double type_1_max_vel_towards_singularity = 30 * M_PI / 180;  // type 1 approach
         static constexpr double type_1_step_size_control_towards_singularity = 50 * M_PI / 180;
         static constexpr double type_1_step_size_classification_towards_singularity = 2 * M_PI / 180;  // to determine motion direction for towards/away from type 1 singularity 
  
