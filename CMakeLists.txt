@@ -4,17 +4,18 @@ project(SAI2-PRIMITIVES)
 set(PROJECT_VERSION 0.1.0)
 
 option(BUILD_EXAMPLES "Build examples" ON)
+option(BUILD_TESTS "Build tests" ON)
 
 set(CMAKE_CXX_FLAGS "-std=c++17 -I/usr/include -I/usr/local/include -fPIC -O2")
 if(${CMAKE_SYSTEM_NAME} MATCHES Darwin)
-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -I/opt/homebrew/include")
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -I/opt/homebrew/include -w")
 endif()
 
 if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
   message(STATUS "Setting build type to 'Release' as none was specified.")
 
   set(CMAKE_BUILD_TYPE
-      Release 
+      Debug 
       CACHE STRING "Choose the type of build." FORCE)
   set_property(CACHE CMAKE_BUILD_TYPE PROPERTY STRINGS "Debug" "Release"
                                                "MinSizeRel" "RelWithDebInfo")
@@ -58,6 +59,9 @@ find_package(yaml-cpp REQUIRED)
 # - adrbdl
 # find_package(adrbdl REQUIRED)
 
+# - nlopt
+find_package(nlopt REQUIRED)
+
 # add tasks
 set(CONTROLLERS_SOURCE
     ${PROJECT_SOURCE_DIR}/src/RobotController.cpp
@@ -97,7 +101,7 @@ include_directories(
 add_library(sai2-primitives STATIC ${CONTROLLERS_SOURCE}
                                    ${HELPER_MODULES_SOURCE})
 
-set(SAI2-PRIMITIVES_LIBRARIES sai2-primitives ${RUCKIG_LIBRARIES} ${OPENGJK_LIBRARIES} yaml-cpp::yaml-cpp)
+set(SAI2-PRIMITIVES_LIBRARIES sai2-primitives ${RUCKIG_LIBRARIES} ${OPENGJK_LIBRARIES} yaml-cpp::yaml-cpp nlopt)
 
 set(SAI2-PRIMITIVES_DEFINITIONS ${PROJECT_DEFINITIONS})
 
@@ -127,4 +131,9 @@ write_basic_package_version_file(
 # add examples
 if(BUILD_EXAMPLES)
   add_subdirectory(${PROJECT_SOURCE_DIR}/examples)
+endif()
+
+# add tests
+if(BUILD_TESTS)
+  add_subdirectory(${PROJECT_SOURCE_DIR}/tests)
 endif()

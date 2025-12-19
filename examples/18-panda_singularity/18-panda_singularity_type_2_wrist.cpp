@@ -174,7 +174,8 @@ void control(shared_ptr<Sai2Model::Sai2Model> robot,
 	motion_force_task->disableInternalOtg();
 	motion_force_task->enableTrackingMode();
     motion_force_task->disableVelocitySaturation();
-    motion_force_task->setSingularityHandlingBounds(7e-3, 7e-2);
+    // motion_force_task->setSingularityHandlingBounds(7e-3, 7e-2);
+    motion_force_task->setSingularityHandlingBounds(2e-2, 7e-2);
     // motion_force_task->enableVelocitySaturation(1.0, M_PI / 3);
     // motion_force_task->setSingularityHandlingBounds(5e-2, 5e-1);
 	VectorXd motion_force_task_torques = VectorXd::Zero(dof);
@@ -202,8 +203,10 @@ void control(shared_ptr<Sai2Model::Sai2Model> robot,
 	// q_des << -0.109943,-1.44935,-0.0982967,-2.21411,-0.100156,0.785034,0.756978;
     // q_des << 0,-0.919364,0.0103624,-2.38671,-0.0298135,3.0152,0.863642;  // wrist singularity 
     // q_des << -0.125263*0,-0.119768,0.104413,-2.16512,0.0216533 * 0,3.32598,0.787686;  // combined 
-    q_des << -0.00775566,-0.133565,0.0153017,-2.16814,0.0430064,3.29317,0.797755;
+    // q_des << -0.00775566,-0.133565,0.0153017,-2.16814,0.0430064,3.29317,0.797755;  // starting
+    q_des << 0,-0.133565,0.0153017,-2.16814,0,3.29317,0.797755;  // starting
     joint_task->setGoalPosition(q_des);
+	// motion_force_task->setTypeOnePosture(q_des);
 	// partial_joint_task->setGoalPosition(q_des);
 
     // desired orientation offset 

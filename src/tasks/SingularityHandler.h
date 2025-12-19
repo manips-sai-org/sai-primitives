@@ -18,6 +18,10 @@
 #include <Eigen/Dense>
 #include <queue>
 #include <memory>
+#include <algorithm>
+#include <numeric>
+#include <iostream>
+#include <nlopt.hpp>
 
 using namespace Eigen;
 namespace Sai2Primitives {
@@ -28,32 +32,124 @@ enum SingularityType {
     TYPE_2_SINGULARITY
 };
 
+struct Singularity {
+    VectorXd u;
+    VectorXd v;
+    double sigma;
+    VectorXd dsdq;
+    SingularityType type;
+    VectorXd u_toward_singularity;  // for type 1 singularities 
+
+    void setSingularValueGradient(const VectorXd& dsdq_) {
+        dsdq = dsdq_;
+    }
+
+    void setTowardSingularityDirection(const VectorXd& u) {
+        u_toward_singularity = u;
+    }
+
+    double getConditionRatio(const double min, const double max, const double s0) {
+        double curr_inv_condition_number = sigma / s0;
+        return std::clamp((curr_inv_condition_number - min) / (max - min), 0.0, 1.0);
+    }
+
+    double getConditionRatioWithMin(const double min) {
+        return std::clamp(sigma / min, 0.0, 1.0);
+    }
+
+    Singularity(const VectorXd& u,
+                const VectorXd& v,
+                const double sigma,
+                const SingularityType type) :
+                u(u), v(v), sigma(sigma), type(type) {}
+
+    Singularity(const VectorXd& u,
+                const VectorXd& v,
+                const double sigma,
+                const VectorXd& dsdq,
+                const VectorXd& u_toward_singularity,
+                const SingularityType type) : 
+                u(u), v(v), sigma(sigma), dsdq(dsdq), u_toward_singularity(u_toward_singularity), type(type) {}
+
+    Singularity() : type(NO_SINGULARITY) {}
+};
+
 const std::vector<std::string> singularity_labels {"No Singularity", "Type 1 Singularity", "Type 2 Singularity"};
+
+// nlopt information struct 
+struct OptimData {
+    std::vector<VectorXd> basis;
+    MatrixXd projected_jacobian;
+    Vector3d starting_position;
+    VectorXd starting_q;
+    double perturb_step_size;
+
+    OptimData(const double perturb_step_size) : perturb_step_size(perturb_step_size) {}
+
+    void setData(const std::vector<VectorXd>& basis_,
+                 const MatrixXd& projected_jacobian_,
+                 const Vector3d& starting_position_,
+                 const VectorXd& starting_q_) {
+        basis = basis_;
+        projected_jacobian = projected_jacobian_;
+        starting_position = starting_position_;
+        starting_q = starting_q_;
+    }
+};
 
 class SingularityHandler {
 public:
 
     struct DefaultParameters {
+
+        // gains
+        // static constexpr double kv_damping = 10;  // panda
+        static constexpr double kv_damping = 10;  // puma
         static constexpr double kp_type_1 = 100;
         static constexpr double kv_type_1 = 20;
         static constexpr double kp_type_2 = 100;
-        static constexpr double kv_type_2 = 20;
+        // static constexpr double kv_type_2 = 20;  // panda
+        static constexpr double kv_type_2 = 5;  // puma
+
+        // type 1 parameters
         static constexpr double s_abs_tol = 1e-3;  
-        static constexpr double type_1_tol = 0.5;   
+        static constexpr double type_1_tol = 0.5;
+        // static constexpr double type_1_tol = 0.1;
         static constexpr double perturb_step_size = 5e0;
-        static constexpr double type_2_angle_threshold = 15 * M_PI / 180;
-        static constexpr double type_2_force_threshold = 0.01;
-        static constexpr double type_2_max_vel = M_PI / 2;
-        static constexpr double buffer_size = 200;  // singularity history 
+        // static constexpr double perturb_step_size = 50 * M_PI / 180;
+        
         static constexpr double type_1_buffer_size = 1;
-        static constexpr double type_1_max_vel_away_from_singularity = M_PI / 3;  // type 1 retract
-        static constexpr double type_1_max_vel_towards_singularity = M_PI / 6;  
-        static constexpr double type_1_step_size_control_towards_singularity = 1e-1;
-        static constexpr double type_1_step_size_classification_towards_singularity = 1e-3;  // to determine motion direction for towards/away from type 1 singularity 
-        static constexpr double max_force_norm = 1;  // admittance force -> velocity scaling
+        static constexpr double type_1_max_vel_away_from_singularity = 30 * M_PI / 180;  // type 1 retract
+        static constexpr double type_1_max_vel_towards_singularity = 30 * M_PI / 180;  
+        static constexpr double type_1_step_size_control_towards_singularity = 50 * M_PI / 180;
+        static constexpr double type_1_step_size_classification_towards_singularity = 2 * M_PI / 180;  // to determine motion direction for towards/away from type 1 singularity 
+ 
+        // type 2 parameters
+        static constexpr double type_2_angle_threshold = 15 * M_PI / 180;
+        // static constexpr double type_2_force_threshold = 0.01;
+        static constexpr double type_2_max_vel = 30 * M_PI / 180;
+        static constexpr double buffer_size = 1;  
+              
+        static constexpr double max_force_norm = 1;  
         static constexpr double joint_limit_buffer = 5 * M_PI / 180;
-        static constexpr double bie_threshold = 0.5;
-        static constexpr double singular_bie_threshold = 0.5;
+
+        // bounded inertia
+        static constexpr double bie_threshold = 0.15;
+        static constexpr double singular_bie_threshold = 0.15;
+
+        // solver tol
+        static constexpr double xtol_rel = 1e-3;
+        static constexpr double ftol_rel = 1e-3;
+        static constexpr double xtol_abs = 1e-3;
+        static constexpr double max_time = 0.1;  // ms
+
+        // static constexpr int nm_max_iter = 100;
+        static constexpr int type_1_search_max_iter = 100;
+
+        static constexpr double degenerate_singular_value_spacing = 5e-2;
+        static constexpr double type_1_search_tol = 5e-2;  // condition ratio tolerance for {u, v} disassociation
+        static constexpr double type_1_step_size_for_line_search = 30 * M_PI / 180;  // to determine motion direction for towards/away from type 1 singularity 
+        // static constexpr double nm_step_size = 2 * M_PI / 180;
     };
 
     /**
@@ -151,7 +247,8 @@ public:
      * @param q_des desired posture 
      */
     void setTypeOnePosture(const VectorXd& q_des) {
-        _q_prior = q_des;
+        _use_goal_posture = true;
+        _q_goal_posture = q_des;
     }
 
     void enableSingularityHandling() {
@@ -280,7 +377,9 @@ public:
         return _singularity_exit_transition;
     }
 
-    // experimental baseline values 
+    /*
+        Experimental 
+    */
     VectorXd getNonHandlingTorques() {
         return _task_torques_with_singularity;
     }
@@ -296,6 +395,21 @@ private:
     void classifySingularity(const MatrixXd& projected_jacobian,
                              const MatrixXd& singular_task_range, 
                              const MatrixXd& singular_joint_task_range);
+
+    std::pair<VectorXd, VectorXd> getTowardSingularityDirection(const VectorXd& curr_q,
+                                                                const Vector3d& curr_pos,
+                                                                const VectorXd& u,
+                                                                const VectorXd& dsdq,
+                                                                const double step_size);
+
+    bool checkBasisForType1(const VectorXd& curr_q,
+                            const Vector3d& curr_pos,
+                            const MatrixXd& projected_jacobian,
+                            const MatrixXd& singular_joint_task_range,
+                            const double step_size);
+
+    static double objective(const std::vector<double> &x, std::vector<double> &grad, void* f_data);
+    static double equality(const std::vector<double> &x, std::vector<double> &grad, void* f_data);
 
     // singularity setup
     std::shared_ptr<Sai2Model::Sai2Model> _robot;
@@ -320,18 +434,26 @@ private:
     int _buffer_size;
 
     // type 1 specifications
+    bool _use_goal_posture;
     VectorXd _q_prior, _dq_prior;
+    VectorXd _q_goal_posture;
+    double _kv_damping;
     double _kp_type_1, _kv_type_1;
+    double _type_1_search_tol;
     double _type_1_tol;
     double _type_1_max_vel_towards_singularity;
     double _type_1_max_vel_away_from_singularity;
     double _type_1_step_size_control_towards_singularity;
     double _type_1_step_size_classification_towards_singularity;
+    double _type_1_step_size_for_line_search;
     int _type_1_buffer_size;
+    int _type_1_num_search_samples;
+    int _type_1_search_max_iter;
 
     // type 2 specifications
     double _type_2_angle_threshold;
     double _kp_type_2, _kv_type_2;
+    double _type_2_max_vel;
     VectorXd _type_2_max_vel_vector;
     VectorXd _type_2_direction;
     double _type_2_force_threshold;
@@ -350,6 +472,7 @@ private:
     MatrixXd _Lambda_joint_s, _Lambda_joint_s_modified;
     VectorXd _svd_s_singular;
     double _alpha;
+    double _degenerate_singular_value_spacing;
 
     // joint task quantities 
     MatrixXd _posture_projected_jacobian, _M_partial;
@@ -379,6 +502,19 @@ private:
 
     // degenerate singularity gracking
     bool _is_degenerate_singularity;
+    bool _zero_degenerate_singularity;
+    std::vector<std::vector<int>> _degenerate_indices;
+    std::vector<Singularity> _active_singularities;
+    std::map<int, Singularity> _degenerate_singularities;  // map original index in svector
+    
+    std::vector<VectorXd> _degenerate_singular_values;
+    std::vector<MatrixXd> _degenerate_singular_task_range;
+    std::vector<MatrixXd> _degenerate_singular_joint_task_range;
+    std::vector<MatrixXd> _type_1_degenerate_singular_task_range;
+    std::vector<MatrixXd> _type_1_degenerate_singular_joint_task_range;
+    std::vector<MatrixXd> _type_2_degenerate_singular_task_range;
+    std::vector<MatrixXd> _type_2_degenerate_singular_joint_task_range;
+
     VectorXd _prev_singular_vector;
     bool _type_1_retracting;
 
@@ -388,6 +524,15 @@ private:
     int _prev_num_singularities;
     bool _singularity_exit_transition;
     double _max_force_norm;
+
+    // nelder-mead parameters
+    double _nm_tol;
+    int _nm_max_iter;
+    double _nm_step_size;
+
+    // nlopt 
+    std::map<int, std::unique_ptr<nlopt::opt>> _nl_opt;
+    OptimData* _nl_opt_data;
 
 };
 

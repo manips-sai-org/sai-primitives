@@ -1,0 +1,26 @@
+set(EXAMPLE_NAME 01-puma)
+# create an executable
+ADD_EXECUTABLE (${EXAMPLE_NAME} ${EXAMPLE_NAME}.cpp)
+add_executable(nm_test nm_test.cpp)
+# ADD_EXECUTABLE (${EXAMPLE_NAME}_type_2_overhead ${EXAMPLE_NAME}_type_2_overhead.cpp)
+# ADD_EXECUTABLE (${EXAMPLE_NAME}_type_2_wrist ${EXAMPLE_NAME}_type_2_wrist.cpp)
+
+# and link the library against the executable
+TARGET_LINK_LIBRARIES (${EXAMPLE_NAME}
+	${SAI2-PRIMITIVES_LIBRARIES}
+	${SAI2-PRIMITIVES_TESTS_COMMON_LIBRARIES}
+	)
+
+target_link_libraries(nm_test 
+						${SAI2-PRIMITIVES_LIBRARIES}
+						${SAI2-PRIMITIVES_TESTS_COMMON_LIBRARIES})
+
+# TARGET_LINK_LIBRARIES (${EXAMPLE_NAME}_type_2_overhead
+# 	${SAI2-PRIMITIVES_LIBRARIES}
+# 	${SAI2-PRIMITIVES_EXAMPLES_COMMON_LIBRARIES}
+# 	)
+
+# TARGET_LINK_LIBRARIES (${EXAMPLE_NAME}_type_2_wrist
+# 	${SAI2-PRIMITIVES_LIBRARIES}
+# 	${SAI2-PRIMITIVES_EXAMPLES_COMMON_LIBRARIES}
+# 	)

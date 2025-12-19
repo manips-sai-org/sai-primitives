@@ -22,6 +22,12 @@
 bool fSimulationRunning = false;
 void sighandler(int) { fSimulationRunning = false; }
 
+#include <chrono>
+using std::chrono::high_resolution_clock;
+using std::chrono::duration_cast;
+using std::chrono::duration;
+using std::chrono::milliseconds;
+
 using namespace std;
 using namespace Eigen;
 
@@ -116,7 +122,7 @@ int main(int argc, char** argv) {
 	while (graphics->isWindowOpen()) {
 		{
 			lock_guard<mutex> lock(mutex_robot);
-			graphics->updateRobotGraphics(robot_name, robot_curr_q);
+			graphics->updateRobotGraphics(robot_name, sim->getJointPositions(robot_name));
 		}
 		graphics->renderGraphicsWorld();
 		{
@@ -165,7 +171,8 @@ void control(shared_ptr<Sai2Model::Sai2Model> robot,
     motion_force_task->disableInternalOtg();
 	motion_force_task->enableTrackingMode();
     motion_force_task->enableVelocitySaturation(0.4, M_PI);
-	motion_force_task->setSingularityHandlingBounds(7e-3, 7e-2);
+	// motion_force_task->setSingularityHandlingBounds(7e-3, 7e-2);
+	motion_force_task->setSingularityHandlingBounds(2e-2, 7e-2);
 	// motion_force_task->setSingularityHandlingBounds(5e-2, 5e-1);
 	motion_force_task->setPosControlGains(100, 20, 0);
 	motion_force_task->setOriControlGains(100, 20, 0);
@@ -193,6 +200,7 @@ void control(shared_ptr<Sai2Model::Sai2Model> robot,
 	// q_des << -0.109943,-1.44935,-0.0982967,-2.21411,-0.100156,0.785034,0.756978;
     joint_task->setGoalPosition(q_des);
 	// partial_joint_task->setGoalPosition(q_des);
+	motion_force_task->setTypeOnePosture(q_des);
 
 	VectorXd q_transition(robot->dof());
 	double time_transition = 0;
@@ -323,10 +331,14 @@ void control(shared_ptr<Sai2Model::Sai2Model> robot,
 
 			// update tasks model. Order is important to define the hierarchy
 			N_prec = MatrixXd::Identity(dof, dof);
+			// auto t1 = high_resolution_clock::now();
 			{
 				lock_guard<mutex> lock(mutex_robot);
 				motion_force_task->updateTaskModel(N_prec);
 			}
+			// auto t2 = high_resolution_clock::now();
+			// duration<double, std::milli> ms_double = t2 - t1;
+			// std::cout << std::setprecision(4) << ms_double.count() << "ms\n";
 			N_prec = motion_force_task->getTaskAndPreviousNullspace();
 			// after each task, need to update the nullspace
 			// of the previous tasks in order to garantee
@@ -336,7 +348,9 @@ void control(shared_ptr<Sai2Model::Sai2Model> robot,
 
 			// -------- set task goals and compute control torques
 			// position: move to workspace extents 
+			// std::cout << time - prev_time << "\n";
 			if (time - prev_time > t_wait[cnt % 2]) {
+				std::cout << "Switch\n";
 				motion_force_task->setGoalPosition(initial_position + desired_offsets[cnt]);
 				// motion_force_task->setGoalPosition(initial_position + Vector3d(2, 0, 0));
 				q_transition = robot->q();
@@ -374,7 +388,11 @@ void control(shared_ptr<Sai2Model::Sai2Model> robot,
 			// }
 
 			// compute torques for the different tasks
+			// auto t1 = high_resolution_clock::now();
 			motion_force_task_torques = motion_force_task->computeTorques();
+			// auto t2 = high_resolution_clock::now();
+			// duration<double, std::milli> ms_double = t2 - t1;
+			// std::cout << std::setprecision(4) << ms_double.count() << "ms\n";
 			joint_task_torques = joint_task->computeTorques();
 
 			//------ compute the final torques
@@ -395,7 +413,7 @@ void control(shared_ptr<Sai2Model::Sai2Model> robot,
 			}
 			singular_direction = motion_force_task->getSingularTaskRange().col(0);
 
-			std::cout << "singular values: " << svalues.transpose() << "\n";
+			// std::cout << "singular values: " << svalues.transpose() << "\n";
 
 			// MatrixXd Jc = MatrixXd::Zero(1, robot->dof());
 			// Jc(0) = 1;

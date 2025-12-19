@@ -35,4 +35,5 @@
 **.DS_Store
 **/build/
 .vscode/
-
+**/archive/
+test/

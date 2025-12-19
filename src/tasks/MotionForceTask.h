@@ -778,6 +778,10 @@ public:
 		return _singularity_handler->isExitingSingularity();
 	}
 
+	void setType1Posture(const VectorXd& q_des) {
+		_singularity_handler->setTypeOnePosture(q_des);
+	}
+
 	/**
 	 * @brief Set the Floating object
 	 * 
@@ -920,6 +924,10 @@ public:
     void enableZeroOrientationCrossing() { _zero_orientation_crossing_flag = true; }
     void disableZeroPositionCrossing() { _zero_position_crossing_flag = false; }
     void disableZeroOrientationCrossing() { _zero_orientation_crossing_flag = false; }
+
+	/*
+		Experimental
+	*/	
 
 private:
 	/**
