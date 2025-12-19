@@ -167,6 +167,7 @@ void control(shared_ptr<Sai2Model::Sai2Model> robot,
 	motion_force_task->setPosControlGains(100, 20, 0);
 	motion_force_task->setOriControlGains(100, 20, 0);
 	motion_force_task->setType1Posture(robot->q());
+	motion_force_task->setSingularityHandlingGains(100, 20, 100, 5);
 
 	// // Partial motion force task
 	// vector<Vector3d> controlled_directions_translation = {

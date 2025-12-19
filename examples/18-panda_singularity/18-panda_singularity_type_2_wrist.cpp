@@ -174,7 +174,7 @@ void control(shared_ptr<Sai2Model::Sai2Model> robot,
 	motion_force_task->disableInternalOtg();
 	motion_force_task->enableTrackingMode();
     motion_force_task->disableVelocitySaturation();
-    // motion_force_task->setSingularityHandlingBounds(7e-3, 7e-2);
+    // motion_force_task->setSingularityHandlingBounds(1e-2, 7e-2);
     motion_force_task->setSingularityHandlingBounds(2e-2, 7e-2);
     // motion_force_task->enableVelocitySaturation(1.0, M_PI / 3);
     // motion_force_task->setSingularityHandlingBounds(5e-2, 5e-1);
@@ -206,7 +206,7 @@ void control(shared_ptr<Sai2Model::Sai2Model> robot,
     // q_des << -0.00775566,-0.133565,0.0153017,-2.16814,0.0430064,3.29317,0.797755;  // starting
     q_des << 0,-0.133565,0.0153017,-2.16814,0,3.29317,0.797755;  // starting
     joint_task->setGoalPosition(q_des);
-	// motion_force_task->setTypeOnePosture(q_des);
+	motion_force_task->setTypeOnePosture(q_des);
 	// partial_joint_task->setGoalPosition(q_des);
 
     // desired orientation offset 
@@ -415,7 +415,8 @@ void control(shared_ptr<Sai2Model::Sai2Model> robot,
                 lock_guard<mutex> lock(mutex_torques);
                 // control_torques = joint_handler->computeTorques(motion_force_task_torques + joint_task_torques);
                 // control_torques = motion_force_task_torques + partial_joint_task_torques + joint_task_torques;
-                control_torques = joint_handler->computeTorques(motion_force_task_torques + joint_task_torques);
+                // control_torques = joint_handler->computeTorques(motion_force_task_torques + joint_task_torques);
+				control_torques = motion_force_task_torques + joint_task_torques;
 				if (!flag_simulation) {
 					redis_client->setEigen(JOINT_TORQUES_COMMANDED_KEY, control_torques);
 				}

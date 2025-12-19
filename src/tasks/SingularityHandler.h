@@ -108,15 +108,15 @@ public:
         static constexpr double kp_type_1 = 100;
         static constexpr double kv_type_1 = 20;
         static constexpr double kp_type_2 = 100;
-        // static constexpr double kv_type_2 = 20;  // panda
-        static constexpr double kv_type_2 = 5;  // puma
+        static constexpr double kv_type_2 = 20;  // panda
+        // static constexpr double kv_type_2 = 5;  // puma
 
         // singularity parameters
         static constexpr double s_abs_tol = 1e-3;  
 
         // type 1 parameters
-        static constexpr double type_1_tol = 0.5;
-        // static constexpr double type_1_tol = 0.1;
+        // static constexpr double type_1_tol = 0.5;
+        static constexpr double type_1_tol = 0.8;
         static constexpr double perturb_step_size = 5e0;
         // static constexpr double perturb_step_size = 50 * M_PI / 180;
         
@@ -129,7 +129,7 @@ public:
         // type 2 parameters
         static constexpr double type_2_angle_threshold = 15 * M_PI / 180;
         // static constexpr double type_2_force_threshold = 0.01;
-        static constexpr double type_2_max_vel = 30 * M_PI / 180;
+        static constexpr double type_2_max_vel = 2 * 60 * M_PI / 180;
         static constexpr double buffer_size = 1;  
               
         static constexpr double max_force_norm = 1;  
