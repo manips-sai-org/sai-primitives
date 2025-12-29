@@ -160,8 +160,9 @@ void control(shared_ptr<Sai2Model::Sai2Model> robot,
 	// Full motion force task
 	auto motion_force_task = make_unique<Sai2Primitives::MotionForceTask>(
 		robot, link_name, compliant_frame);
-	motion_force_task->enableTrackingMode();
-    motion_force_task->enableVelocitySaturation(0.3, M_PI / 3);
+	// motion_force_task->enableTrackingMode();
+	motion_force_task->disableTrackingMode();
+    motion_force_task->enableVelocitySaturation(0.3, M_PI / 3);  // adjust for puma
 	// motion_force_task->setSingularityHandlingBounds(7e-3, 7e-2);
 	motion_force_task->setSingularityHandlingBounds(2e-2, 7e-2);
 	motion_force_task->setPosControlGains(100, 20, 0);

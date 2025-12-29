@@ -173,6 +173,7 @@ void control(shared_ptr<Sai2Model::Sai2Model> robot,
     motion_force_task->enableVelocitySaturation(0.4, M_PI);
 	// motion_force_task->setSingularityHandlingBounds(7e-3, 7e-2);
 	motion_force_task->setSingularityHandlingBounds(2e-2, 7e-2);
+	// motion_force_task->setSingularityHandlingBounds(6.5e-2, 7e-2);  // max velocity needs to be smaller for joint task
 	// motion_force_task->setSingularityHandlingBounds(5e-2, 5e-1);
 	motion_force_task->setPosControlGains(100, 20, 0);
 	motion_force_task->setOriControlGains(100, 20, 0);

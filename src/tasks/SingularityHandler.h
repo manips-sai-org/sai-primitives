@@ -39,6 +39,7 @@ struct Singularity {
     VectorXd dsdq;
     SingularityType type;
     VectorXd u_toward_singularity;  // for type 1 singularities 
+    bool is_degenerate;
 
     void setSingularValueGradient(const VectorXd& dsdq_) {
         dsdq = dsdq_;
@@ -60,16 +61,19 @@ struct Singularity {
     Singularity(const VectorXd& u,
                 const VectorXd& v,
                 const double sigma,
-                const SingularityType type) :
-                u(u), v(v), sigma(sigma), type(type) {}
+                const SingularityType type,
+                const bool is_degenerate = false) :
+                u(u), v(v), sigma(sigma), type(type), is_degenerate(is_degenerate) {}
 
     Singularity(const VectorXd& u,
                 const VectorXd& v,
                 const double sigma,
                 const VectorXd& dsdq,
                 const VectorXd& u_toward_singularity,
-                const SingularityType type) : 
-                u(u), v(v), sigma(sigma), dsdq(dsdq), u_toward_singularity(u_toward_singularity), type(type) {}
+                const SingularityType type,
+                const bool is_degenerate = false) : 
+                u(u), v(v), sigma(sigma), dsdq(dsdq), 
+                u_toward_singularity(u_toward_singularity), type(type), is_degenerate(is_degenerate) {}
 
     Singularity() : type(NO_SINGULARITY) {}
 };
@@ -113,11 +117,17 @@ public:
 
         // singularity parameters
         static constexpr double s_abs_tol = 1e-3;  
+        static constexpr double min_blending = 0.05;
 
         // type 1 parameters
-        // static constexpr double type_1_tol = 0.5;
-        static constexpr double type_1_tol = 0.8;
+        // static constexpr double type_1_tol = 0.2;
+        static constexpr double type_1_tol = 0.5;  // 5e0
+        // static constexpr double type_1_tol = 0.25;
+        // static constexpr double type_1_tol = 0.8;  // standard
+        // static constexpr double type_1_tol = 0.1;
+        // static constexpr double perturb_step_size = 1 * M_PI / 180;
         static constexpr double perturb_step_size = 5e0;
+        // static constexpr double perturb_step_size = 180 * M_PI / 180;
         // static constexpr double perturb_step_size = 50 * M_PI / 180;
         
         static constexpr double type_1_buffer_size = 1;
@@ -131,6 +141,7 @@ public:
         // static constexpr double type_2_force_threshold = 0.01;
         static constexpr double type_2_max_vel = 2 * 60 * M_PI / 180;
         static constexpr double buffer_size = 1;  
+        static constexpr int type_2_task_torque_buffer_size = 100;
               
         static constexpr double max_force_norm = 1;  
         static constexpr double joint_limit_buffer = 5 * M_PI / 180;
@@ -138,6 +149,8 @@ public:
         // bounded inertia
         static constexpr double bie_threshold = 0.15;
         static constexpr double singular_bie_threshold = 0.15;
+        // static constexpr double bie_threshold = 0.01;  // puma 
+        // static constexpr double singular_bie_threshold = 0.01;  // puma
 
         // solver tol
         static constexpr double xtol_rel = 1e-3;
@@ -149,8 +162,9 @@ public:
         static constexpr int type_1_search_max_iter = 100;
 
         static constexpr double degenerate_singular_value_spacing = 5e-2;
-        static constexpr double type_1_search_tol = 5e-2;  // condition ratio tolerance for {u, v} disassociation
-        static constexpr double type_1_step_size_for_line_search = 30 * M_PI / 180;  // to determine motion direction for towards/away from type 1 singularity 
+        // static constexpr double type_1_search_tol = 5e-2;  // condition ratio tolerance for {u, v} disassociation
+        static constexpr double type_1_search_tol = 1e-6;  // condition ratio tolerance for {u, v} disassociation
+        static constexpr double type_1_step_size_for_line_search = 10 * M_PI / 180;  // to determine motion direction for towards/away from type 1 singularity 
         // static constexpr double nm_step_size = 2 * M_PI / 180;
     };
 
@@ -213,6 +227,10 @@ public:
     void setSingularityHandlingBounds(const double s_min, const double s_max) {
         _s_min = s_min;
         _s_max = s_max;
+    }
+
+    void setMinBlending(const double min_blending) {
+        _min_blending = min_blending;
     }
 
     /**
@@ -407,14 +425,36 @@ private:
     bool checkBasisForType1(const VectorXd& curr_q,
                             const Vector3d& curr_pos,
                             const MatrixXd& projected_jacobian,
+                            const MatrixXd& singular_task_range,
                             const MatrixXd& singular_joint_task_range,
                             const double step_size);
+
+    bool classifySingularityType(const VectorXd& curr_q,
+                                 const Vector3d& curr_pos,
+                                 const Matrix3d& curr_ori,
+                                 const VectorXd& u,
+                                 const VectorXd& step_direction,
+                                 const double step_size);
+
+    bool classifySingularityType(const MatrixXd& projected_jacobian,
+                                 const VectorXd& u,
+                                 const VectorXd& v,
+                                 const std::vector<MatrixXd>& kinematic_hessian);
 
     static double objective(const std::vector<double> &x, std::vector<double> &grad, void* f_data);
     static double equality(const std::vector<double> &x, std::vector<double> &grad, void* f_data);
 
+    VectorXd getLinearTaylorExpansion(const MatrixXd& projected_jacobian,
+                                      const VectorXd& dq);
+
+    VectorXd getQuadraticTaylorExpansion(const MatrixXd& projected_jacobian,
+                                         const std::vector<MatrixXd>& kinematic_hessian,
+                                         const VectorXd& left_vector,
+                                         const VectorXd& right_vector);
+
     // singularity setup
     std::shared_ptr<Sai2Model::Sai2Model> _robot;
+    JacobiSVD<MatrixXd> _J_svd;
     DynamicDecouplingType _dynamic_decoupling_type;
 	double _bie_threshold;
     double _singular_bie_threshold;
@@ -434,6 +474,7 @@ private:
     std::deque<SingularityType> _singularity_history;
     int _type_1_counter, _type_2_counter;
     int _buffer_size;
+    double _min_blending;
 
     // type 1 specifications
     bool _use_goal_posture;
@@ -502,6 +543,9 @@ private:
     VectorXd _alpha_vec;
     std::deque<VectorXd> _alpha_history;
 
+    std::deque<VectorXi> _singular_task_torque_history;
+    int _type_2_task_torque_buffer_size;
+
     // degenerate singularity gracking
     bool _is_degenerate_singularity;
     bool _zero_degenerate_singularity;
@@ -524,6 +568,8 @@ private:
     MatrixXd _N_sjs_init;
     int _num_singularities;
     int _prev_num_singularities;
+    int _num_zone_2_singularities;
+    int _prev_num_zone_2_singularities;
     bool _singularity_exit_transition;
     double _max_force_norm;
 
