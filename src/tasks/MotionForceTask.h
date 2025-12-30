@@ -807,8 +807,8 @@ public:
 		return _singularity_handler->getClassification();
 	}
 
-	VectorXd getSingularNonHandlingTorques() {
-		return _singularity_handler->getNonHandlingTorques();
+	VectorXd getUnmodifiedSingularTaskTorques() {
+		return _singularity_handler->getUnmodifiedSingularTaskTorques();
 	}
 
 	VectorXd getConditionRatio() {

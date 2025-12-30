@@ -112,7 +112,7 @@ public:
         // static constexpr double kp_type_1 = 100;
         // static constexpr double kv_type_1 = 20;
         static constexpr double kp_type_1 = 50;
-        static constexpr double kv_type_1 = 2 * sqrt(kp_type_1);
+        static constexpr double kv_type_1 = 14.141;
         static constexpr double kp_type_2 = 100;
         static constexpr double kv_type_2 = 25;  // panda
         // static constexpr double kv_type_2 = 5;  // puma
@@ -375,7 +375,7 @@ public:
     }
 
     VectorXd getSingularTaskTorques() {
-        return _task_torques_with_singularity;
+        return _singular_task_torques;
     }
     
     VectorXd getJointSingularityHandlingTorques() {
@@ -410,8 +410,8 @@ public:
     /*
         Experimental 
     */
-    VectorXd getNonHandlingTorques() {
-        return _task_torques_with_singularity;
+    VectorXd getUnmodifiedSingularTaskTorques() {
+        return _unmodified_singular_task_torques;
     }
 
     VectorXi getClassification() {
@@ -544,7 +544,8 @@ private:
     VectorXd _non_singular_task_torques;
     VectorXd _singular_task_torques;
     VectorXd _joint_strategy_torques;
-    VectorXd _task_torques_with_singularity;
+    // VectorXd _task_torques_with_singularity;
+    VectorXd _unmodified_singular_task_torques;
     bool _enable_force_decoupling;
 
     bool _is_in_singularity;

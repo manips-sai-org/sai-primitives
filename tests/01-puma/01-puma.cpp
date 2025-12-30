@@ -215,6 +215,46 @@ void control(shared_ptr<Sai2Model::Sai2Model> robot,
 	Matrix3d starting_ee_ori;
 	int cnt = 0;
 
+	// create logger
+	Sai2Common::Logger logger("puma", false);
+	VectorXd svalues = VectorXd::Zero(6);
+    VectorXd robot_q = robot->q();
+    VectorXd robot_dq = robot->dq();
+	Vector3d pos_error = Vector3d::Zero();
+    Vector3d ori_error = Vector3d::Zero();
+    Vector3d ee_pos = Vector3d::Zero();
+    Matrix3d ee_ori = Matrix3d::Identity();
+	Vector3d goal_pos = Vector3d::Zero();
+	VectorXd unmodified_singular_task_torques = VectorXd::Zero(robot->dof());
+    VectorXd singular_task_torques = VectorXd::Zero(robot->dof());
+	VectorXd non_singular_task_torques = VectorXd::Zero(robot->dof());
+	VectorXd singular_joint_space_torques = VectorXd::Zero(robot->dof());
+	VectorXd alpha = VectorXd::Ones(1);
+	VectorXd condition_ratio = VectorXd::Ones(6);
+    VectorXd singular_direction = VectorXd::Zero(6);
+	VectorXd singular_joint_space = VectorXd::Zero(robot->dof());
+	VectorXi classification = VectorXi::Zero(6);
+
+	logger.addToLog(svalues, "svalues");
+	logger.addToLog(robot_q, "robot_q");
+	logger.addToLog(robot_dq, "robot_dq");
+	logger.addToLog(pos_error, "pos_error");
+	logger.addToLog(ori_error, "ori_error");
+	logger.addToLog(ee_pos, "ee_pos");
+	logger.addToLog(ee_ori, "ee_ori");
+	logger.addToLog(goal_pos, "goal_pos");
+	logger.addToLog(unmodified_singular_task_torques, "unmodified_singular_task_torques");
+    logger.addToLog(singular_task_torques, "singular_task_torques");
+	logger.addToLog(non_singular_task_torques, "non_singular_task_torques");
+	logger.addToLog(singular_joint_space_torques, "singular_joint_space_torques");
+	logger.addToLog(motion_force_task_torques, "motion_task_torques");
+	logger.addToLog(alpha, "alpha");
+	logger.addToLog(condition_ratio, "condition_ratio");
+    logger.addToLog(singular_direction, "singular_direction");
+	logger.addToLog(singular_joint_space, "singular_joint_space");
+	logger.addToLog(classification, "classification");
+	logger.start();
+
 	// create a loop timer
 	double control_freq = 1000;
 	Sai2Common::LoopTimer timer(control_freq, 1e6);
@@ -305,6 +345,26 @@ void control(shared_ptr<Sai2Model::Sai2Model> robot,
 						.norm()
 				 << endl;
 			cout << endl;
+		}
+
+		// log 
+		{
+			// ee_pos = robot->position(link_name, pos_in_link);
+			// ee_ori = robot->rotation(link_name);
+			goal_pos = motion_force_task->getGoalPosition();
+			pos_error = motion_force_task->getPositionError();
+			ori_error = motion_force_task->getOrientationError();
+
+			svalues = motion_force_task->getSingularValues();
+			unmodified_singular_task_torques = motion_force_task->getUnmodifiedSingularTaskTorques();
+			singular_task_torques = motion_force_task->getSingularTaskTorques();
+			non_singular_task_torques = motion_force_task->getNonSingularTaskTorques();
+			singular_joint_space_torques = motion_force_task->getSingularJointTaskTorques();
+			singular_direction = motion_force_task->getSingularTaskRange().col(0);
+			singular_joint_space = motion_force_task->getSingularJointTaskRange().col(0);
+			classification.head(motion_force_task->getSingularityClassification().size()) = motion_force_task->getSingularityClassification();
+			condition_ratio = motion_force_task->getConditionRatio();
+
 		}
 	}
 	timer.stop();

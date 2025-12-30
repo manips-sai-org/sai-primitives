@@ -237,7 +237,7 @@ void control(shared_ptr<Sai2Model::Sai2Model> robot,
     Vector3d ee_pos = Vector3d::Zero();
     Matrix3d ee_ori = Matrix3d::Identity();
 	Vector3d goal_pos = Vector3d::Zero();
-	VectorXd nonhandling_singular_task_torques = VectorXd::Zero(robot->dof());
+	VectorXd unmodified_singular_task_torques = VectorXd::Zero(robot->dof());
     VectorXd singular_task_torques = VectorXd::Zero(robot->dof());
 	VectorXd non_singular_task_torques = VectorXd::Zero(robot->dof());
 	VectorXd singular_joint_space_torques = VectorXd::Zero(robot->dof());
@@ -255,7 +255,7 @@ void control(shared_ptr<Sai2Model::Sai2Model> robot,
 	logger.addToLog(ee_pos, "ee_pos");
 	logger.addToLog(ee_ori, "ee_ori");
 	logger.addToLog(goal_pos, "goal_pos");
-	logger.addToLog(nonhandling_singular_task_torques, "nonhandling_singular_task_torques");
+	logger.addToLog(unmodified_singular_task_torques, "nonhandling_singular_task_torques");
     logger.addToLog(singular_task_torques, "singular_task_torques");
 	logger.addToLog(non_singular_task_torques, "non_singular_task_torques");
 	logger.addToLog(singular_joint_space_torques, "singular_joint_space_torques");
@@ -428,7 +428,7 @@ void control(shared_ptr<Sai2Model::Sai2Model> robot,
             // log
 			{
             	svalues = motion_force_task->getSingularValues();
-				nonhandling_singular_task_torques = motion_force_task->getSingularNonHandlingTorques();
+				unmodified_singular_task_torques = motion_force_task->getUnmodifiedSingularTaskTorques();
 		    	singular_task_torques = motion_force_task->getSingularTaskTorques();
 				non_singular_task_torques = motion_force_task->getNonSingularTaskTorques();
 				singular_joint_space_torques = motion_force_task->getSingularJointTaskTorques();

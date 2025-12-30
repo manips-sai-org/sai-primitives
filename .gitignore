@@ -37,3 +37,4 @@
 .vscode/
 **/archive/
 test/
+*.zip

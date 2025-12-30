@@ -1278,6 +1278,7 @@ VectorXd SingularityHandler::computeTorques(const VectorXd& unit_mass_force, con
     _non_singular_task_torques = VectorXd::Zero(_dof);
     _singular_task_torques = VectorXd::Zero(_dof);
     _joint_strategy_torques = VectorXd::Zero(_dof);
+    _unmodified_singular_task_torques = VectorXd::Zero(_dof);
 
     if (!_is_in_singularity || !_enforce_handling_strategy) {
         if (_enable_force_decoupling) {
@@ -1319,10 +1320,9 @@ VectorXd SingularityHandler::computeTorques(const VectorXd& unit_mass_force, con
                                         _task_range_s.transpose() * force_related_terms);
         }
 
-        {
+        if (_is_in_singularity) {
             // debug for experimental baseline
-            _task_torques_with_singularity = _non_singular_task_torques * 0;
-            _task_torques_with_singularity += _projected_jacobian_s.transpose() * 
+            _unmodified_singular_task_torques = _projected_jacobian_s.transpose() * 
                                                     ((_projected_jacobian_s * _robot->MInv() * _projected_jacobian_s.transpose()).inverse() * _task_range_s.transpose() * unit_mass_force + 
                                                     _task_range_s.transpose() * force_related_terms);
         }
