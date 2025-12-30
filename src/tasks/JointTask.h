@@ -387,6 +387,14 @@ public:
 		_integrated_position_error.setZero();
 	}
 
+	void enableZeroCrossingReset() {
+		_zero_crossing_reset = true;
+	}
+
+	void disableZeroCrossingReset() {
+		_zero_crossing_reset = false;
+	}
+
 	//-----------------------------------------------
 	//         Member variables
 	//-----------------------------------------------
@@ -449,6 +457,9 @@ private:
 	MatrixXd _projected_jacobian;
 	MatrixXd _N;
 	MatrixXd _current_task_range;
+
+	bool _zero_crossing_reset;
+	VectorXd _prev_position_error;
 };
 
 } /* namespace Sai2Primitives */

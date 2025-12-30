@@ -802,6 +802,19 @@ public:
 	}
 		
 	// -------- getters for model parameters --------
+
+	VectorXi getSingularityClassification() {
+		return _singularity_handler->getClassification();
+	}
+
+	VectorXd getSingularNonHandlingTorques() {
+		return _singularity_handler->getNonHandlingTorques();
+	}
+
+	VectorXd getConditionRatio() {
+		return _singularity_handler->getConditionRatio();
+	}
+
 	VectorXd getImpedanceForces() {
 		return _impedance_force;
 	}
@@ -822,6 +835,10 @@ public:
 		return _singularity_handler->getNonSingularLambda();
 	}
 
+	VectorXd getNonSingularTaskTorques() {
+		return _singularity_handler->getNonSingularTaskTorques();
+	}
+
 	MatrixXd getNonSingularTaskRange() {
 		return _singularity_handler->getNonSingularTaskRange();
 	}
@@ -838,12 +855,20 @@ public:
 		return _singularity_handler->getSingularLambda();
 	}
 
+	VectorXd getSingularTaskTorques() {
+		return _singularity_handler->getSingularTaskTorques();
+	}
+
 	MatrixXd getSingularTaskRange() {
 		return _singularity_handler->getSingularTaskRange();
 	}
 
-	VectorXd getSingularTaskTorques() {
-		return _singularity_handler->getSingularTaskTorques();
+	MatrixXd getSingularJointTaskRange() {
+		return _singularity_handler->getSingularJointTaskRange();
+	}
+
+	VectorXd getSingularJointTaskTorques() {
+		return _singularity_handler->getJointSingularityHandlingTorques();
 	}
 
 	VectorXd getSingularValues() {

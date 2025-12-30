@@ -52,8 +52,8 @@ void simulation(shared_ptr<Sai2Model::Sai2Model> robot,
 /*
 	Control
 */
-bool flag_simulation = true;
-// bool flag_simulation = false;
+// bool flag_simulation = true;
+bool flag_simulation = false;
 Sai2Common::RedisClient* redis_client;
 std::string JOINT_ANGLES_KEY = "sai2::FrankaPanda::Romeo::sensors::q";
 std::string JOINT_VELOCITIES_KEY = "sai2::FrankaPanda::Romeo::sensors::dq";
@@ -169,13 +169,13 @@ void control(shared_ptr<Sai2Model::Sai2Model> robot,
 	// 	controlled_directions_rotation);
 	// motion_force_task->setSingularityGains(20, 20);
 
-    motion_force_task->setPosControlGains(100, 20, 0);
-    motion_force_task->setOriControlGains(100, 20, 0);
+    motion_force_task->setPosControlGains(200, 20, 0);
+    motion_force_task->setOriControlGains(200, 20, 0);
 	motion_force_task->disableInternalOtg();
 	motion_force_task->enableTrackingMode();
     motion_force_task->disableVelocitySaturation();
     // motion_force_task->setSingularityHandlingBounds(1e-2, 7e-2);
-    motion_force_task->setSingularityHandlingBounds(2e-2, 7e-2);
+    motion_force_task->setSingularityHandlingBounds(3e-2, 7e-2);
     // motion_force_task->enableVelocitySaturation(1.0, M_PI / 3);
     // motion_force_task->setSingularityHandlingBounds(5e-2, 5e-1);
 	VectorXd motion_force_task_torques = VectorXd::Zero(dof);
@@ -241,23 +241,39 @@ void control(shared_ptr<Sai2Model::Sai2Model> robot,
 	VectorXd svalues = VectorXd::Zero(6);
     VectorXd robot_q = robot->q();
     VectorXd robot_dq = robot->dq();
+	Vector3d pos_error = Vector3d::Zero();
+    Vector3d ori_error = Vector3d::Zero();
     Vector3d ee_pos = Vector3d::Zero();
     Matrix3d ee_ori = Matrix3d::Identity();
 	Vector3d goal_pos = Vector3d::Zero();
+	VectorXd nonhandling_singular_task_torques = VectorXd::Zero(robot->dof());
     VectorXd singular_task_torques = VectorXd::Zero(robot->dof());
-	VectorXd alpha = VectorXd::Ones(6);
-    Vector3d ori_error = Vector3d::Zero();
+	VectorXd non_singular_task_torques = VectorXd::Zero(robot->dof());
+	VectorXd singular_joint_space_torques = VectorXd::Zero(robot->dof());
+	VectorXd alpha = VectorXd::Ones(1);
+	VectorXd condition_ratio = VectorXd::Ones(6);
     VectorXd singular_direction = VectorXd::Zero(6);
+	VectorXd singular_joint_space = VectorXd::Zero(robot->dof());
+	VectorXi classification = VectorXi::Zero(6);
+
+	logger.addToLog(svalues, "svalues");
 	logger.addToLog(robot_q, "robot_q");
 	logger.addToLog(robot_dq, "robot_dq");
+	logger.addToLog(pos_error, "pos_error");
+	logger.addToLog(ori_error, "ori_error");
 	logger.addToLog(ee_pos, "ee_pos");
+	logger.addToLog(ee_ori, "ee_ori");
 	logger.addToLog(goal_pos, "goal_pos");
-	logger.addToLog(svalues, "svalues");
+	logger.addToLog(nonhandling_singular_task_torques, "nonhandling_singular_task_torques");
     logger.addToLog(singular_task_torques, "singular_task_torques");
+	logger.addToLog(non_singular_task_torques, "non_singular_task_torques");
+	logger.addToLog(singular_joint_space_torques, "singular_joint_space_torques");
 	logger.addToLog(motion_force_task_torques, "motion_task_torques");
 	logger.addToLog(alpha, "alpha");
-	logger.addToLog(ori_error, "ori_error");
+	logger.addToLog(condition_ratio, "condition_ratio");
     logger.addToLog(singular_direction, "singular_direction");
+	logger.addToLog(singular_joint_space, "singular_joint_space");
+	logger.addToLog(classification, "classification");
 	logger.start();
 
 	// create a loop timer
@@ -283,7 +299,7 @@ void control(shared_ptr<Sai2Model::Sai2Model> robot,
 			robot->setQ(redis_client->getEigen(JOINT_ANGLES_KEY));
 			robot->setDq(redis_client->getEigen(JOINT_VELOCITIES_KEY));
 			MatrixXd M = redis_client->getEigen(MASS_MATRIX_KEY);
-            // M.bottomRightCorner(4, 4) += 0.15 * Matrix3d::Identity();
+            M.bottomRightCorner(4, 4) += 0.15 * MatrixXd::Identity(4, 4);
             // M.bottomRightCorner(3, 3) += 0.15 * Matrix3d::Identity();  // use less fopr this 
 			robot->updateModel(M);
 
@@ -299,8 +315,10 @@ void control(shared_ptr<Sai2Model::Sai2Model> robot,
 		// singular_task_torques = motion_force_task->getSingularTaskTorques();
 		// singular_direction = motion_force_task->getSingularTaskRange().col(0);
 		if (motion_force_task->getNumSingularities() > 0) {
-			alpha.head(motion_force_task->getNumSingularities()) = motion_force_task->getBlendingVector();
+			// alpha.head(motion_force_task->getNumSingularities()) = motion_force_task->getBlendingVector();
+			alpha(0) = motion_force_task->getBlendingVector()(0);
 		}
+		pos_error = motion_force_task->getPositionError();
 		ori_error = motion_force_task->getOrientationError();
 		curr_robot_q = robot_q;
 
@@ -311,12 +329,12 @@ void control(shared_ptr<Sai2Model::Sai2Model> robot,
 
 			N_prec = MatrixXd::Identity(dof, dof);
 			joint_task->updateTaskModel(N_prec);
-			joint_task->setGains(400, 20, 0);
+			joint_task->setGains(200, 20, 20);
 
             if (joint_task->goalPositionReached(1e0) && !integrator_on) {
                 std::cout << "Turning on integrator\n";
                 joint_task->resetIntegrators();
-                joint_task->setGains(400, 20, 500);
+                joint_task->setGains(400, 20, 1000);
                 integrator_on = true; 
             }
 
@@ -330,7 +348,8 @@ void control(shared_ptr<Sai2Model::Sai2Model> robot,
 
             std::cout << "joint error: " << (robot->q() - joint_task->getGoalPosition()).norm() << "\n";
 
-			if ((robot->q() - joint_task->getGoalPosition()).norm() < 5e-2) {
+			// if ((robot->q() - joint_task->getGoalPosition()).norm() < 5e-2) {
+			if (joint_task->goalPositionReached(5e-2)) {
                 std::cout << "Posture to Motion\n";
 				state = MOTION;
 				joint_task->reInitializeTask();
@@ -423,9 +442,17 @@ void control(shared_ptr<Sai2Model::Sai2Model> robot,
             }
 
             // log
-            svalues = motion_force_task->getSingularValues();
-		    singular_task_torques = motion_force_task->getSingularTaskTorques();
-		    singular_direction = motion_force_task->getSingularTaskRange().col(0);
+			{
+            	svalues = motion_force_task->getSingularValues();
+				nonhandling_singular_task_torques = motion_force_task->getSingularNonHandlingTorques();
+		    	singular_task_torques = motion_force_task->getSingularTaskTorques();
+				non_singular_task_torques = motion_force_task->getNonSingularTaskTorques();
+				singular_joint_space_torques = motion_force_task->getSingularJointTaskTorques();
+		    	singular_direction = motion_force_task->getSingularTaskRange().col(0);
+				singular_joint_space = motion_force_task->getSingularJointTaskRange().col(0);
+				classification.head(motion_force_task->getSingularityClassification().size()) = motion_force_task->getSingularityClassification();
+				condition_ratio = motion_force_task->getConditionRatio();
+			}
 
         }
 

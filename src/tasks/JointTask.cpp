@@ -85,6 +85,8 @@ void JointTask::initialSetup() {
 		disableInternalOtg();
 	}
 
+	enableZeroCrossingReset();
+
 	reInitializeTask();
 }
 
@@ -102,6 +104,7 @@ void JointTask::reInitializeTask() {
 	_desired_acceleration.setZero(_task_dof);
 
 	_integrated_position_error.setZero(_task_dof);
+	_prev_position_error.setZero(_task_dof);
 
 	_otg->reInitialize(_current_position);
 }
@@ -311,6 +314,16 @@ VectorXd JointTask::computeTorques() {
 	}
 
 	// compute error for I term
+	VectorXd pos_error = _current_position - _desired_position;
+	if (_zero_crossing_reset) {
+		for (int i = 0; i < pos_error.size(); ++i) {
+			if (pos_error(i) * _prev_position_error(i) < 0) {
+				_integrated_position_error(i) = 0;
+			}
+		}
+	}
+	_prev_position_error = pos_error;
+
 	_integrated_position_error +=
 		(_current_position - _desired_position) * getLoopTimestep();
 

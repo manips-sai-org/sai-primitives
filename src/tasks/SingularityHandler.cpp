@@ -40,9 +40,9 @@ namespace {
     }
 
 
-    VectorXi majoritySign(const std::deque<VectorXi>& dq) {
+    VectorXi majoritySign(const std::deque<VectorXi>& dq, const int dof) {
         if (dq.empty()) {
-            return VectorXi();  // empty
+            return VectorXi::Ones(dof);  // empty
         }
 
         const int dim = dq.front().size();
@@ -59,13 +59,13 @@ namespace {
                 else            ++zero;
             }
 
-            // majority vote (ties allowed → choose 0, then +1)
+            // majority vote (tie = + 1)
             if (pos >= neg && pos >= zero)
                 result[i] = 1;
             else if (neg >= pos && neg >= zero)
                 result[i] = -1;
             else
-                result[i] = 0;
+                result[i] = 1;
         }
 
         return result;
@@ -1321,9 +1321,9 @@ VectorXd SingularityHandler::computeTorques(const VectorXd& unit_mass_force, con
 
         {
             // debug for experimental baseline
-            _task_torques_with_singularity = _non_singular_task_torques;
+            _task_torques_with_singularity = _non_singular_task_torques * 0;
             _task_torques_with_singularity += _projected_jacobian_s.transpose() * 
-                                                    (_Lambda_s * _task_range_s.transpose() * unit_mass_force + 
+                                                    ((_projected_jacobian_s * _robot->MInv() * _projected_jacobian_s.transpose()).inverse() * _task_range_s.transpose() * unit_mass_force + 
                                                     _task_range_s.transpose() * force_related_terms);
         }
 
@@ -1493,7 +1493,7 @@ VectorXd SingularityHandler::computeTorques(const VectorXd& unit_mass_force, con
                     double force_dotted_singular_direction = std::abs(normalized_force_moment.transpose() * _active_singularities[ind].u);
 
                     // get majority element from past singular task torques 
-                    VectorXi singular_task_torque_sign = majoritySign(_singular_task_torque_history);
+                    VectorXi singular_task_torque_sign = majoritySign(_singular_task_torque_history, _dof);
 
                     // change direction if angle threshold is met 
                     for (int i = 0; i < _dof; ++i) {

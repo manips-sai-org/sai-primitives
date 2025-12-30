@@ -50,6 +50,7 @@ if(${CMAKE_SYSTEM_NAME} MATCHES Darwin)
 else()
   set(OPENGJK_LIBRARIES ${PROJECT_SOURCE_DIR}/openGJK/build/libopengjk_ce.so)
 endif()
+
 # yaml-cpp
 find_package(yaml-cpp REQUIRED)
 
@@ -59,8 +60,14 @@ find_package(yaml-cpp REQUIRED)
 # - adrbdl
 # find_package(adrbdl REQUIRED)
 
-# - nlopt
-find_package(nlopt REQUIRED)
+# include openGJK for collision detection 
+set(NLOPT_LOCAL_DIR ${PROJECT_SOURCE_DIR}/nlopt)
+set(NLOPT_INCLUDE_DIR ${OPENGJK_LOCAL_DIR}/include/nlopt)
+if(${CMAKE_SYSTEM_NAME} MATCHES Darwin)
+  set(NLOPT_LIBRARIES ${PROJECT_SOURCE_DIR}/nlopt/build/libnlopt.dylib)
+else()
+  set(NLOPT_LIBRARIES ${PROJECT_SOURCE_DIR}/nlopt/build/libnlopt.so)
+endif()
 
 # add tasks
 set(CONTROLLERS_SOURCE
@@ -86,7 +93,8 @@ set(HELPER_MODULES_SOURCE
 # add header files
 set(SAI2-PRIMITIVES_INCLUDE_DIRS ${PROJECT_SOURCE_DIR}/src
                                  ${RUCKIG_LOCAL_DIR}/include/
-                                 ${OPENGJK_LOCAL_DIR}/include/)
+                                 ${OPENGJK_LOCAL_DIR}/include/
+                                 ${NLOPT_LOCAL_DIR}/include/)
 
 # Add the include directory to the include paths
 include_directories(
@@ -95,13 +103,14 @@ include_directories(
 	${EIGEN3_INCLUDE_DIR} 
 	${SAI2-MODEL_INCLUDE_DIRS}
 	${RUCKIG_INCLUDE_DIR}
-  ${OPENGJK_INCLUDE_DIR})
+  ${OPENGJK_INCLUDE_DIR}
+  ${NLOPT_INCLUDE_DIR})
 
 # Create the library
 add_library(sai2-primitives STATIC ${CONTROLLERS_SOURCE}
                                    ${HELPER_MODULES_SOURCE})
 
-set(SAI2-PRIMITIVES_LIBRARIES sai2-primitives ${RUCKIG_LIBRARIES} ${OPENGJK_LIBRARIES} yaml-cpp::yaml-cpp nlopt)
+set(SAI2-PRIMITIVES_LIBRARIES sai2-primitives ${RUCKIG_LIBRARIES} ${OPENGJK_LIBRARIES} ${NLOPT_LIBRARIES} yaml-cpp::yaml-cpp)
 
 set(SAI2-PRIMITIVES_DEFINITIONS ${PROJECT_DEFINITIONS})
 

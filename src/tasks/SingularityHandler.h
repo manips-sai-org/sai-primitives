@@ -109,15 +109,17 @@ public:
         // gains
         // static constexpr double kv_damping = 10;  // panda
         static constexpr double kv_damping = 5;  // puma
-        static constexpr double kp_type_1 = 100;
-        static constexpr double kv_type_1 = 20;
+        // static constexpr double kp_type_1 = 100;
+        // static constexpr double kv_type_1 = 20;
+        static constexpr double kp_type_1 = 50;
+        static constexpr double kv_type_1 = 2 * sqrt(kp_type_1);
         static constexpr double kp_type_2 = 100;
-        static constexpr double kv_type_2 = 20;  // panda
+        static constexpr double kv_type_2 = 25;  // panda
         // static constexpr double kv_type_2 = 5;  // puma
 
         // singularity parameters
         static constexpr double s_abs_tol = 1e-3;  
-        static constexpr double min_blending = 0.05;
+        static constexpr double min_blending = 0.1;
 
         // type 1 parameters
         // static constexpr double type_1_tol = 0.2;
@@ -131,17 +133,17 @@ public:
         // static constexpr double perturb_step_size = 50 * M_PI / 180;
         
         static constexpr double type_1_buffer_size = 1;
-        static constexpr double type_1_max_vel_away_from_singularity = 30 * M_PI / 180;  // type 1 retract
-        static constexpr double type_1_max_vel_towards_singularity = 30 * M_PI / 180;  // type 1 approach
+        static constexpr double type_1_max_vel_away_from_singularity = 3 * 30 * M_PI / 180;  // type 1 retract
+        static constexpr double type_1_max_vel_towards_singularity = 3 * 30 * M_PI / 180;  // type 1 approach
         static constexpr double type_1_step_size_control_towards_singularity = 50 * M_PI / 180;
         static constexpr double type_1_step_size_classification_towards_singularity = 2 * M_PI / 180;  // to determine motion direction for towards/away from type 1 singularity 
  
         // type 2 parameters
-        static constexpr double type_2_angle_threshold = 15 * M_PI / 180;
+        static constexpr double type_2_angle_threshold = 6 * M_PI / 180;
         // static constexpr double type_2_force_threshold = 0.01;
-        static constexpr double type_2_max_vel = 2 * 60 * M_PI / 180;
+        static constexpr double type_2_max_vel = 3 * 60 * M_PI / 180;
         static constexpr double buffer_size = 1;  
-        static constexpr int type_2_task_torque_buffer_size = 100;
+        static constexpr int type_2_task_torque_buffer_size = 300;
               
         static constexpr double max_force_norm = 1;  
         static constexpr double joint_limit_buffer = 5 * M_PI / 180;
@@ -346,6 +348,10 @@ public:
         return _task_range_s;
     }
 
+    MatrixXd getSingularJointTaskRange() {
+        return _joint_task_range_s;
+    }
+
     MatrixXd getSingularLambda() {
         return _Lambda_s_modified;
     }
@@ -397,11 +403,25 @@ public:
         return _singularity_exit_transition;
     }
 
+    VectorXd getConditionRatio() {
+        return _condition_ratio_vec;
+    }
+
     /*
         Experimental 
     */
     VectorXd getNonHandlingTorques() {
         return _task_torques_with_singularity;
+    }
+
+    VectorXi getClassification() {
+        VectorXi classification = VectorXi::Zero(_task_rank);
+        int cnt = 0;
+        for (auto singularity : _active_singularities) {
+            classification(cnt) = singularity.type;
+            cnt++;
+        }
+        return classification;
     }
 
 private:
