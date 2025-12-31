@@ -65,7 +65,7 @@ namespace {
             else if (neg >= pos && neg >= zero)
                 result[i] = -1;
             else
-                result[i] = 1;
+                result[i] = 0;
         }
 
         return result;
@@ -1526,6 +1526,7 @@ VectorXd SingularityHandler::computeTorques(const VectorXd& unit_mass_force, con
                     // double scaled_velocity_magnitude = force_vel_scaling;
 
                     VectorXd dq_des = _type_2_direction.normalized() * _type_2_max_vel * scaled_velocity_magnitude;
+                    // VectorXd dq_des = _type_2_direction.normalized() * _type_2_max_vel;
                     // VectorXd q_des = saturateBox(curr_q + _type_2_direction.normalized() * _type_2_max_vel * scaled_velocity_magnitude * _dt, _q_lower, _q_upper);
                     unit_torques = - _kv_type_2 * (_robot->dq() - dq_des);
 
@@ -1542,8 +1543,8 @@ VectorXd SingularityHandler::computeTorques(const VectorXd& unit_mass_force, con
                     // }
 
                 } else {
-                    // damping
-                    unit_torques = - _kv_damping * _robot->dq();
+                    // no damping for type 2 singularities (will cause opposing damping jerk when exiting zone 2)
+                    unit_torques = - _kv_damping * _robot->dq() * 0;
                 }
             }
 

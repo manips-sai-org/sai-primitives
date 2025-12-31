@@ -169,13 +169,14 @@ void control(shared_ptr<Sai2Model::Sai2Model> robot,
 	// 	controlled_directions_rotation);
 	// motion_force_task->setSingularityGains(20, 20);
 
-    motion_force_task->setPosControlGains(200, 20, 0);
-    motion_force_task->setOriControlGains(200, 20, 0);
+    motion_force_task->setPosControlGains(100, 20, 0);
+    motion_force_task->setOriControlGains(100, 20, 0);
 	motion_force_task->disableInternalOtg();
 	motion_force_task->enableTrackingMode();
     motion_force_task->disableVelocitySaturation();
     // motion_force_task->setSingularityHandlingBounds(1e-2, 7e-2);
-    motion_force_task->setSingularityHandlingBounds(3e-2, 7e-2);
+    motion_force_task->setSingularityHandlingBounds(2e-2, 7e-2);
+    // motion_force_task->setSingularityHandlingBounds(6.9e-2, 7e-2);
     // motion_force_task->enableVelocitySaturation(1.0, M_PI / 3);
     // motion_force_task->setSingularityHandlingBounds(5e-2, 5e-1);
 	VectorXd motion_force_task_torques = VectorXd::Zero(dof);
@@ -204,7 +205,8 @@ void control(shared_ptr<Sai2Model::Sai2Model> robot,
     // q_des << 0,-0.919364,0.0103624,-2.38671,-0.0298135,3.0152,0.863642;  // wrist singularity 
     // q_des << -0.125263*0,-0.119768,0.104413,-2.16512,0.0216533 * 0,3.32598,0.787686;  // combined 
     // q_des << -0.00775566,-0.133565,0.0153017,-2.16814,0.0430064,3.29317,0.797755;  // starting
-    q_des << 0,-0.133565,0.0153017,-2.16814,0,3.29317,0.797755;  // starting
+    // q_des << 0,-0.133565,0.0153017,-2.16814,0,3.29317,0.797755;  // starting
+	q_des << -0.0279419,0.0511296,-0.00555499,-2.11259,0.0394067,3.34154,0.824835;
     joint_task->setGoalPosition(q_des);
 	motion_force_task->setTypeOnePosture(q_des);
 	// partial_joint_task->setGoalPosition(q_des);
@@ -299,7 +301,8 @@ void control(shared_ptr<Sai2Model::Sai2Model> robot,
 			robot->setQ(redis_client->getEigen(JOINT_ANGLES_KEY));
 			robot->setDq(redis_client->getEigen(JOINT_VELOCITIES_KEY));
 			MatrixXd M = redis_client->getEigen(MASS_MATRIX_KEY);
-            M.bottomRightCorner(4, 4) += 0.15 * MatrixXd::Identity(4, 4);
+			M(0, 0) += 0.15;
+            M.bottomRightCorner(4, 4) += 0.25 * MatrixXd::Identity(4, 4);
             // M.bottomRightCorner(3, 3) += 0.15 * Matrix3d::Identity();  // use less fopr this 
 			robot->updateModel(M);
 
@@ -412,6 +415,7 @@ void control(shared_ptr<Sai2Model::Sai2Model> robot,
             Vector3d offset_velocity_trajectory = Vector3d(0, 0, 0);
             Vector3d offset_acceleration_trajectory = Vector3d(0, 0, 0);
             double freq = 0.1;
+            // double freq = 0.08;
             double amplitude = 0.25;  
             offset_trajectory(1) = amplitude * sin(2 * M_PI * freq * (time - time_transition));
             offset_velocity_trajectory(1) = 2 * M_PI * freq * amplitude * cos(2 * M_PI * freq * (time - time_transition));

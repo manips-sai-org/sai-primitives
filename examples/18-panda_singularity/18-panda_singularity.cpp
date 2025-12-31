@@ -172,8 +172,8 @@ void control(shared_ptr<Sai2Model::Sai2Model> robot,
 	motion_force_task->enableTrackingMode();
     motion_force_task->enableVelocitySaturation(0.4, M_PI / 3);
 	// motion_force_task->setSingularityHandlingBounds(7e-3, 7e-2);
-	// motion_force_task->setSingularityHandlingBounds(2e-2, 7e-2);
 	motion_force_task->setSingularityHandlingBounds(3e-2, 7e-2);
+	// motion_force_task->setSingularityHandlingBounds(3e-2, 7e-2);
 	// motion_force_task->setSingularityHandlingBounds(6.5e-2, 7e-2);  // max velocity needs to be smaller for joint task
 	// motion_force_task->setSingularityHandlingBounds(5e-2, 5e-1);
 	motion_force_task->setPosControlGains(100, 20, 0);
@@ -290,6 +290,7 @@ void control(shared_ptr<Sai2Model::Sai2Model> robot,
 			robot->setQ(redis_client->getEigen(JOINT_ANGLES_KEY));
 			robot->setDq(redis_client->getEigen(JOINT_VELOCITIES_KEY));
 			MatrixXd M = redis_client->getEigen(MASS_MATRIX_KEY);
+			// M(0, 0) += 0.15;
             M.bottomRightCorner(4, 4) += 0.15 * MatrixXd::Identity(4, 4);
             // M.bottomRightCorner(3, 3) += 0.25 * Matrix3d::Identity();
 			robot->updateModel(M);

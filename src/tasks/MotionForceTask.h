@@ -1011,6 +1011,9 @@ private:
 	double _linear_saturation_velocity;
 	double _angular_saturation_velocity;
 
+	double _user_linear_saturation_velocity;
+	double _user_angular_saturation_velocity;
+
 	// internal otg using ruckig, on by default with acceleration limited
 	// trajectory
 	bool _use_internal_otg_flag;

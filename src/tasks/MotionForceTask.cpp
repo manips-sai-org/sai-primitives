@@ -220,6 +220,7 @@ void MotionForceTask::initialSetup() {
 	_is_floating = false;
 	_prev_is_in_singularity = false;
 	_is_in_singularity = false;
+	_handle_singularity = true;
 	_handle_singularity_exit = false;
 	_prev_velocity_saturation = false;  // velocity saturation 
 
@@ -449,83 +450,108 @@ VectorXd MotionForceTask::computeTorques() {
 	// also handles the case when still in singularity, but going down
 	_is_in_singularity = _singularity_handler->getSingularityStatus() && _handle_singularity;
 	// if (!_is_in_singularity && _prev_is_in_singularity || _singularity_handler->getSingularityTransitionStatus()) {
-	if (_singularity_handler->getSingularityTransitionStatus() && _handle_singularity) {
+	if (_singularity_handler->getSingularityTransitionStatus() && _handle_singularity && !_handle_singularity_exit) {
 
 		std::cout << "Entering singularity interpolation exit\n";
-		
-		if (!_use_internal_otg_flag) {
-			// compute current velocities and accelerations for otg settings 
-			double tol_buffer = 1e-3;
-			double max_linear_velocity = _current_linear_velocity.norm() + tol_buffer;
-			double max_angular_velocity = _current_angular_velocity.norm() + tol_buffer;
-			VectorXd curr_acceleration = getConstRobotModel()->acceleration6d(_link_name, _compliant_frame.translation());
-			double max_linear_acceleration = curr_acceleration.head(3).norm() + tol_buffer;
-			double max_angular_acceleration = curr_acceleration.tail(3).norm() + tol_buffer;
-
-			if (max_linear_velocity < DefaultParameters::otg_max_linear_velocity) {
-				max_linear_velocity = DefaultParameters::otg_max_linear_velocity;
-			}
-			if (max_angular_velocity < DefaultParameters::otg_max_angular_velocity) {
-				max_angular_velocity = DefaultParameters::otg_max_angular_velocity;
-			}
-			if (max_linear_acceleration < DefaultParameters::otg_max_linear_acceleration) {
-				max_linear_acceleration = DefaultParameters::otg_max_linear_acceleration;
-			}
-			if (max_angular_acceleration < DefaultParameters::otg_max_angular_acceleration) {
-				max_angular_acceleration = DefaultParameters::otg_max_angular_acceleration;
-			}
-
-			enableInternalOtgAccelerationLimited(max_linear_velocity,
-												 max_linear_acceleration,
-												 max_angular_velocity,
-												 max_angular_acceleration);
-
-			if (_use_velocity_saturation_flag) {
-				_prev_velocity_saturation = true;
-			}
-			disableVelocitySaturation();  // for otg trajectory tracking 
-
-		}
+		// throw runtime_error("interpolation");
 
 		_handle_singularity_exit = true;
 
-		// reinitialize otg
-		_otg->reInitialize(_current_position, _current_orientation, _current_linear_velocity, _current_angular_velocity);
+		// enable velocity saturation if not 
+		if (!_use_velocity_saturation_flag) {
+			enableVelocitySaturation(DefaultParameters::linear_saturation_velocity, DefaultParameters::angular_saturation_velocity);
+			_prev_velocity_saturation = false;
+		} else {
+		
+			double max_linear_velocity = _current_linear_velocity.norm() * 1.1;
+			double max_angular_velocity = _current_angular_velocity.norm() * 1.1;
+			if (max_linear_velocity > _linear_saturation_velocity) {
+				_user_linear_saturation_velocity = _linear_saturation_velocity;
+				_linear_saturation_velocity = max_linear_velocity;				
+			}
+			if (max_angular_velocity > _angular_saturation_velocity) {
+				_user_angular_saturation_velocity = _angular_saturation_velocity;
+				_angular_saturation_velocity = max_angular_velocity;
+			}
 
-		// set goal position 
-		_otg->setGoalPosition(_goal_position);
-		_otg->setGoalOrientation(_goal_orientation);
+			_prev_velocity_saturation = true;
+		}
+		
+		// if (!_use_internal_otg_flag) {
+		// 	// compute current velocities and accelerations for otg settings 
+		// 	double tol_buffer = 1e-3;
+		// 	double max_linear_velocity = _current_linear_velocity.norm() + tol_buffer;
+		// 	double max_angular_velocity = _current_angular_velocity.norm() + tol_buffer;
+		// 	VectorXd curr_acceleration = getConstRobotModel()->acceleration6d(_link_name, _compliant_frame.translation());
+		// 	double max_linear_acceleration = curr_acceleration.head(3).norm() + tol_buffer;
+		// 	double max_angular_acceleration = curr_acceleration.tail(3).norm() + tol_buffer;
+
+		// 	if (max_linear_velocity < DefaultParameters::otg_max_linear_velocity) {
+		// 		max_linear_velocity = DefaultParameters::otg_max_linear_velocity;
+		// 	}
+		// 	if (max_angular_velocity < DefaultParameters::otg_max_angular_velocity) {
+		// 		max_angular_velocity = DefaultParameters::otg_max_angular_velocity;
+		// 	}
+		// 	if (max_linear_acceleration < DefaultParameters::otg_max_linear_acceleration) {
+		// 		max_linear_acceleration = DefaultParameters::otg_max_linear_acceleration;
+		// 	}
+		// 	if (max_angular_acceleration < DefaultParameters::otg_max_angular_acceleration) {
+		// 		max_angular_acceleration = DefaultParameters::otg_max_angular_acceleration;
+		// 	}
+
+		// 	enableInternalOtgAccelerationLimited(max_linear_velocity,
+		// 										 max_linear_acceleration,
+		// 										 max_angular_velocity,
+		// 										 max_angular_acceleration);
+
+		// 	if (_use_velocity_saturation_flag) {
+		// 		_prev_velocity_saturation = true;
+		// 	}
+		// 	disableVelocitySaturation();  // for otg trajectory tracking 
+
+		// }
+
+		// // reinitialize otg
+		// _otg->reInitialize(_current_position, _current_orientation, _current_linear_velocity, _current_angular_velocity);
+
+		// // set goal position 
+		// _otg->setGoalPosition(_goal_position);
+		// _otg->setGoalOrientation(_goal_orientation);
 
 	}
 	_prev_is_in_singularity = _is_in_singularity;
 
 	// compute pos + ori error and revert to trajectory following
 	// if close, then turn off interpolator 
-	// if (goalPositionReached(_singularity_pos_exit_tol) && goalOrientationReached(_singularity_ori_exit_tol)) {
-	if (_otg->isGoalReached() && _handle_singularity) {
+	if (goalPositionReached(_singularity_pos_exit_tol) && goalOrientationReached(_singularity_ori_exit_tol)) {
+	// if (_otg->isGoalReached() && _handle_singularity) {
 		if (_handle_singularity_exit) {
 			// std::cout << "Exiting singularity interpolation exit\n";
 			_handle_singularity_exit = false;
 
-			if (_tracking_mode) {
-				disableInternalOtg();
-			} else {
-				if (DefaultParameters::internal_otg_jerk_limited) {
-					enableInternalOtgJerkLimited(DefaultParameters::otg_max_linear_velocity,
-												 DefaultParameters::otg_max_linear_acceleration,
-												 DefaultParameters::otg_max_linear_jerk,
-												 DefaultParameters::otg_max_angular_velocity,
-												 DefaultParameters::otg_max_angular_acceleration,
-												 DefaultParameters::otg_max_angular_jerk);
-				} else {
-					enableInternalOtgAccelerationLimited(DefaultParameters::otg_max_linear_velocity,
-														 DefaultParameters::otg_max_linear_acceleration,
-														 DefaultParameters::otg_max_angular_velocity,
-														 DefaultParameters::otg_max_angular_acceleration);
-				}
-			}
+			// throw runtime_error("");
+
+			// if (_tracking_mode) {
+			// 	disableInternalOtg();
+			// } else {
+			// 	if (DefaultParameters::internal_otg_jerk_limited) {
+			// 		enableInternalOtgJerkLimited(DefaultParameters::otg_max_linear_velocity,
+			// 									 DefaultParameters::otg_max_linear_acceleration,
+			// 									 DefaultParameters::otg_max_linear_jerk,
+			// 									 DefaultParameters::otg_max_angular_velocity,
+			// 									 DefaultParameters::otg_max_angular_acceleration,
+			// 									 DefaultParameters::otg_max_angular_jerk);
+			// 	} else {
+			// 		enableInternalOtgAccelerationLimited(DefaultParameters::otg_max_linear_velocity,
+			// 											 DefaultParameters::otg_max_linear_acceleration,
+			// 											 DefaultParameters::otg_max_angular_velocity,
+			// 											 DefaultParameters::otg_max_angular_acceleration);
+			// 	}
+			// }
 			if (_prev_velocity_saturation) {
-				_use_velocity_saturation_flag = true; 
+				enableVelocitySaturation(_user_linear_saturation_velocity, _user_angular_saturation_velocity);
+			} else {
+				disableVelocitySaturation();
 			}
 		}
 	}
@@ -970,6 +996,8 @@ void MotionForceTask::enableVelocitySaturation(const double linear_vel_sat,
 	_use_velocity_saturation_flag = true;
 	_linear_saturation_velocity = linear_vel_sat;
 	_angular_saturation_velocity = angular_vel_sat;
+	_user_linear_saturation_velocity = _linear_saturation_velocity;
+	_user_angular_saturation_velocity = _angular_saturation_velocity;
 }
 
 void MotionForceTask::setForceSensorFrame(
