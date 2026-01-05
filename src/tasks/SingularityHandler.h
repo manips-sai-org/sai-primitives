@@ -114,13 +114,13 @@ public:
         // static constexpr double kp_type_1 = 50;
         // static constexpr double kv_type_1 = 14.141;
         static constexpr double kp_type_2 = 100;
-        static constexpr double kv_type_2 = 30;  // panda
+        static constexpr double kv_type_2 = 20;  // panda
         // static constexpr double kv_type_2 = 5;  // puma
 
         // singularity parameters
         static constexpr double s_abs_tol = 1e-3;  
-        static constexpr double min_blending = 0.3;
-        // static constexpr double min_blending = 0;
+        static constexpr double min_blending = 0.3;  // panda
+        // static constexpr double min_blending = 0.1;
 
         // type 1 parameters
         // static constexpr double type_1_tol = 0.2;
@@ -142,9 +142,9 @@ public:
         // type 2 parameters
         static constexpr double type_2_angle_threshold = 10 * M_PI / 180;
         // static constexpr double type_2_force_threshold = 0.01;
-        static constexpr double type_2_max_vel = 3 * 60 * M_PI / 180;
+        static constexpr double type_2_max_vel = 3 * 60 * M_PI / 180;  
         static constexpr double buffer_size = 1;  
-        static constexpr int type_2_task_torque_buffer_size = 250;
+        static constexpr int type_2_task_torque_buffer_size = 1;
               
         static constexpr double max_force_norm = 1;  
         static constexpr double joint_limit_buffer = 5 * M_PI / 180;
@@ -425,6 +425,18 @@ public:
         return classification;
     }
 
+    std::vector<Singularity> getActiveSingularities() {
+        return _active_singularities;
+    }
+
+    // MatrixXd getBlendedSingularTaskRange() {
+    //     // if task is in blending region, then count as non-singular
+    // }
+
+    MatrixXd getBlendedNonSingularTaskRange() {
+        return _task_range_ns_with_blending;
+    }
+
 private:
 
     /**
@@ -529,6 +541,7 @@ private:
     double _s_min, _s_max;
     MatrixXd _N;
     MatrixXd _task_range_ns, _task_range_s, _joint_task_range_s;
+    MatrixXd _task_range_ns_with_blending;
     MatrixXd _projected_jacobian_ns, _projected_jacobian_s;
     MatrixXd _Lambda_ns, _Jbar_ns, _N_ns;
     MatrixXd _Lambda_s;

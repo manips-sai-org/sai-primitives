@@ -57,8 +57,8 @@ void simulation(shared_ptr<Sai2Model::Sai2Model> robot,
 /*
 	Control
 */
-// bool flag_simulation = true;
-bool flag_simulation = false;
+bool flag_simulation = true;
+// bool flag_simulation = false;
 Sai2Common::RedisClient* redis_client;
 std::string JOINT_ANGLES_KEY = "sai2::FrankaPanda::Romeo::sensors::q";
 std::string JOINT_VELOCITIES_KEY = "sai2::FrankaPanda::Romeo::sensors::dq";
@@ -255,7 +255,7 @@ void control(shared_ptr<Sai2Model::Sai2Model> robot,
 	logger.addToLog(ee_pos, "ee_pos");
 	logger.addToLog(ee_ori, "ee_ori");
 	logger.addToLog(goal_pos, "goal_pos");
-	logger.addToLog(unmodified_singular_task_torques, "nonhandling_singular_task_torques");
+	logger.addToLog(unmodified_singular_task_torques, "unmodified_singular_task_torques");
     logger.addToLog(singular_task_torques, "singular_task_torques");
 	logger.addToLog(non_singular_task_torques, "non_singular_task_torques");
 	logger.addToLog(singular_joint_space_torques, "singular_joint_space_torques");

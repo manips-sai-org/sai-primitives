@@ -9,7 +9,7 @@
 	</robot>
 
 	<static_object name="Floor">
-		<origin xyz="0.0 0.0 0.0" rpy="0 0 0" />
+		<origin xyz="0.0 0.0 -0.06" rpy="0 0 0" />
 	    <visual>
 	        <origin xyz="0.0 0.0 0.0" rpy="0 0 0" />
 	        <geometry>
@@ -21,8 +21,44 @@
 	    </visual>
 	</static_object>
 
+	<dynamic_object name="goal_frame">
+		<origin xyz="0.0 0.0 0.0" rpy="0 0 0" />
+		<inertial>
+			<origin xyz="0.0 0.0 0.0" rpy="0.0 0.0 0.0"/>
+			<mass value="0.01"/>
+			<inertia ixx="0.0" ixy="0.0" ixz="0.0" iyy="0.0" iyz="0.0" izz="0.0"/>
+		</inertial>
+	    <visual>
+	        <origin xyz="0.0 0.0 0.0" rpy="0 0 0" />
+	        <geometry>
+	            <box size="0.01 0.01 0.01" />
+	        </geometry>
+	        <material name="material_red">
+		        <color rgba="0.1 0.1 0.1 1.0" />
+	        </material>
+	    </visual>
+	</dynamic_object>
+
+	<dynamic_object name="control_force">
+		<origin xyz="0.0 0.0 0.0" rpy="0 0 0" />
+		<inertial>
+			<origin xyz="0.0 0.0 0.0" rpy="0.0 0.0 0.0"/>
+			<mass value="0.01"/>
+			<inertia ixx="0.0" ixy="0.0" ixz="0.0" iyy="0.0" iyz="0.0" izz="0.0"/>
+		</inertial>
+	    <visual>
+	        <origin xyz="0.0 0.0 0.0" rpy="0 0 0" />
+	        <geometry>
+	            <box size="0.01 0.01 0.01" />
+	        </geometry>
+	        <material name="material_red">
+		        <color rgba="0.1 0.1 0.1 1.0" />
+	        </material>
+	    </visual>
+	</dynamic_object>
+
 	<light name="light1" type="directional">
-		<position xyz="-2.0 -2.0 2.0" />
+		<position xyz="2.0 -2.0 2.0" />
 		<lookat xyz="0.0 0.0 0.0" />
 	</light>
 
@@ -37,10 +73,17 @@
 		<lookat xyz="0.0 0.5 0.75" />
 	</camera> -->
 
-	<camera name="camera">
+	<!-- <camera name="camera">
 		<position xyz="-1.34848 0.766375 1.18243" />
 		<vertical xyz="0.401548 -0.133621  0.906038" />
 		<lookat xyz="-0.469794  0.543684  0.760161" />
+	</camera> -->
+
+	<camera name="camera">
+		<position xyz="1.31261 1.16785 1.05657" />
+		<vertical xyz="-0.223332 -0.251074  0.941852" />
+		<lookat xyz="0.657148 0.491362 0.720813" />
 	</camera>
+
 
 </world>

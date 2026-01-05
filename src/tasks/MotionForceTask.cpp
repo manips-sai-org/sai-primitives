@@ -446,25 +446,36 @@ VectorXd MotionForceTask::computeTorques() {
 			sigma_moment * (-_kv_moment * _current_angular_velocity);
 	}
 
-	// start otg interpolation when exiting singularity with matching velocity conditions
-	// also handles the case when still in singularity, but going down
+	// start velocity satuation when exiting singularity with matching velocity conditions
 	_is_in_singularity = _singularity_handler->getSingularityStatus() && _handle_singularity;
-	// if (!_is_in_singularity && _prev_is_in_singularity || _singularity_handler->getSingularityTransitionStatus()) {
+
 	if (_singularity_handler->getSingularityTransitionStatus() && _handle_singularity && !_handle_singularity_exit) {
 
 		std::cout << "Entering singularity interpolation exit\n";
-		// throw runtime_error("interpolation");
 
 		_handle_singularity_exit = true;
 
-		// enable velocity saturation if not 
+		// enable velocity saturation if not enabled
 		if (!_use_velocity_saturation_flag) {
+
+			double max_linear_velocity = _current_linear_velocity.norm() * DefaultParameters::singularity_exit_velocity_scaling;
+			double max_angular_velocity = _current_angular_velocity.norm() * DefaultParameters::singularity_exit_velocity_scaling;
 			enableVelocitySaturation(DefaultParameters::linear_saturation_velocity, DefaultParameters::angular_saturation_velocity);
+			
+			if (max_linear_velocity > _linear_saturation_velocity) {
+				_user_linear_saturation_velocity = _linear_saturation_velocity;
+				_linear_saturation_velocity = max_linear_velocity;				
+			}
+			if (max_angular_velocity > _angular_saturation_velocity) {
+				_user_angular_saturation_velocity = _angular_saturation_velocity;
+				_angular_saturation_velocity = max_angular_velocity;
+			}
+
 			_prev_velocity_saturation = false;
 		} else {
 		
-			double max_linear_velocity = _current_linear_velocity.norm() * 1.1;
-			double max_angular_velocity = _current_angular_velocity.norm() * 1.1;
+			double max_linear_velocity = _current_linear_velocity.norm() * DefaultParameters::singularity_exit_velocity_scaling;
+			double max_angular_velocity = _current_angular_velocity.norm() * DefaultParameters::singularity_exit_velocity_scaling;
 			if (max_linear_velocity > _linear_saturation_velocity) {
 				_user_linear_saturation_velocity = _linear_saturation_velocity;
 				_linear_saturation_velocity = max_linear_velocity;				
@@ -521,39 +532,34 @@ VectorXd MotionForceTask::computeTorques() {
 	}
 	_prev_is_in_singularity = _is_in_singularity;
 
-	// compute pos + ori error and revert to trajectory following
-	// if close, then turn off interpolator 
-	if (goalPositionReached(_singularity_pos_exit_tol) && goalOrientationReached(_singularity_ori_exit_tol)) {
-	// if (_otg->isGoalReached() && _handle_singularity) {
-		if (_handle_singularity_exit) {
-			// std::cout << "Exiting singularity interpolation exit\n";
-			_handle_singularity_exit = false;
+	// compute pos + ori error and revert to trajectory following when exiting zone 2 singularity
+	if (_handle_singularity_exit) {
 
-			// throw runtime_error("");
+		if (!_is_in_singularity) {
+			if (goalPositionReached(_singularity_pos_exit_tol) && goalOrientationReached(_singularity_ori_exit_tol)) {
+				_handle_singularity_exit = false;
 
-			// if (_tracking_mode) {
-			// 	disableInternalOtg();
-			// } else {
-			// 	if (DefaultParameters::internal_otg_jerk_limited) {
-			// 		enableInternalOtgJerkLimited(DefaultParameters::otg_max_linear_velocity,
-			// 									 DefaultParameters::otg_max_linear_acceleration,
-			// 									 DefaultParameters::otg_max_linear_jerk,
-			// 									 DefaultParameters::otg_max_angular_velocity,
-			// 									 DefaultParameters::otg_max_angular_acceleration,
-			// 									 DefaultParameters::otg_max_angular_jerk);
-			// 	} else {
-			// 		enableInternalOtgAccelerationLimited(DefaultParameters::otg_max_linear_velocity,
-			// 											 DefaultParameters::otg_max_linear_acceleration,
-			// 											 DefaultParameters::otg_max_angular_velocity,
-			// 											 DefaultParameters::otg_max_angular_acceleration);
-			// 	}
-			// }
-			if (_prev_velocity_saturation) {
-				enableVelocitySaturation(_user_linear_saturation_velocity, _user_angular_saturation_velocity);
-			} else {
-				disableVelocitySaturation();
+				if (_prev_velocity_saturation) {
+					enableVelocitySaturation(_user_linear_saturation_velocity, _user_angular_saturation_velocity);
+				} else {
+					disableVelocitySaturation();
+				}
+			}
+		} else {
+			MatrixXd non_singular_task_range_basis = 
+				_singularity_handler->getBlendedNonSingularTaskRange() * _singularity_handler->getBlendedNonSingularTaskRange().transpose();
+
+			if (goalPoseReached(non_singular_task_range_basis, _singularity_pos_exit_tol, _singularity_ori_exit_tol)) {
+				_handle_singularity_exit = false;
+
+				if (_prev_velocity_saturation) {
+					enableVelocitySaturation(_user_linear_saturation_velocity, _user_angular_saturation_velocity);
+				} else {
+					disableVelocitySaturation();
+				}
 			}
 		}
+
 	}
 
 	// motion related terms
@@ -769,6 +775,22 @@ bool MotionForceTask::goalPositionReached(const double tolerance,
 	return goal_reached;
 }
 
+bool MotionForceTask::goalPositionReached(const MatrixXd& basis,
+										  const double tolerance,
+										  const bool verbose) {
+	double position_error = (basis * sigmaPosition() *
+								(_goal_position - _current_position)).norm();
+	bool goal_reached = position_error < tolerance;
+	if (verbose) {
+		cout << "position error in MotionForceTask : " << position_error
+			 << endl;
+		cout << "Tolerance : " << tolerance << endl;
+		cout << "Goal reached : " << goal_reached << endl << endl;
+	}
+
+	return goal_reached;
+}
+
 bool MotionForceTask::goalOrientationReached(const double tolerance,
 											 const bool verbose) {
 	double orientation_error = _orientation_error.transpose() *
@@ -783,6 +805,58 @@ bool MotionForceTask::goalOrientationReached(const double tolerance,
 	}
 
 	return goal_reached;
+}
+
+bool MotionForceTask::goalOrientationReached(const MatrixXd& basis,
+											 const double tolerance,
+											 const bool verbose) {
+	double orientation_error = (basis * sigmaOrientation() * _orientation_error).norm();
+	bool goal_reached = orientation_error < tolerance;
+	if (verbose) {
+		cout << "orientation error in MotionForceTask : " << orientation_error
+			 << endl;
+		cout << "Tolerance : " << tolerance << endl;
+		cout << "Goal reached : " << goal_reached << endl << endl;
+	}
+
+	return goal_reached;
+}
+
+bool MotionForceTask::goalPoseReached(const MatrixXd& basis,
+									  const double pos_tolerance,
+									  const double ori_tolerance,
+									  const bool verbose) {
+
+	std::cout << basis << "\n\n";
+
+	MatrixXd sigma_diagonal = MatrixXd::Zero(6, 6);
+	sigma_diagonal.block(0, 0, 3, 3) = sigmaPosition();
+	sigma_diagonal.block(3, 3, 3, 3) = sigmaOrientation();
+
+	VectorXd pos_ori_error(6);
+	pos_ori_error.head(3) = _goal_position - _current_position;
+	pos_ori_error.tail(3) = _orientation_error;
+	VectorXd pose_error = basis * sigma_diagonal * pos_ori_error;
+
+	double position_error = pose_error.head(3).norm();
+	double orientation_error = pose_error.tail(3).norm();
+
+	bool pos_goal_reached = position_error < pos_tolerance;
+	bool ori_goal_reached = orientation_error < ori_tolerance;
+
+	if (verbose) {
+		cout << "position error in MotionForceTask : " << position_error
+			 << endl;
+		cout << "Tolerance : " << pos_tolerance << endl;
+		cout << "Goal reached : " << pos_goal_reached << endl << endl;
+
+		cout << "orientation error in MotionForceTask : " << orientation_error
+			 << endl;
+		cout << "Tolerance : " << ori_tolerance << endl;
+		cout << "Goal reached : " << ori_goal_reached << endl << endl;
+	}
+
+	return pos_goal_reached && ori_goal_reached;
 }
 
 void MotionForceTask::setPosControlGains(double kp_pos, double kv_pos,

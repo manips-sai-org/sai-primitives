@@ -52,8 +52,8 @@ void simulation(shared_ptr<Sai2Model::Sai2Model> robot,
 /*
 	Control
 */
-// bool flag_simulation = true;
-bool flag_simulation = false;
+bool flag_simulation = true;
+// bool flag_simulation = false;
 Sai2Common::RedisClient* redis_client;
 std::string JOINT_ANGLES_KEY = "sai2::FrankaPanda::Romeo::sensors::q";
 std::string JOINT_VELOCITIES_KEY = "sai2::FrankaPanda::Romeo::sensors::dq";
@@ -179,6 +179,9 @@ void control(shared_ptr<Sai2Model::Sai2Model> robot,
     // motion_force_task->setSingularityHandlingBounds(6.9e-2, 7e-2);
     // motion_force_task->enableVelocitySaturation(1.0, M_PI / 3);
     // motion_force_task->setSingularityHandlingBounds(5e-2, 5e-1);
+
+	motion_force_task->setSingularityHandlingGains(100, 20, 100, 20);
+
 	VectorXd motion_force_task_torques = VectorXd::Zero(dof);
 
 	// // orientation task 
@@ -292,7 +295,12 @@ void control(shared_ptr<Sai2Model::Sai2Model> robot,
 	            lock_guard<mutex> lock(mutex_robot);
 		    	robot->setQ(sim->getJointPositions(robot_name));
 		    	robot->setDq(sim->getJointVelocities(robot_name));
-		    	robot->updateModel();
+				robot->updateModel();
+
+				// MatrixXd M = robot->M();
+				// M(0, 0) += 0.15;
+				// M.bottomRightCorner(4, 4) += 0.25 * MatrixXd::Identity(4, 4);
+		    	// robot->updateModel(M);
 
             	robot_q = robot->q();
                 robot_dq = robot->dq();

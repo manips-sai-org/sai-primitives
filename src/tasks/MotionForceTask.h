@@ -77,6 +77,7 @@ public:
 		static constexpr double otg_max_angular_jerk = 10.0 * M_PI;
 		static constexpr double singularity_pos_exit_tol = 5e-2;
 		static constexpr double singularity_ori_exit_tol = 10 * M_PI / 180;
+		static constexpr double singularity_exit_velocity_scaling = 1.1;
 	};
 
 	//------------------------------------------------
@@ -523,6 +524,10 @@ public:
 	bool goalPositionReached(const double tolerance,
 							 const bool verbose = false);
 
+	bool goalPositionReached(const MatrixXd& basis,
+							 const double tolerance,
+							 const bool verbose = false);
+
 	/**
 	 * @brief      Checks if the goal orientation has reched the goal up to a
 	 * tolerance
@@ -535,6 +540,15 @@ public:
 	 */
 	bool goalOrientationReached(const double tolerance,
 								const bool verbose = false);
+
+	bool goalOrientationReached(const MatrixXd& basis,
+							    const double tolerance,
+								const bool verbose = false);
+
+	bool goalPoseReached(const MatrixXd& basis,
+						 const double pos_tolerance,
+						 const double ori_tolerance,
+						 const bool verbose = false);
 
 	// -------- force control related methods --------
 
@@ -881,6 +895,10 @@ public:
 
 	MatrixXd getBlendingMatrix() {
 		return _singularity_handler->getBlendingMatrix();
+	}
+
+	std::vector<Singularity> getSingularities() {
+		return _singularity_handler->getActiveSingularities();
 	}
 
     bool isFullySingularTask() {

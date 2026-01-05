@@ -65,7 +65,7 @@ namespace {
             else if (neg >= pos && neg >= zero)
                 result[i] = -1;
             else
-                result[i] = 0;
+                result[i] = 1;  // arbitrary direction
         }
 
         return result;
@@ -358,6 +358,7 @@ bool SingularityHandler::classifySingularityType(const VectorXd& curr_q,
     {
         // debug 
         std::cout << "classify singularity type deviation: " << deviation << "\n";
+        std::cout << "delta: " << delta.transpose() << "\n";
     }
 
 
@@ -557,6 +558,8 @@ SingularityHandler::SingularityHandler(std::shared_ptr<Sai2Model::Sai2Model> rob
 
     _num_singularities = 0;
     _prev_num_singularities = 0;
+    _num_zone_2_singularities = 0;
+    _prev_num_zone_2_singularities = 0;
 
     // _nm_tol = DefaultParameters::nm_tol;
     // _nm_max_iter = DefaultParameters::nm_max_iter;
@@ -712,15 +715,16 @@ void SingularityHandler::updateTaskModel(MatrixXd& projected_jacobian, const Mat
                 _alpha_blending_matrix = MatrixXd::Zero(_num_singularities, _num_singularities);
                 _alpha_vec = VectorXd::Zero(_num_singularities);
                 _condition_ratio_vec = VectorXd::Zero(_num_singularities);
+
                 for (int j = 0; j < _num_singularities; ++j) {
                     double curr_inv_condition_number = _svd_s(i + j) / _svd_s(0);
-                    double scale_factor = std::clamp((curr_inv_condition_number - _s_min) / (_s_max - _s_min), 0.0, 1.);
+                    double scale_factor = std::clamp((curr_inv_condition_number - _s_min) / (_s_max - _s_min), 0.0, 1.0);
                     _alpha_blending_matrix(j, j) = _min_blending + scale_factor * (1 - _min_blending);
-                    _condition_ratio_vec(j) = curr_inv_condition_number;
                     if (curr_inv_condition_number < _s_min) {
                         _num_zone_2_singularities++;
                         _alpha_blending_matrix(j, j) = 0;
                     }
+                    _condition_ratio_vec(j) = curr_inv_condition_number;
                     _alpha_vec(j) = _alpha_blending_matrix(j, j);
                 }
 
@@ -790,6 +794,7 @@ void SingularityHandler::updateTaskModel(MatrixXd& projected_jacobian, const Mat
         // _Lambda_joint_s = op_space_matrices.Lambda;
         _N = op_space_matrices.N * _N_ns;
         _N_sjs_init = _N_ns * N_prec;
+        // _N_sjs_init = N_prec;
     }
 
     // dynamic decoupling 
@@ -1264,6 +1269,16 @@ void SingularityHandler::classifySingularity(const MatrixXd& projected_jacobian,
     //     _alpha_history.pop_front();
     // }
 
+    // collect for _task_range_ns_with_blending
+    std::vector<VectorXd> task_range_ns_with_blending = {};
+    for (auto singularity : _active_singularities) {
+        if (singularity.getConditionRatio(_s_min, _s_max, singularity.sigma) > _s_min) {
+            task_range_ns_with_blending.push_back(singularity.u);
+        }
+    }
+
+    _task_range_ns_with_blending = vectorsToMatrix(task_range_ns_with_blending);
+
 }
 
 VectorXd SingularityHandler::computeTorques(const VectorXd& unit_mass_force, const VectorXd& force_related_terms) {
@@ -1379,6 +1394,8 @@ VectorXd SingularityHandler::computeTorques(const VectorXd& unit_mass_force, con
                 int cnt = 0;
                 for (auto singularity : _active_singularities) {
                     std::cout << "Singularity " << cnt << ": " << singularity.type << "\n";
+                    std::cout << "Direction: " << singularity.u.transpose() << "\n";
+                    std::cout << "Joint direction: " << singularity.v.transpose() << "\n";
                 }
             // }
         }
@@ -1388,17 +1405,10 @@ VectorXd SingularityHandler::computeTorques(const VectorXd& unit_mass_force, con
             active_singular_joint_space.col(ind) = _active_singularities[ind].v;  // collect singular joint space basis
 
             if (_active_singularities[ind].type == TYPE_1_SINGULARITY) {
+                // type 1 handling
 
                 double motion_toward_singularity = 
                     _active_singularities[ind].u_toward_singularity.head(3).dot((unit_mass_force + force_related_terms).head(3));
-                
-                // _motion_towards_singularity_history.push_back(motion_toward_singularity > 0);
-
-                // // pop oldest if greater than buffer size
-                // if (_motion_towards_singularity_history.size() > _type_1_buffer_size) {
-                //     _motion_towards_singularity_history.pop_front();
-                // }
-                // bool is_moving_towards_singularity = majorityElement(_motion_towards_singularity_history);
                 bool is_moving_towards_singularity = motion_toward_singularity > 0;
 
                 // {
@@ -1415,27 +1425,21 @@ VectorXd SingularityHandler::computeTorques(const VectorXd& unit_mass_force, con
 
                     if (_active_singularities[ind].getConditionRatio(_s_min, _s_max, _svd_s(0)) < _s_min) {
                         // gradient descent towards singularity
-                        // scaled by the minimum of the force magnitude and condition number
-                        // reduce velocity to zero as robot gets closer to singularity to avoid oscillations
 
-                        // VectorXd singular_task_force = _task_range_s * _task_range_s.transpose() * (unit_mass_force + force_related_terms);
-                        // double curr_singular_task_force = 
-                        //     (_active_singularities[ind].u * _active_singularities[ind].u.transpose() * (unit_mass_force + force_related_terms)).norm();
                         double curr_singular_task_force = 
                             std::abs(_active_singularities[ind].u.transpose() * (unit_mass_force + force_related_terms));
                         double force_vel_scaling = std::clamp(curr_singular_task_force / _max_force_norm, 0.0, 1.0);
-                        double condition_number_scaling = std::clamp(_active_singularities[ind].getConditionRatioWithMin(_s_min), 0.0, 1.0);  // starts at 1 at _s_min, then goes to 0 towards 0
+                        double condition_number_scaling = 
+                            std::clamp(_active_singularities[ind].getConditionRatioWithMin(_s_min), 0.0, 1.0);  // starts at 1 at _s_min, then goes to 0 towards s = 0
                         double vel_scaling = std::min(force_vel_scaling, condition_number_scaling);
 
-                        VectorXd q_des = curr_q - _type_1_step_size_control_towards_singularity * _active_singularities[ind].dsdq;
-                        q_des = saturateBox(q_des, _q_lower, _q_upper);  // saturate within joint limits 
+                        // VectorXd q_des = curr_q - _type_1_step_size_control_towards_singularity * _active_singularities[ind].dsdq;
+                        // q_des = saturateBox(q_des, _q_lower, _q_upper);  // saturate within joint limits 
 
-                        // compute velocity-saturated control
-                        VectorXd dq_des = (_kp_type_1 / _kv_type_1) * (q_des - curr_q);
-                        if (dq_des.norm() > vel_scaling * _type_1_max_vel_towards_singularity) {
-                            dq_des = vel_scaling * _type_1_max_vel_towards_singularity * dq_des.normalized();
-                        } 
-                        unit_torques = - _kv_type_1 * (_robot->dq() - dq_des) * 1;
+                        // compute velocity control
+                        VectorXd dq_des = - _active_singularities[ind].v * _active_singularities[ind].v.transpose() * _active_singularities[ind].dsdq;
+                        dq_des = vel_scaling * _type_1_max_vel_towards_singularity * dq_des.normalized();
+                        unit_torques = - _kv_type_1 * (_robot->dq() - dq_des);
 
                     } else {
                         // damping, as the singular task force is non-zero (let this dictate control towards singularity)
@@ -1461,8 +1465,9 @@ VectorXd SingularityHandler::computeTorques(const VectorXd& unit_mass_force, con
                             dq_des = (_kp_type_1 / _kv_type_1) * (_q_goal_posture - curr_q);
                         }
 
-                        // double curr_singular_task_force = 
-                        //     (_active_singularities[ind].u * _active_singularities[ind].u.transpose() * (unit_mass_force + force_related_terms)).norm();
+                        // project
+                        dq_des = _active_singularities[ind].v * _active_singularities[ind].v.transpose() * dq_des;
+
                         double curr_singular_task_force = 
                             std::abs(_active_singularities[ind].u.transpose() * (unit_mass_force + force_related_terms));
 
@@ -1482,12 +1487,9 @@ VectorXd SingularityHandler::computeTorques(const VectorXd& unit_mass_force, con
 
             } else if (_active_singularities[ind].type == TYPE_2_SINGULARITY) {
                 // type 2 handling 
+
                 double curr_singular_task_force = 
                             std::abs(_active_singularities[ind].u.transpose() * (unit_mass_force + force_related_terms));
-                // if (_active_singularities[ind].is_degenerate) {
-                //     curr_singular_task_force = 
-                //         (_active_singularities[ind].U * _active_singularities[ind].U.transpose() * (unit_mass_force + force_related_terms)).norm();
-                // }
 
                 if (_active_singularities[ind].getConditionRatio(_s_min, _s_max, _svd_s(0)) < _s_min) {
                     // throw runtime_error("");
@@ -1508,9 +1510,10 @@ VectorXd SingularityHandler::computeTorques(const VectorXd& unit_mass_force, con
                         // _type_2_direction(i) = sign(_singular_task_torques(i) + _non_singular_task_torques(i));
                         // _type_2_direction(i) = sign(impedance_singular_task_torques(i));
                         _type_2_direction(i) = singular_task_torque_sign(i);
-                        if (_type_2_direction(i) == 0) {
-                            _type_2_direction(i) = sign(_robot->dq()(i));
-                        }
+                        // _type_2_direction(i) = sign(_active_singularities[ind].v(i));
+                        // if (_type_2_direction(i) == 0) {
+                        //     _type_2_direction(i) = sign(_robot->dq()(i));
+                        // }
 
                         // direction change
                         if (std::abs(curr_q(i) - _q_upper(i)) < _type_2_angle_threshold) {
@@ -1525,12 +1528,22 @@ VectorXd SingularityHandler::computeTorques(const VectorXd& unit_mass_force, con
                     double scaled_velocity_magnitude = std::min(force_dotted_singular_direction, force_vel_scaling);
                     // double scaled_velocity_magnitude = force_vel_scaling;
 
-                    VectorXd dq_des = _type_2_direction.normalized() * _type_2_max_vel * scaled_velocity_magnitude;
-                    // VectorXd dq_des = _type_2_direction.normalized() * _type_2_max_vel;
-                    // VectorXd q_des = saturateBox(curr_q + _type_2_direction.normalized() * _type_2_max_vel * scaled_velocity_magnitude * _dt, _q_lower, _q_upper);
+                    VectorXd dq_des = 
+                        _active_singularities[ind].v * _active_singularities[ind].v.transpose() * _type_2_direction.normalized();
+                    dq_des = _type_2_max_vel * scaled_velocity_magnitude * dq_des.normalized();
+
+                    // comparison without scaling
+                    {
+                        // debug
+                        std::cout << "dq_des in v: " << dq_des.transpose() << "\n";
+                        std::cout << "dq_des: " << (_type_2_direction.normalized() * _type_2_max_vel * scaled_velocity_magnitude).transpose() << "\n";
+                    }
+
                     unit_torques = - _kv_type_2 * (_robot->dq() - dq_des);
 
                     // velocity saturation in the singular joint space metric 
+                    // std::cout << "dq des: " << dq_des.transpose() << "\n";
+                    // std::cout << "unit torque: " << unit_torques.transpose() << "\n";
 
                     // {
                     //     // debug
@@ -1562,19 +1575,20 @@ VectorXd SingularityHandler::computeTorques(const VectorXd& unit_mass_force, con
             MatrixXd Lambda_sjs_modified = op_matrices.Lambda;
             if (_dynamic_decoupling_type == BOUNDED_INERTIA_ESTIMATES) { 
                 MatrixXd Lambda_inv_BIE = sjs_jacobian * _M_inv_BIE_SINGULARITY * sjs_jacobian.transpose();
-                // Lambda_sjs_modified = Lambda_inv_BIE.inverse();
-                Lambda_sjs_modified = Sai2Model::computePseudoInverse(Lambda_inv_BIE, _s_abs_tol);
+                Lambda_sjs_modified = Lambda_inv_BIE.inverse();
+                // Lambda_sjs_modified = Sai2Model::computePseudoInverse(Lambda_inv_BIE, _s_abs_tol);
             } 
             singular_joint_task_torques -= (MatrixXd::Identity(_dof, _dof) - op_matrices.N).transpose() * singular_joint_task_torques;  // forward compensation 
             singular_joint_task_torques += sjs_jacobian.transpose() * Lambda_sjs_modified * _active_singularities[ind].v.transpose() * unit_torques;
             N_prec = op_matrices.N * N_prec;
 
-            // {
-            //     // debug
-            //     std::cout << "Lambda sjs modified: \n" << Lambda_sjs_modified << "\n";
-            //     std::cout << "unit torques: \n" << unit_torques.transpose() << "\n";
-            //     std::cout << "singular joint task torques: \n" << singular_joint_task_torques.transpose() << "\n";
-            // }
+            {
+                // debug
+                std::cout << "Lambda sjs modified: \n" << Lambda_sjs_modified << "\n";
+                std::cout << "unit torques: \n" << unit_torques.transpose() << "\n";
+                std::cout << "projected unit torques: " << _active_singularities[ind].v.transpose() * unit_torques << "\n";
+                std::cout << "singular joint task torques: \n" << singular_joint_task_torques.transpose() << "\n";
+            }
 
         }
 
