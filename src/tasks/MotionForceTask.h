@@ -971,7 +971,22 @@ public:
 	/*
 		Experimental
 	*/	
+    double getType2Alignment() {
+		return _singularity_handler->getType2Alignment();
+	}
 
+	void setType1Velocity(const double vel_toward, const double vel_away) {
+		_singularity_handler->setType1Velocity(vel_toward, vel_away);
+    }
+
+    void setType2Velocity(const double velocity) {
+		_singularity_handler->setType2Velocity(velocity);
+    }
+
+	void setMinBlending(const double value) {
+		_singularity_handler->setMinBlending(value);
+	}
+	
 private:
 	/**
 	 * @brief Initial setup of the task, called in the constructor to avoid

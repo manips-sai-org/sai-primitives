@@ -119,7 +119,8 @@ public:
 
         // singularity parameters
         static constexpr double s_abs_tol = 1e-3;  
-        static constexpr double min_blending = 0.3;  // panda
+        static constexpr double min_blending = 0.2;  // panda
+        // static constexpr double min_blending = 0;  // panda
         // static constexpr double min_blending = 0.1;
 
         // type 1 parameters
@@ -142,9 +143,10 @@ public:
         // type 2 parameters
         static constexpr double type_2_angle_threshold = 10 * M_PI / 180;
         // static constexpr double type_2_force_threshold = 0.01;
-        static constexpr double type_2_max_vel = 3 * 60 * M_PI / 180;  
+        static constexpr double type_2_max_vel = 3 * 30 * M_PI / 180;  
+        static constexpr double type_2_min_force = 1e-6; 
         static constexpr double buffer_size = 1;  
-        static constexpr int type_2_task_torque_buffer_size = 1;
+        static constexpr int type_2_task_torque_buffer_size = 250;
               
         static constexpr double max_force_norm = 1;  
         static constexpr double joint_limit_buffer = 5 * M_PI / 180;
@@ -320,6 +322,15 @@ public:
         _singular_bie_threshold = singular_bie_threshold;
 	}
 
+    void setType1Velocity(const double vel_toward, const double vel_away) {
+        _type_1_max_vel_towards_singularity = vel_toward;
+        _type_1_max_vel_away_from_singularity = vel_away;
+    }
+
+    void setType2Velocity(const double velocity) {
+        _type_2_max_vel = velocity;
+    }
+
     /*
         Getters
     */
@@ -437,6 +448,10 @@ public:
         return _task_range_ns_with_blending;
     }
 
+    double getType2Alignment() {
+        return _force_dotted_singular_direction;
+    }
+
 private:
 
     /**
@@ -533,6 +548,7 @@ private:
     VectorXd _type_2_max_vel_vector;
     VectorXd _type_2_direction;
     double _type_2_force_threshold;
+    double _type_2_min_force;
 
     // model quantities 
     MatrixXd _svd_U, _svd_V;
@@ -542,7 +558,7 @@ private:
     MatrixXd _N;
     MatrixXd _task_range_ns, _task_range_s, _joint_task_range_s;
     MatrixXd _task_range_ns_with_blending;
-    MatrixXd _projected_jacobian_ns, _projected_jacobian_s;
+    MatrixXd _projected_jacobian_ns, _projected_jacobian_s, _projected_jacobian;
     MatrixXd _Lambda_ns, _Jbar_ns, _N_ns;
     MatrixXd _Lambda_s;
     MatrixXd _Lambda_ns_modified, _Lambda_s_modified;
@@ -616,6 +632,9 @@ private:
     // nlopt 
     std::map<int, std::unique_ptr<nlopt::opt>> _nl_opt;
     OptimData* _nl_opt_data;
+
+    // experimental
+    double _force_dotted_singular_direction;
 
 };
 

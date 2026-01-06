@@ -52,8 +52,8 @@ void simulation(shared_ptr<Sai2Model::Sai2Model> robot,
 /*
 	Control
 */
-bool flag_simulation = true;
-// bool flag_simulation = false;
+// bool flag_simulation = true;
+bool flag_simulation = false;
 Sai2Common::RedisClient* redis_client;
 std::string JOINT_ANGLES_KEY = "sai2::FrankaPanda::Romeo::sensors::q";
 std::string JOINT_VELOCITIES_KEY = "sai2::FrankaPanda::Romeo::sensors::dq";
@@ -176,11 +176,15 @@ void control(shared_ptr<Sai2Model::Sai2Model> robot,
     motion_force_task->disableVelocitySaturation();
     // motion_force_task->setSingularityHandlingBounds(1e-2, 7e-2);
     motion_force_task->setSingularityHandlingBounds(2e-2, 7e-2);
+    // motion_force_task->setSingularityHandlingBounds(6e-2, 7e-2);
     // motion_force_task->setSingularityHandlingBounds(6.9e-2, 7e-2);
     // motion_force_task->enableVelocitySaturation(1.0, M_PI / 3);
     // motion_force_task->setSingularityHandlingBounds(5e-2, 5e-1);
 
-	motion_force_task->setSingularityHandlingGains(100, 20, 100, 20);
+	motion_force_task->setMinBlending(0.2);
+	// motion_force_task->setType2Velocity(1.5 * M_PI / 3);  // mulitple of 60s
+	motion_force_task->setType2Velocity(1.0 * M_PI);  // mulitple of 60s
+	motion_force_task->setSingularityHandlingGains(100, 20, 100, 30);
 
 	VectorXd motion_force_task_torques = VectorXd::Zero(dof);
 
@@ -260,6 +264,7 @@ void control(shared_ptr<Sai2Model::Sai2Model> robot,
     VectorXd singular_direction = VectorXd::Zero(6);
 	VectorXd singular_joint_space = VectorXd::Zero(robot->dof());
 	VectorXi classification = VectorXi::Zero(6);
+	VectorXd force_dotted_singular_direction = VectorXd::Zero(1);
 
 	logger.addToLog(svalues, "svalues");
 	logger.addToLog(robot_q, "robot_q");
@@ -279,6 +284,7 @@ void control(shared_ptr<Sai2Model::Sai2Model> robot,
     logger.addToLog(singular_direction, "singular_direction");
 	logger.addToLog(singular_joint_space, "singular_joint_space");
 	logger.addToLog(classification, "classification");
+	logger.addToLog(force_dotted_singular_direction, "force_dotted_singular_direction");
 	logger.start();
 
 	// create a loop timer
@@ -310,8 +316,9 @@ void control(shared_ptr<Sai2Model::Sai2Model> robot,
 			robot->setDq(redis_client->getEigen(JOINT_VELOCITIES_KEY));
 			MatrixXd M = redis_client->getEigen(MASS_MATRIX_KEY);
 			M(0, 0) += 0.15;
-            M.bottomRightCorner(4, 4) += 0.25 * MatrixXd::Identity(4, 4);
-            // M.bottomRightCorner(3, 3) += 0.15 * Matrix3d::Identity();  // use less fopr this 
+            M.bottomRightCorner(4, 4) += 0.15 * MatrixXd::Identity(4, 4);
+            // M.bottomRightCorner(3, 3) += 0.15 * Matrix3d::Identity();  // use less for this 
+			// M.block(4, 4, 2, 2) += 0.15 * MatrixXd::Identity(2, 2);
 			robot->updateModel(M);
 
 			robot_q = robot->q();
@@ -422,8 +429,8 @@ void control(shared_ptr<Sai2Model::Sai2Model> robot,
             Vector3d offset_trajectory = Vector3d(0, 0, 0);
             Vector3d offset_velocity_trajectory = Vector3d(0, 0, 0);
             Vector3d offset_acceleration_trajectory = Vector3d(0, 0, 0);
-            double freq = 0.1;
-            // double freq = 0.08;
+            // double freq = 0.1;
+            double freq = 0.15;
             double amplitude = 0.25;  
             offset_trajectory(1) = amplitude * sin(2 * M_PI * freq * (time - time_transition));
             offset_velocity_trajectory(1) = 2 * M_PI * freq * amplitude * cos(2 * M_PI * freq * (time - time_transition));
@@ -464,6 +471,7 @@ void control(shared_ptr<Sai2Model::Sai2Model> robot,
 				singular_joint_space = motion_force_task->getSingularJointTaskRange().col(0);
 				classification.head(motion_force_task->getSingularityClassification().size()) = motion_force_task->getSingularityClassification();
 				condition_ratio = motion_force_task->getConditionRatio();
+				force_dotted_singular_direction(0) = motion_force_task->getType2Alignment();
 			}
 
         }

@@ -65,7 +65,7 @@ namespace {
             else if (neg >= pos && neg >= zero)
                 result[i] = -1;
             else
-                result[i] = 1;  // arbitrary direction
+                result[i] = 0;  
         }
 
         return result;
@@ -530,6 +530,7 @@ SingularityHandler::SingularityHandler(std::shared_ptr<Sai2Model::Sai2Model> rob
     _type_2_max_vel = DefaultParameters::type_2_max_vel;
     _type_2_max_vel_vector = DefaultParameters::type_2_max_vel * VectorXd::Ones(_dof);   
     _type_2_task_torque_buffer_size = DefaultParameters::type_2_task_torque_buffer_size;
+    _type_2_min_force = DefaultParameters::type_2_min_force;
 
     _buffer_size = DefaultParameters::buffer_size;
 
@@ -561,9 +562,13 @@ SingularityHandler::SingularityHandler(std::shared_ptr<Sai2Model::Sai2Model> rob
     _num_zone_2_singularities = 0;
     _prev_num_zone_2_singularities = 0;
 
+    // debug
+    _force_dotted_singular_direction = 0;
+
     // _nm_tol = DefaultParameters::nm_tol;
     // _nm_max_iter = DefaultParameters::nm_max_iter;
     // _nm_step_size = DefaultParameters::nm_step_size;
+
 
     // setup nlopt (setup optimizer for all dimensionality cases between 2 and 6)
     for (int i = 2; i < 7; ++i) {
@@ -597,6 +602,7 @@ SingularityHandler::SingularityHandler(std::shared_ptr<Sai2Model::Sai2Model> rob
 void SingularityHandler::updateTaskModel(MatrixXd& projected_jacobian, const MatrixXd& N_prec) {
     
     // task range decomposition
+    _projected_jacobian = projected_jacobian;
     // auto t1 = high_resolution_clock::now();
     _J_svd.compute(projected_jacobian, ComputeThinU | ComputeThinV);  // 0.005 ms
     // auto t2 = high_resolution_clock::now();
@@ -1429,6 +1435,7 @@ VectorXd SingularityHandler::computeTorques(const VectorXd& unit_mass_force, con
                         double curr_singular_task_force = 
                             std::abs(_active_singularities[ind].u.transpose() * (unit_mass_force + force_related_terms));
                         double force_vel_scaling = std::clamp(curr_singular_task_force / _max_force_norm, 0.0, 1.0);
+                        force_vel_scaling = 1;
                         double condition_number_scaling = 
                             std::clamp(_active_singularities[ind].getConditionRatioWithMin(_s_min), 0.0, 1.0);  // starts at 1 at _s_min, then goes to 0 towards s = 0
                         double vel_scaling = std::min(force_vel_scaling, condition_number_scaling);
@@ -1495,9 +1502,14 @@ VectorXd SingularityHandler::computeTorques(const VectorXd& unit_mass_force, con
                     // throw runtime_error("");
 
                     double force_dotted_singular_direction = std::abs(normalized_force_moment.transpose() * _active_singularities[ind].u);
+                    _force_dotted_singular_direction = force_dotted_singular_direction;  // experimental logging
 
                     // get majority element from past singular task torques 
                     VectorXi singular_task_torque_sign = majoritySign(_singular_task_torque_history, _dof);
+
+                    // compute singular task torque component for this singularity
+                    VectorXd singular_torque_component = 
+                        _projected_jacobian.transpose() * _active_singularities[ind].u * _active_singularities[ind].u.transpose() * (unit_mass_force + force_related_terms);
 
                     // change direction if angle threshold is met 
                     for (int i = 0; i < _dof; ++i) {
@@ -1507,13 +1519,18 @@ VectorXd SingularityHandler::computeTorques(const VectorXd& unit_mass_force, con
 
                         // set direction to the direction of the singular task torque
                         // _type_2_direction(i) = sign(_robot->dq()(i) + _dt * (_singular_task_torques(i) + _non_singular_task_torques(i)));
+                        // _type_2_direction(i) = sign(_non_singular_task_torques(i));
                         // _type_2_direction(i) = sign(_singular_task_torques(i) + _non_singular_task_torques(i));
                         // _type_2_direction(i) = sign(impedance_singular_task_torques(i));
-                        _type_2_direction(i) = singular_task_torque_sign(i);
+                        // _type_2_direction(i) = singular_task_torque_sign(i);
+                        _type_2_direction(i) = sign(singular_torque_component(i));
                         // _type_2_direction(i) = sign(_active_singularities[ind].v(i));
-                        // if (_type_2_direction(i) == 0) {
-                        //     _type_2_direction(i) = sign(_robot->dq()(i));
-                        // }
+                        // _type_2_direction(i) = singular_task_torque_sign(i);
+                        // _type_2_direction(i) = sign(_robot->dq()(i));
+                        if (_type_2_direction(i) == 0) {
+                            // _type_2_direction(i) = sign(_robot->dq()(i));
+                            _type_2_direction(i) = 0;
+                        }
 
                         // direction change
                         if (std::abs(curr_q(i) - _q_upper(i)) < _type_2_angle_threshold) {
@@ -1524,9 +1541,13 @@ VectorXd SingularityHandler::computeTorques(const VectorXd& unit_mass_force, con
                     }
 
                     // double force_dotted_singular_direction = std::abs(normalized_force_moment.transpose() * _active_singularities[ind].u);
-                    double force_vel_scaling = std::clamp(curr_singular_task_force / _max_force_norm, 0.0, 1.0);
-                    double scaled_velocity_magnitude = std::min(force_dotted_singular_direction, force_vel_scaling);
-                    // double scaled_velocity_magnitude = force_vel_scaling;
+                    // double force_vel_scaling = std::clamp(curr_singular_task_force / _max_force_norm, 0.0, 1.0);
+                    // double scaled_velocity_magnitude = std::min(force_dotted_singular_direction, force_vel_scaling);
+                    // double scaled_velocity_magnitude = force_dotted_singular_direction * (curr_singular_task_force < _type_2_min_force);
+                    double scaled_velocity_magnitude = force_dotted_singular_direction;
+                    if (curr_singular_task_force < _type_2_min_force) {
+                        scaled_velocity_magnitude = 0;
+                    }
 
                     VectorXd dq_des = 
                         _active_singularities[ind].v * _active_singularities[ind].v.transpose() * _type_2_direction.normalized();
