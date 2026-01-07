@@ -1620,11 +1620,11 @@ VectorXd SingularityHandler::computeTorques(const VectorXd& unit_mass_force, con
                             n_matching_sign++;
                         }
                     }
-                    if (n_matching_sign > _dof / 2) {
-                        _type_2_direction = _active_singularities[ind].v; 
-                    } else {
-                        _type_2_direction = - _active_singularities[ind].v;
-                    }
+                    // if (n_matching_sign > _dof / 2) {
+                    //     _type_2_direction = _active_singularities[ind].v; 
+                    // } else {
+                    //     _type_2_direction = - _active_singularities[ind].v;
+                    // }
 
                     VectorXd dq_des = 
                         _active_singularities[ind].v * _active_singularities[ind].v.transpose() * _type_2_direction;

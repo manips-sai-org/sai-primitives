@@ -184,8 +184,8 @@ void control(shared_ptr<Sai2Model::Sai2Model> robot,
 	motion_force_task->setMinBlending(0.2);
 	// motion_force_task->setType2Velocity(1.5 * M_PI / 3);  // mulitple of 60s
 	// motion_force_task->setType2Velocity(1.0 * M_PI);  // mulitple of 60s
-	motion_force_task->setType2Velocity(M_PI); 
-	motion_force_task->setSingularityHandlingGains(100, 20, 100, 20);
+	motion_force_task->setType2Velocity(M_PI * 1.5); 
+	motion_force_task->setSingularityHandlingGains(100, 20, 100, 40);
 	VectorXd vel_sf = VectorXd::Ones(7);
 	// vel_sf << 0.6, 0.6, 0.6, 0.6, 0.3, 0.3, 0.3;
 	// vel_sf << 0.6, 0.6, 0.6, 0.6, 0.3, 0.3, 0.3;
