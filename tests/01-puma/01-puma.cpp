@@ -239,7 +239,10 @@ void control(shared_ptr<Sai2Model::Sai2Model> robot,
 	motion_force_task->setPosControlGains(100, 20, 0);
 	motion_force_task->setOriControlGains(100, 20, 0);
 	motion_force_task->setType1Posture(robot->q());
-	motion_force_task->setSingularityHandlingGains(50, 14, 100, 5);
+	motion_force_task->setSingularityHandlingGains(100, 20, 100, 5);
+
+	motion_force_task->setType1Velocity(M_PI / 3, M_PI / 3);
+	motion_force_task->setType2Velocity(M_PI);
 
 	// // Partial motion force task
 	// vector<Vector3d> controlled_directions_translation = {
@@ -529,7 +532,7 @@ void simulation(shared_ptr<Sai2Model::Sai2Model> robot,
 	sim->disableJointLimits(robot_name);
 
 	// create a timer
-	double sim_freq = 2000;
+	double sim_freq = 1000;
 	Sai2Common::LoopTimer timer(sim_freq);
 
 	sim->setTimestep(1.0 / sim_freq);
