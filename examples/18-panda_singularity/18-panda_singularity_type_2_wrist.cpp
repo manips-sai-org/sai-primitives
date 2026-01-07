@@ -183,8 +183,14 @@ void control(shared_ptr<Sai2Model::Sai2Model> robot,
 
 	motion_force_task->setMinBlending(0.2);
 	// motion_force_task->setType2Velocity(1.5 * M_PI / 3);  // mulitple of 60s
-	motion_force_task->setType2Velocity(1.0 * M_PI);  // mulitple of 60s
-	motion_force_task->setSingularityHandlingGains(100, 20, 100, 30);
+	// motion_force_task->setType2Velocity(1.0 * M_PI);  // mulitple of 60s
+	motion_force_task->setType2Velocity(M_PI); 
+	motion_force_task->setSingularityHandlingGains(100, 20, 100, 20);
+	VectorXd vel_sf = VectorXd::Ones(7);
+	// vel_sf << 0.6, 0.6, 0.6, 0.6, 0.3, 0.3, 0.3;
+	// vel_sf << 0.6, 0.6, 0.6, 0.6, 0.3, 0.3, 0.3;
+	motion_force_task->setMaxJointVelocityScaleFactor(vel_sf);
+	motion_force_task->setMinMagnitudeThreshold(0.1);
 
 	VectorXd motion_force_task_torques = VectorXd::Zero(dof);
 
@@ -259,12 +265,15 @@ void control(shared_ptr<Sai2Model::Sai2Model> robot,
     VectorXd singular_task_torques = VectorXd::Zero(robot->dof());
 	VectorXd non_singular_task_torques = VectorXd::Zero(robot->dof());
 	VectorXd singular_joint_space_torques = VectorXd::Zero(robot->dof());
-	VectorXd alpha = VectorXd::Ones(1);
-	VectorXd condition_ratio = VectorXd::Ones(6);
+	// VectorXd alpha = VectorXd::Ones(1);
+	// VectorXd condition_ratio = VectorXd::Ones(6);
     VectorXd singular_direction = VectorXd::Zero(6);
 	VectorXd singular_joint_space = VectorXd::Zero(robot->dof());
-	VectorXi classification = VectorXi::Zero(6);
+	// VectorXi classification = VectorXi::Zero(6);
 	VectorXd force_dotted_singular_direction = VectorXd::Zero(1);
+	VectorXd dq_des = VectorXd::Zero(robot->dof());
+	VectorXd unit_mass_force = VectorXd::Zero(6);
+	VectorXd dsdq_norm = VectorXd::Zero(1);
 
 	logger.addToLog(svalues, "svalues");
 	logger.addToLog(robot_q, "robot_q");
@@ -279,12 +288,15 @@ void control(shared_ptr<Sai2Model::Sai2Model> robot,
 	logger.addToLog(non_singular_task_torques, "non_singular_task_torques");
 	logger.addToLog(singular_joint_space_torques, "singular_joint_space_torques");
 	logger.addToLog(motion_force_task_torques, "motion_task_torques");
-	logger.addToLog(alpha, "alpha");
-	logger.addToLog(condition_ratio, "condition_ratio");
+	// logger.addToLog(alpha, "alpha");
+	// logger.addToLog(condition_ratio, "condition_ratio");
     logger.addToLog(singular_direction, "singular_direction");
-	logger.addToLog(singular_joint_space, "singular_joint_space");
-	logger.addToLog(classification, "classification");
-	logger.addToLog(force_dotted_singular_direction, "force_dotted_singular_direction");
+	logger.addToLog(singular_joint_space, "singular_joint_space_direction");
+	// logger.addToLog(classification, "classification");
+	logger.addToLog(force_dotted_singular_direction, "force_singularity_alignment");
+	logger.addToLog(dq_des, "dq_des");
+	logger.addToLog(unit_mass_force, "unit_mass_force");
+	logger.addToLog(dsdq_norm, "dsdq_norm");
 	logger.start();
 
 	// create a loop timer
@@ -316,8 +328,8 @@ void control(shared_ptr<Sai2Model::Sai2Model> robot,
 			robot->setDq(redis_client->getEigen(JOINT_VELOCITIES_KEY));
 			MatrixXd M = redis_client->getEigen(MASS_MATRIX_KEY);
 			M(0, 0) += 0.15;
-            M.bottomRightCorner(4, 4) += 0.15 * MatrixXd::Identity(4, 4);
-            // M.bottomRightCorner(3, 3) += 0.15 * Matrix3d::Identity();  // use less for this 
+            // M.bottomRightCorner(4, 4) += 0.15 * MatrixXd::Identity(4, 4);
+            M.bottomRightCorner(3, 3) += 0.15 * Matrix3d::Identity();  // use less for this 
 			// M.block(4, 4, 2, 2) += 0.15 * MatrixXd::Identity(2, 2);
 			robot->updateModel(M);
 
@@ -334,7 +346,7 @@ void control(shared_ptr<Sai2Model::Sai2Model> robot,
 		// singular_direction = motion_force_task->getSingularTaskRange().col(0);
 		if (motion_force_task->getNumSingularities() > 0) {
 			// alpha.head(motion_force_task->getNumSingularities()) = motion_force_task->getBlendingVector();
-			alpha(0) = motion_force_task->getBlendingVector()(0);
+			// alpha(0) = motion_force_task->getBlendingVector()(0);
 		}
 		pos_error = motion_force_task->getPositionError();
 		ori_error = motion_force_task->getOrientationError();
@@ -397,6 +409,11 @@ void control(shared_ptr<Sai2Model::Sai2Model> robot,
 
 		} else if (state == MOTION) {
 
+			// experimental comparison
+			if (time - time_transition > 5) {
+				// motion_force_task->disableJointStrategy();
+			}
+
             // update tasks model. Order is important to define the hierarchy
             N_prec = MatrixXd::Identity(dof, dof);
             {
@@ -429,8 +446,9 @@ void control(shared_ptr<Sai2Model::Sai2Model> robot,
             Vector3d offset_trajectory = Vector3d(0, 0, 0);
             Vector3d offset_velocity_trajectory = Vector3d(0, 0, 0);
             Vector3d offset_acceleration_trajectory = Vector3d(0, 0, 0);
-            // double freq = 0.1;
-            double freq = 0.15;
+			// double freq = 0.05;
+            double freq = 0.1;
+            // double freq = 0.15;
             double amplitude = 0.25;  
             offset_trajectory(1) = amplitude * sin(2 * M_PI * freq * (time - time_transition));
             offset_velocity_trajectory(1) = 2 * M_PI * freq * amplitude * cos(2 * M_PI * freq * (time - time_transition));
@@ -469,9 +487,17 @@ void control(shared_ptr<Sai2Model::Sai2Model> robot,
 				singular_joint_space_torques = motion_force_task->getSingularJointTaskTorques();
 		    	singular_direction = motion_force_task->getSingularTaskRange().col(0);
 				singular_joint_space = motion_force_task->getSingularJointTaskRange().col(0);
-				classification.head(motion_force_task->getSingularityClassification().size()) = motion_force_task->getSingularityClassification();
-				condition_ratio = motion_force_task->getConditionRatio();
+				// classification.head(motion_force_task->getSingularityClassification().size()) = motion_force_task->getSingularityClassification();
+				// condition_ratio = motion_force_task->getConditionRatio();
 				force_dotted_singular_direction(0) = motion_force_task->getType2Alignment();
+				dq_des = motion_force_task->getType2DesiredVelocity();
+				unit_mass_force = motion_force_task->getUnitMassForce().normalized();
+				dsdq_norm(0) = motion_force_task->getSingularGradientNorm();
+
+				// debug
+				if (std::abs(force_dotted_singular_direction(0)) > 1) {
+					throw runtime_error("");
+				}
 			}
 
         }

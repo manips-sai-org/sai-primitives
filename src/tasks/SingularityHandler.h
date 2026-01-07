@@ -452,6 +452,30 @@ public:
         return _force_dotted_singular_direction;
     }
 
+    VectorXd getType2DesiredVelocity() {
+		return _dq_des;
+	}
+
+    void enableJointStrategy() {
+        _enable_joint_strategy = true;
+    }
+
+    void disableJointStrategy() {
+        _enable_joint_strategy = false;
+    }
+
+    double getSingularGradientNorm() {
+        return _dsdq_norm;
+    }
+
+    void setMaxJointVelocityScaleFactor(const VectorXd& vel_sf) {
+        _max_joint_vel_sf = vel_sf;
+    }
+
+    void setMinMagnitudeThreshold(const double threshold) {
+        _min_magnitude_thresh = threshold;
+    }
+
 private:
 
     /**
@@ -595,6 +619,7 @@ private:
     std::deque<VectorXd> _alpha_history;
 
     std::deque<VectorXi> _singular_task_torque_history;
+    std::deque<VectorXi> _non_singular_task_torque_history;
     int _type_2_task_torque_buffer_size;
 
     // degenerate singularity gracking
@@ -635,6 +660,11 @@ private:
 
     // experimental
     double _force_dotted_singular_direction;
+    VectorXd _dq_des;
+    bool _enable_joint_strategy;
+    double _dsdq_norm;
+    VectorXd _max_joint_vel_sf;
+    double _min_magnitude_thresh;
 
 };
 

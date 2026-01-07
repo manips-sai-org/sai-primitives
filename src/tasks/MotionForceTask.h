@@ -986,6 +986,26 @@ public:
 	void setMinBlending(const double value) {
 		_singularity_handler->setMinBlending(value);
 	}
+
+	VectorXd getType2DesiredVelocity() {
+		return _singularity_handler->getType2DesiredVelocity();
+	}
+
+	void disableJointStrategy() {
+		_singularity_handler->disableJointStrategy();
+	}
+
+	double getSingularGradientNorm() {
+		return _singularity_handler->getSingularGradientNorm();
+	}
+
+	void setMaxJointVelocityScaleFactor(const VectorXd& vel_sf) {
+		_singularity_handler->setMaxJointVelocityScaleFactor(vel_sf);
+	}
+
+	void setMinMagnitudeThreshold(const double threshold) {
+		_singularity_handler->setMinMagnitudeThreshold(threshold);
+	}
 	
 private:
 	/**
