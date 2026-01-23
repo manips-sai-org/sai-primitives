@@ -75,9 +75,11 @@ public:
 		static constexpr bool internal_otg_jerk_limited = false;
 		static constexpr double otg_max_linear_jerk = 10.0;
 		static constexpr double otg_max_angular_jerk = 10.0 * M_PI;
-		static constexpr double singularity_pos_exit_tol = 5e-2;
+		static constexpr double singularity_pos_exit_tol = 2e-2;
 		static constexpr double singularity_ori_exit_tol = 10 * M_PI / 180;
-		static constexpr double singularity_exit_velocity_scaling = 1.1;
+		static constexpr double singularity_exit_velocity_scaling = 1.0;
+		static constexpr double singularity_linear_acceleration = 0.5;
+		static constexpr double singularity_angular_acceleration = 2.0 * M_PI;
 	};
 
 	//------------------------------------------------
@@ -1015,6 +1017,10 @@ public:
 		_singularity_handler->setMinMagnitudeThreshold(threshold);
 	}
 	
+	void setType2SchedulingWeight(const double val) {
+		_singularity_handler->setType2SchedulingWeight(val);
+	}
+	
 private:
 	/**
 	 * @brief Initial setup of the task, called in the constructor to avoid
@@ -1074,6 +1080,9 @@ private:
 
 	double _user_linear_saturation_velocity;
 	double _user_angular_saturation_velocity;
+
+	double _singularity_linear_acceleration;
+	double _singularity_angular_acceleration;
 
 	// internal otg using ruckig, on by default with acceleration limited
 	// trajectory

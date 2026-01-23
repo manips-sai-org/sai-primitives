@@ -116,7 +116,7 @@ int main(int argc, char** argv) {
 	auto graphics = make_shared<Sai2Graphics::Sai2Graphics>(world_file);
 	graphics->addUIForceInteraction(robot_name);
 	// graphics->showTransparency(true, robot_name, 0.5);
-	graphics->showLinkFrame(true, robot_name, "end-effector-frame", 0.15);
+	// graphics->showLinkFrame(true, robot_name, "end-effector-frame", 0.15);
 	graphics->showObjectLinkFrame(true, "goal_frame", 0.15);
 	// graphics->showObjectLinkFrame(true, "control_force", 0.25);
 	graphics->setBackgroundColor(135./255, 206./255, 235./255);

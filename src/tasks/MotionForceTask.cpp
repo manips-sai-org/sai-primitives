@@ -11,6 +11,13 @@
 using namespace std;
 using namespace Eigen;
 
+namespace {
+	// functions
+    int sign(double x) {
+        return (x > 0) - (x < 0);
+    }
+}
+
 namespace Sai2Primitives {
 
 MotionForceTask::MotionForceTask(
@@ -122,6 +129,9 @@ void MotionForceTask::initialSetup() {
 	} else {
 		disableVelocitySaturation();
 	}
+
+	_singularity_linear_acceleration = DefaultParameters::singularity_linear_acceleration;
+	_singularity_angular_acceleration = DefaultParameters::singularity_angular_acceleration;
 
 	_kff_force = DefaultParameters::kff_force;
 	_kff_moment = DefaultParameters::kff_moment;
@@ -456,34 +466,46 @@ VectorXd MotionForceTask::computeTorques() {
 		_handle_singularity_exit = true;
 
 		// enable velocity saturation if not enabled
+		// if current velocity is different original velocity saturation value, then ramp up or down based on acceleration rates 
+		// if in tracking mode, then switch to velocity saturated control and ramp to default values 
+
 		if (!_use_velocity_saturation_flag) {
 
 			double max_linear_velocity = _current_linear_velocity.norm() * DefaultParameters::singularity_exit_velocity_scaling;
 			double max_angular_velocity = _current_angular_velocity.norm() * DefaultParameters::singularity_exit_velocity_scaling;
-			enableVelocitySaturation(DefaultParameters::linear_saturation_velocity, DefaultParameters::angular_saturation_velocity);
-			
-			if (max_linear_velocity > _linear_saturation_velocity) {
-				_user_linear_saturation_velocity = _linear_saturation_velocity;
-				_linear_saturation_velocity = max_linear_velocity;				
-			}
-			if (max_angular_velocity > _angular_saturation_velocity) {
-				_user_angular_saturation_velocity = _angular_saturation_velocity;
-				_angular_saturation_velocity = max_angular_velocity;
-			}
+			enableVelocitySaturation(DefaultParameters::linear_saturation_velocity, DefaultParameters::angular_saturation_velocity);  // set default parameters
+			// enableVelocitySaturation(max_linear_velocity, max_angular_velocity);
 
+			_linear_saturation_velocity = max_linear_velocity;
+			_angular_saturation_velocity = max_angular_velocity;
+			
+			// if (max_linear_velocity > _linear_saturation_velocity) {
+			// 	_user_linear_saturation_velocity = _linear_saturation_velocity;
+			// 	_linear_saturation_velocity = max_linear_velocity;				
+			// }
+			// if (max_angular_velocity > _angular_saturation_velocity) {
+			// 	_user_angular_saturation_velocity = _angular_saturation_velocity;
+			// 	_angular_saturation_velocity = max_angular_velocity;
+			// }
 			_prev_velocity_saturation = false;
+
 		} else {
 		
 			double max_linear_velocity = _current_linear_velocity.norm() * DefaultParameters::singularity_exit_velocity_scaling;
 			double max_angular_velocity = _current_angular_velocity.norm() * DefaultParameters::singularity_exit_velocity_scaling;
-			if (max_linear_velocity > _linear_saturation_velocity) {
-				_user_linear_saturation_velocity = _linear_saturation_velocity;
-				_linear_saturation_velocity = max_linear_velocity;				
-			}
-			if (max_angular_velocity > _angular_saturation_velocity) {
-				_user_angular_saturation_velocity = _angular_saturation_velocity;
-				_angular_saturation_velocity = max_angular_velocity;
-			}
+			// enableVelocitySaturation(max_linear_velocity, max_angular_velocity);
+
+			_linear_saturation_velocity = max_linear_velocity;
+			_angular_saturation_velocity = max_angular_velocity;
+
+			// if (max_linear_velocity > _linear_saturation_velocity) {
+			// 	_user_linear_saturation_velocity = _linear_saturation_velocity;
+			// 	_linear_saturation_velocity = max_linear_velocity;				
+			// }
+			// if (max_angular_velocity > _angular_saturation_velocity) {
+			// 	_user_angular_saturation_velocity = _angular_saturation_velocity;
+			// 	_angular_saturation_velocity = max_angular_velocity;
+			// }
 
 			_prev_velocity_saturation = true;
 		}
@@ -535,22 +557,15 @@ VectorXd MotionForceTask::computeTorques() {
 	// compute pos + ori error and revert to trajectory following when exiting zone 2 singularity
 	} else if (_handle_singularity_exit) {
 
+		std::cout << "Handle exit loop:\n";
+		std::cout << "Current linear velocity: " << _linear_saturation_velocity << "\n";
+		std::cout << "User linear velocity: " << _user_linear_saturation_velocity << "\n";
+
 		if (!_is_in_singularity) {
 			if (goalPositionReached(_singularity_pos_exit_tol) && goalOrientationReached(_singularity_ori_exit_tol)) {
 				_handle_singularity_exit = false;
 
-				if (_prev_velocity_saturation) {
-					enableVelocitySaturation(_user_linear_saturation_velocity, _user_angular_saturation_velocity);
-				} else {
-					disableVelocitySaturation();
-				}
-			}
-		} else {
-			MatrixXd non_singular_task_range_basis = 
-				_singularity_handler->getBlendedNonSingularTaskRange() * _singularity_handler->getBlendedNonSingularTaskRange().transpose();
-
-			if (goalPoseReached(non_singular_task_range_basis, _singularity_pos_exit_tol, _singularity_ori_exit_tol)) {
-				_handle_singularity_exit = false;
+				std::cout << "Exiting singularity interpolation exit\n";
 
 				if (_prev_velocity_saturation) {
 					enableVelocitySaturation(_user_linear_saturation_velocity, _user_angular_saturation_velocity);
@@ -558,7 +573,60 @@ VectorXd MotionForceTask::computeTorques() {
 					disableVelocitySaturation();
 				}
 			}
+		} 		
+			
+		// compute new saturation velocity from ramp rate 
+		// double target_linear_velocity = _goal_linear_velocity.norm();
+		// double target_angular_velocity = _goal_angular_velocity.norm();
+		double target_linear_velocity = _user_linear_saturation_velocity;
+		double target_angular_velocity = _user_angular_saturation_velocity;
+		// if (!_tracking_mode) {
+		// 	target_linear_velocity = _user_linear_saturation_velocity;
+		// 	target_angular_velocity = _user_angular_saturation_velocity;
+		// }
+
+		if (_linear_saturation_velocity != target_linear_velocity) {
+			double ramp_linear_velocity = 
+				_linear_saturation_velocity + _singularity_linear_acceleration * getLoopTimestep() * sign(target_linear_velocity - _linear_saturation_velocity);
+
+			std::cout << "Update linear velocity: " << ramp_linear_velocity << "\n";
+
+			// saturate at default parameters
+			if (sign(_linear_saturation_velocity - target_linear_velocity) != sign(ramp_linear_velocity - target_linear_velocity)) {
+				ramp_linear_velocity = target_linear_velocity;
+			}
+
+			_linear_saturation_velocity = ramp_linear_velocity;
 		}
+
+		if (_angular_saturation_velocity != target_angular_velocity) {
+			double ramp_angular_velocity = 
+				_angular_saturation_velocity + _singularity_angular_acceleration * getLoopTimestep() * sign(target_angular_velocity - _angular_saturation_velocity);
+
+			std::cout << "Update angular velocity: " << ramp_angular_velocity << "\n";
+
+			// saturate at default parameters
+			if (sign(_angular_saturation_velocity - target_angular_velocity) != sign(ramp_angular_velocity - target_angular_velocity)) {
+				ramp_angular_velocity = target_angular_velocity;
+			}
+
+			_angular_saturation_velocity = ramp_angular_velocity;
+		}
+		
+		// else {
+		// 	MatrixXd non_singular_task_range_basis = 
+		// 		_singularity_handler->getBlendedNonSingularTaskRange() * _singularity_handler->getBlendedNonSingularTaskRange().transpose();
+
+		// 	if (goalPoseReached(non_singular_task_range_basis, _singularity_pos_exit_tol, _singularity_ori_exit_tol)) {
+		// 		_handle_singularity_exit = false;
+
+		// 		if (_prev_velocity_saturation) {
+		// 			enableVelocitySaturation(_user_linear_saturation_velocity, _user_angular_saturation_velocity);
+		// 		} else {
+		// 			disableVelocitySaturation();
+		// 		}
+		// 	}
+		// }
 
 	}
 

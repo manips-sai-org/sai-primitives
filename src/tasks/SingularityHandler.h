@@ -184,6 +184,8 @@ public:
         static constexpr double type_1_search_tol = 1e-6;  // condition ratio tolerance for {u, v} disassociation
         static constexpr double type_1_step_size_for_line_search = 10 * M_PI / 180;  // to determine motion direction for towards/away from type 1 singularity 
         // static constexpr double nm_step_size = 2 * M_PI / 180;
+
+        static constexpr double type_2_vel_scheduling = 5;
     };
 
     /**
@@ -497,6 +499,10 @@ public:
         _min_magnitude_thresh = threshold;
     }
 
+    void setType2SchedulingWeight(const double val) {
+        _type_2_vel_scheduling = val;
+    }
+
 private:
 
     /**
@@ -727,6 +733,7 @@ private:
     double _dsdq_norm;
     VectorXd _max_joint_vel_sf;
     double _min_magnitude_thresh;
+    double _type_2_vel_scheduling;
 
 };
 

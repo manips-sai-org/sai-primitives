@@ -57,8 +57,8 @@ void simulation(shared_ptr<Sai2Model::Sai2Model> robot,
 /*
 	Control
 */
-bool flag_simulation = true;
-// bool flag_simulation = false;
+// bool flag_simulation = true;
+bool flag_simulation = false;
 Sai2Common::RedisClient* redis_client;
 std::string JOINT_ANGLES_KEY = "sai2::FrankaPanda::Romeo::sensors::q";
 std::string JOINT_VELOCITIES_KEY = "sai2::FrankaPanda::Romeo::sensors::dq";
@@ -171,8 +171,9 @@ void control(shared_ptr<Sai2Model::Sai2Model> robot,
     motion_force_task->disableInternalOtg();
 	motion_force_task->enableTrackingMode();
     motion_force_task->enableVelocitySaturation(0.4, M_PI / 3);
-	motion_force_task->setSingularityHandlingBound(3e-2);
-	motion_force_task->setType1Velocity(M_PI, M_PI);
+	motion_force_task->setSingularityHandlingBound(5e-2);
+	// motion_force_task->setSingularityHandlingBound(6e-2);
+	motion_force_task->setType1Velocity(M_PI * 0.9, M_PI * 0.9);
 	// motion_force_task->setSingularityHandlingBounds(7e-3, 7e-2);
 	// motion_force_task->setSingularityHandlingBounds(3e-2, 7e-2);
 	// motion_force_task->setSingularityHandlingBounds(3e-2, 7e-2);
