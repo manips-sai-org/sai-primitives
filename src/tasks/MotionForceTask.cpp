@@ -529,11 +529,11 @@ VectorXd MotionForceTask::computeTorques() {
 		// _otg->setGoalPosition(_goal_position);
 		// _otg->setGoalOrientation(_goal_orientation);
 
-	}
-	_prev_is_in_singularity = _is_in_singularity;
+	// }
+		_prev_is_in_singularity = _is_in_singularity;
 
 	// compute pos + ori error and revert to trajectory following when exiting zone 2 singularity
-	if (_handle_singularity_exit) {
+	} else if (_handle_singularity_exit) {
 
 		if (!_is_in_singularity) {
 			if (goalPositionReached(_singularity_pos_exit_tol) && goalOrientationReached(_singularity_ori_exit_tol)) {

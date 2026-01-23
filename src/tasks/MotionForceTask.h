@@ -773,6 +773,10 @@ public:
 		_singularity_handler->setSingularityHandlingBounds(s_min, s_max);
 	}
 
+	void setSingularityHandlingBound(const double s_max) {
+		_singularity_handler->setSingularityHandlingBound(s_max);
+	}
+
     /**
      * @brief Set the gains for the partial joint task for the singularity strategy
      * 
@@ -973,6 +977,10 @@ public:
 	*/	
     double getType2Alignment() {
 		return _singularity_handler->getType2Alignment();
+	}
+
+	void setType1Tol(const double tol) {
+		_singularity_handler->setType1Tol(tol);
 	}
 
 	void setType1Velocity(const double vel_toward, const double vel_away) {

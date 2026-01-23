@@ -36,6 +36,7 @@ struct Singularity {
     VectorXd u;
     VectorXd v;
     double sigma;
+    double lambda;
     VectorXd dsdq;
     SingularityType type;
     VectorXd u_toward_singularity;  // for type 1 singularities 
@@ -61,18 +62,20 @@ struct Singularity {
     Singularity(const VectorXd& u,
                 const VectorXd& v,
                 const double sigma,
+                const double lambda,
                 const SingularityType type,
                 const bool is_degenerate = false) :
-                u(u), v(v), sigma(sigma), type(type), is_degenerate(is_degenerate) {}
+                u(u), v(v), sigma(sigma), lambda(lambda), type(type), is_degenerate(is_degenerate) {}
 
     Singularity(const VectorXd& u,
                 const VectorXd& v,
                 const double sigma,
+                const double lambda,
                 const VectorXd& dsdq,
                 const VectorXd& u_toward_singularity,
                 const SingularityType type,
                 const bool is_degenerate = false) : 
-                u(u), v(v), sigma(sigma), dsdq(dsdq), 
+                u(u), v(v), sigma(sigma), lambda(lambda), dsdq(dsdq), 
                 u_toward_singularity(u_toward_singularity), type(type), is_degenerate(is_degenerate) {}
 
     Singularity() : type(NO_SINGULARITY) {}
@@ -83,21 +86,30 @@ const std::vector<std::string> singularity_labels {"No Singularity", "Type 1 Sin
 // nlopt information struct 
 struct OptimData {
     std::vector<VectorXd> basis;
+    MatrixXd singular_task_range;
     MatrixXd projected_jacobian;
     Vector3d starting_position;
+    Matrix3d starting_orientation;
     VectorXd starting_q;
+    bool flag_zero_value;
     double perturb_step_size;
 
     OptimData(const double perturb_step_size) : perturb_step_size(perturb_step_size) {}
 
     void setData(const std::vector<VectorXd>& basis_,
+                 const MatrixXd& singular_task_range_,
                  const MatrixXd& projected_jacobian_,
                  const Vector3d& starting_position_,
-                 const VectorXd& starting_q_) {
+                 const Matrix3d starting_orientation_,
+                 const VectorXd& starting_q_,
+                 const bool& flag_zero_value_) {
         basis = basis_;
+        singular_task_range = singular_task_range_;
         projected_jacobian = projected_jacobian_;
         starting_position = starting_position_;
+        starting_orientation = starting_orientation_;
         starting_q = starting_q_;
+        flag_zero_value = flag_zero_value_;
     }
 };
 
@@ -118,14 +130,15 @@ public:
         // static constexpr double kv_type_2 = 5;  // puma
 
         // singularity parameters
-        static constexpr double s_abs_tol = 1e-3;  
+        static constexpr double s_abs_tol = 1e-6;  
         static constexpr double min_blending = 0.2;  // panda
         // static constexpr double min_blending = 0;  // panda
         // static constexpr double min_blending = 0.1;
 
         // type 1 parameters
+        static constexpr double type_1_tol = 5e-2;
         // static constexpr double type_1_tol = 0.2;
-        static constexpr double type_1_tol = 0.5;  // 5e0
+        // static constexpr double type_1_tol = 0.5;  // 5e0
         // static constexpr double type_1_tol = 0.25;
         // static constexpr double type_1_tol = 0.8;  // standard
         // static constexpr double type_1_tol = 0.1;
@@ -133,7 +146,7 @@ public:
         static constexpr double perturb_step_size = 5e0;
         // static constexpr double perturb_step_size = 180 * M_PI / 180;
         // static constexpr double perturb_step_size = 50 * M_PI / 180;
-        
+
         static constexpr double type_1_buffer_size = 1;
         static constexpr double type_1_max_vel_away_from_singularity = 3 * 30 * M_PI / 180;  // type 1 retract
         static constexpr double type_1_max_vel_towards_singularity = 3 * 30 * M_PI / 180;  // type 1 approach
@@ -234,6 +247,10 @@ public:
         _s_max = s_max;
     }
 
+    void setSingularityHandlingBound(const double s_max) {
+        _s_max = s_max;
+    }
+
     void setMinBlending(const double min_blending) {
         _min_blending = min_blending;
     }
@@ -321,6 +338,10 @@ public:
 		_bie_threshold = threshold;
         _singular_bie_threshold = singular_bie_threshold;
 	}
+
+    void setType1Tol(const double tol) {
+        _type_1_tol = tol;
+    }
 
     void setType1Velocity(const double vel_toward, const double vel_away) {
         _type_1_max_vel_towards_singularity = vel_toward;
@@ -488,45 +509,81 @@ private:
                              const MatrixXd& singular_task_range, 
                              const MatrixXd& singular_joint_task_range);
 
+    bool classifySingularityType(const std::vector<MatrixXd>& kinematic_hessian,
+                                 const VectorXd& u,
+                                 const VectorXd& v);
+
+    VectorXd getSecondOrderExpansion(const std::vector<MatrixXd>& kinematic_hessian,
+                                     const VectorXd& dq);                            
+
+    MatrixXd getProjectedHessian(const std::vector<MatrixXd>& kinematic_hessian, //  dof x (6 x dof)
+                                 const VectorXd& direction);
+
+    std::vector<MatrixXd> getTaskProjectedHessian(const std::vector<MatrixXd>& kinematic_hessian,
+                                                 const MatrixXd& U,
+                                                 const MatrixXd& V);
+
+     std::pair<bool, VectorXd> checkBasisForType1(const std::vector<MatrixXd>& kinematic_hessian,
+                                                               const MatrixXd& U,
+                                                               const MatrixXd& V);   
+                                                               
+    static double objective(const std::vector<double> &x, std::vector<double> &grad, void* f_data);
+    static double equality(const std::vector<double> &x, std::vector<double> &grad, void* f_data);
+
+
     std::pair<VectorXd, VectorXd> getTowardSingularityDirection(const VectorXd& curr_q,
                                                                 const Vector3d& curr_pos,
                                                                 const VectorXd& u,
                                                                 const VectorXd& dsdq,
                                                                 const double step_size);
 
-    bool checkBasisForType1(const VectorXd& curr_q,
-                            const Vector3d& curr_pos,
-                            const MatrixXd& projected_jacobian,
-                            const MatrixXd& singular_task_range,
-                            const MatrixXd& singular_joint_task_range,
-                            const double step_size);
+//     bool checkBasisForType1(const VectorXd& curr_q,
+//                             const Vector3d& curr_pos,
+//                             const MatrixXd& projected_jacobian,
+//                             const MatrixXd& singular_task_range,
+//                             const MatrixXd& singular_joint_task_range,
+//                             const double step_size);
 
-    bool classifySingularityType(const VectorXd& curr_q,
-                                 const Vector3d& curr_pos,
-                                 const Matrix3d& curr_ori,
-                                 const VectorXd& u,
-                                 const VectorXd& step_direction,
-                                 const double step_size);
+//     VectorXd getSecondOrderExpansion(const std::vector<MatrixXd>& kinematic_hessian,
+//                                      const VectorXd& dq);
 
-    bool classifySingularityType(const MatrixXd& projected_jacobian,
-                                 const VectorXd& u,
-                                 const VectorXd& v,
-                                 const std::vector<MatrixXd>& kinematic_hessian);
+//     MatrixXd getProjectedHessian(const std::vector<MatrixXd>& kinematic_hessian, //  dof x (6 x dof)
+//                                  const VectorXd& direction);
 
-    static double objective(const std::vector<double> &x, std::vector<double> &grad, void* f_data);
-    static double equality(const std::vector<double> &x, std::vector<double> &grad, void* f_data);
+//     // bool classifySingularityType(const VectorXd& curr_q,
+//     //                              const Vector3d& curr_pos,
+//     //                              const Matrix3d& curr_ori,
+//     //                              const VectorXd& u,
+//     //                              const VectorXd& v,
+//     //                              const double step_size,
+//     //                              const std::vector<MatrixXd>& kinematic_hessian);
 
-    VectorXd getLinearTaylorExpansion(const MatrixXd& projected_jacobian,
-                                      const VectorXd& dq);
+//     // bool classifySingularityType(const MatrixXd& projected_jacobian,
+//     //                              const VectorXd& u,
+//     //                              const VectorXd& v,
+//     //                              const std::vector<MatrixXd>& kinematic_hessian);
 
-    VectorXd getQuadraticTaylorExpansion(const MatrixXd& projected_jacobian,
-                                         const std::vector<MatrixXd>& kinematic_hessian,
-                                         const VectorXd& left_vector,
-                                         const VectorXd& right_vector);
+//     bool classifySingularityType(const std::vector<MatrixXd>& kinematic_hessian,
+//                                  const VectorXd& u,
+//                                  const VectorXd& v);
+// }
+
+//     static double objective(const std::vector<double> &x, std::vector<double> &grad, void* f_data);
+//     static double equality(const std::vector<double> &x, std::vector<double> &grad, void* f_data);
+
+//     VectorXd getLinearTaylorExpansion(const MatrixXd& projected_jacobian,
+//                                       const VectorXd& dq);
+
+//     VectorXd getQuadraticTaylorExpansion(const MatrixXd& projected_jacobian,
+//                                          const std::vector<MatrixXd>& kinematic_hessian,
+//                                          const VectorXd& left_vector,
+//                                          const VectorXd& right_vector);
 
     // singularity setup
     std::shared_ptr<Sai2Model::Sai2Model> _robot;
     JacobiSVD<MatrixXd> _J_svd;
+    SelfAdjointEigenSolver<MatrixXd> _eig_solver;
+    EigenSolver<MatrixXd> _general_eig_solver;
     DynamicDecouplingType _dynamic_decoupling_type;
 	double _bie_threshold;
     double _singular_bie_threshold;
@@ -575,6 +632,8 @@ private:
     double _type_2_min_force;
 
     // model quantities 
+    MatrixXd _eig_vectors;
+    VectorXd _eig_values;
     MatrixXd _svd_U, _svd_V;
     VectorXd _svd_s;
     double _s_abs_tol;  
@@ -587,6 +646,7 @@ private:
     MatrixXd _Lambda_s;
     MatrixXd _Lambda_ns_modified, _Lambda_s_modified;
     MatrixXd _Lambda_joint_s, _Lambda_joint_s_modified;
+    VectorXd _eig_s_singular;
     VectorXd _svd_s_singular;
     double _alpha;
     double _degenerate_singular_value_spacing;
@@ -630,6 +690,7 @@ private:
     std::map<int, Singularity> _degenerate_singularities;  // map original index in svector
     
     std::vector<VectorXd> _degenerate_singular_values;
+    std::vector<VectorXd> _degenerate_eigen_values;
     std::vector<MatrixXd> _degenerate_singular_task_range;
     std::vector<MatrixXd> _degenerate_singular_joint_task_range;
     std::vector<MatrixXd> _type_1_degenerate_singular_task_range;
@@ -647,6 +708,7 @@ private:
     int _num_zone_2_singularities;
     int _prev_num_zone_2_singularities;
     bool _singularity_exit_transition;
+    bool _singularity_enter_transition;
     double _max_force_norm;
 
     // nelder-mead parameters
