@@ -460,17 +460,17 @@ double SingularityHandler::objective(const std::vector<double> &x, std::vector<d
 }
 
 double SingularityHandler::equality(const std::vector<double> &x, std::vector<double> &grad, void* f_data) {
-    double sum = 0;
-    for (int i = 0; i < x.size(); ++i) {
-        sum += x[i];
-    }
-    return 1 - sum;
-
     // double sum = 0;
     // for (int i = 0; i < x.size(); ++i) {
-    //     sum += x[i] * x[i];
+    //     sum += x[i];
     // }
-    // return 1 - sqrt(sum);
+    // return 1 - sum;
+
+    double sum = 0;
+    for (int i = 0; i < x.size(); ++i) {
+        sum += x[i] * x[i];
+    }
+    return 1 - sqrt(sum);
 }
 
 std::pair<VectorXd, VectorXd> SingularityHandler::getTowardSingularityDirection(const VectorXd& curr_q,
@@ -669,7 +669,7 @@ SingularityHandler::SingularityHandler(std::shared_ptr<Sai2Model::Sai2Model> rob
             initial_step_size.push_back(0.1);
         }
         _nl_opt[i]->set_max_objective(objective, this);
-        _nl_opt[i]->set_lower_bounds(lb);
+        // _nl_opt[i]->set_lower_bounds(lb);
         // _nl_opt[i]->set_upper_bounds(ub);
         _nl_opt[i]->add_equality_constraint(equality, this, 1e-2);
         // _nl_opt[i]->add_equality_constraint(equality, this);
@@ -679,7 +679,7 @@ SingularityHandler::SingularityHandler(std::shared_ptr<Sai2Model::Sai2Model> rob
         _nl_opt[i]->set_xtol_abs(DefaultParameters::xtol_abs);
         _nl_opt[i]->set_maxtime(DefaultParameters::max_time * 1e-3);
         // _nl_opt[i]->set_maxeval(5);
-        _nl_opt[i]->set_initial_step(initial_step_size);
+        // _nl_opt[i]->set_initial_step(initial_step_size);
     }
 
     _nl_opt_data = new OptimData(DefaultParameters::type_1_step_size_classification_towards_singularity);
