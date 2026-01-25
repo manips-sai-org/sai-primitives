@@ -153,7 +153,7 @@ int main(int argc, char** argv) {
     /*
         Simultaneous type 1 and 2
     */
-    init_q << 0, 0, M_PI / 2, M_PI / 2, 0, 0;
+    init_q << -10 * M_PI / 180 * 0, 0, M_PI / 2, M_PI / 2, 0, 0;
 
 	// /*
 	// 	Extended elbow condition 
@@ -237,19 +237,19 @@ void control(shared_ptr<Sai2Model::Sai2Model> robot,
 	// motion_force_task->setSingularityHandlingBounds(7e-3, 7e-2);
 	// motion_force_task->setSingularityHandlingBounds(4e-2, 7e-2);
 	motion_force_task->disableInternalOtg();
-	motion_force_task->setSingularityHandlingBound(7e-2);
+	motion_force_task->setSingularityHandlingBound(5e-2);
 	motion_force_task->setPosControlGains(100, 20, 0);
 	motion_force_task->setOriControlGains(100, 20, 0);
 	motion_force_task->setType1Posture(robot->q());
 	motion_force_task->setSingularityHandlingGains(100, 20, 100, 20);
 	// motion_force_task->setType1Tol(1e-3);
-	motion_force_task->setBoundedInertiaEstimateThreshold(0, 0);
+	// motion_force_task->setBoundedInertiaEstimateThreshold(0, 0);
 
 	// motion_force_task->setType1Velocity(M_PI, M_PI);
 	// motion_force_task->setType2Velocity(M_PI);
 
 	motion_force_task->setType2Velocity(M_PI / 2);
-	motion_force_task->setType1Velocity(M_PI / 2, M_PI / 2);
+	motion_force_task->setType1Velocity(M_PI, M_PI);
 
 	// // Partial motion force task
 	// vector<Vector3d> controlled_directions_translation = {
@@ -299,6 +299,7 @@ void control(shared_ptr<Sai2Model::Sai2Model> robot,
 	// create logger
 	Sai2Common::Logger logger("puma", false);
 	VectorXd svalues = VectorXd::Zero(6);
+	VectorXd evalues = VectorXd::Zero(6);
     VectorXd robot_q = robot->q();
     VectorXd robot_dq = robot->dq();
 	Vector3d pos_error = Vector3d::Zero();
@@ -317,6 +318,7 @@ void control(shared_ptr<Sai2Model::Sai2Model> robot,
 	VectorXi classification = VectorXi::Zero(6);
 
 	logger.addToLog(svalues, "svalues");
+	logger.addToLog(evalues, "evalues");
 	logger.addToLog(robot_q, "robot_q");
 	logger.addToLog(robot_dq, "robot_dq");
 	logger.addToLog(pos_error, "pos_error");
@@ -446,6 +448,7 @@ void control(shared_ptr<Sai2Model::Sai2Model> robot,
 			ori_error = motion_force_task->getOrientationError();
 
 			svalues = motion_force_task->getSingularValues();
+			evalues = motion_force_task->getSingularEigenValues();
 			unmodified_singular_task_torques = motion_force_task->getUnmodifiedSingularTaskTorques();
 			singular_task_torques = motion_force_task->getSingularTaskTorques();
 			non_singular_task_torques = motion_force_task->getNonSingularTaskTorques();
@@ -475,7 +478,7 @@ void control(shared_ptr<Sai2Model::Sai2Model> robot,
 
 			// 		auto R_linear = rotationFromZ(u.head(3).normalized());
 			// 		Vector3d center_position = ee_pos - cylinder_length / 2 * R_linear.col(2);
-			// 		singularity_cylinders[0]->setLocalPos(chai3d::cVector3d(center_position * 100));
+			// 		singularity_cylinders[0]->setLocalPos(chai3d::cVector3d(center_position));
 			// 		singularity_cylinders[0]->setLocalRot(chai3d::cMatrix3d(R_linear));
 					
 			// 		auto R_angular = rotationFromZ(u.tail(3).normalized());
@@ -488,22 +491,23 @@ void control(shared_ptr<Sai2Model::Sai2Model> robot,
 			// 	}
 			// }
 
-			// // first singularity
-			// if (task_range_s.cols() > 0)
-			// {
-			// 	auto R_linear = rotationFromZ(task_range_s.col(0).head(3).normalized());
-			// 	Vector3d center_position = ee_pos - cylinder_length / 2 * R_linear.col(2);
-			// 	singularity_cylinders[0]->setLocalPos(chai3d::cVector3d(center_position));
-			// 	singularity_cylinders[0]->setLocalRot(chai3d::cMatrix3d(R_linear));
+			// first singularity
+			if (task_range_s.cols() > 0)
+			{
+				// auto R_linear = rotationFromZ(task_range_s.col(0).head(3).normalized());
+				auto R_linear = rotationFromZ(active_singularities[0].u.head(3).normalized());
+				Vector3d center_position = ee_pos - cylinder_length / 2 * R_linear.col(2);
+				singularity_cylinders[0]->setLocalPos(chai3d::cVector3d(center_position));
+				singularity_cylinders[0]->setLocalRot(chai3d::cMatrix3d(R_linear));
 				
-			// 	auto R_angular = rotationFromZ(task_range_s.col(0).tail(3).normalized());
-			// 	center_position = ee_pos - cylinder_length / 2 * R_angular.col(2);
-			// 	singularity_cylinders[1]->setLocalPos(chai3d::cVector3d(center_position * 100));
-			// 	singularity_cylinders[1]->setLocalRot(chai3d::cMatrix3d(R_angular));
-			// } else {
-			// 	singularity_cylinders[0]->setLocalPos(chai3d::cVector3d(100, 0, 0));
-			// 	singularity_cylinders[1]->setLocalPos(chai3d::cVector3d(100, 0, 0));
-			// }
+				auto R_angular = rotationFromZ(task_range_s.col(0).tail(3).normalized());
+				center_position = ee_pos - cylinder_length / 2 * R_angular.col(2);
+				singularity_cylinders[1]->setLocalPos(chai3d::cVector3d(center_position * 100));
+				singularity_cylinders[1]->setLocalRot(chai3d::cMatrix3d(R_angular));
+			} else {
+				singularity_cylinders[0]->setLocalPos(chai3d::cVector3d(100, 0, 0));
+				singularity_cylinders[1]->setLocalPos(chai3d::cVector3d(100, 0, 0));
+			}
 
 			// // second singularity 
 			// if (task_range_s.cols() > 1) 

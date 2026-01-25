@@ -895,6 +895,10 @@ public:
 		return _singularity_handler->getSingularValues();
 	}
 
+	VectorXd getSingularEigenValues() {
+		return _singularity_handler->getSingularEigenValues();
+	}
+
 	VectorXd getBlendingVector() {
 		return _singularity_handler->getBlendingVector();
 	}

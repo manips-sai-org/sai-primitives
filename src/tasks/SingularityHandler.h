@@ -396,6 +396,10 @@ public:
         return _svd_s;
     }
 
+    VectorXd getSingularEigenValues() {
+        return _eig_values;
+    }
+
     MatrixXd getBlendingMatrix() {
         return _alpha_blending_matrix;
     }
@@ -535,6 +539,14 @@ private:
                                                                
     static double objective(const std::vector<double> &x, std::vector<double> &grad, void* f_data);
     static double equality(const std::vector<double> &x, std::vector<double> &grad, void* f_data);
+
+    static double epigraph_objective(const std::vector<double> &x, std::vector<double> &grad, void* f_data);
+    static double upper_epigraph(const std::vector<double> &x, std::vector<double> &grad, void* f_data);
+    static double lower_epigraph(const std::vector<double> &x, std::vector<double> &grad, void* f_data);
+
+    VectorXd getType1Direction(const std::vector<MatrixXd>& kinematic_hessian,
+                               const MatrixXd& U,
+                               const MatrixXd& V);
 
 
     std::pair<VectorXd, VectorXd> getTowardSingularityDirection(const VectorXd& curr_q,

@@ -52,8 +52,8 @@ void simulation(shared_ptr<Sai2Model::Sai2Model> robot,
 /*
 	Control
 */
-// bool flag_simulation = true;
-bool flag_simulation = false;
+bool flag_simulation = true;
+// bool flag_simulation = false;
 Sai2Common::RedisClient* redis_client;
 std::string JOINT_ANGLES_KEY = "sai2::FrankaPanda::Romeo::sensors::q";
 std::string JOINT_VELOCITIES_KEY = "sai2::FrankaPanda::Romeo::sensors::dq";
@@ -259,6 +259,7 @@ void control(shared_ptr<Sai2Model::Sai2Model> robot,
 	// create logger
 	Sai2Common::Logger logger("type_2_wrist", false);
 	VectorXd svalues = VectorXd::Zero(6);
+	VectorXd evalues = VectorXd::Zero(6);
     VectorXd robot_q = robot->q();
     VectorXd robot_dq = robot->dq();
 	Vector3d pos_error = Vector3d::Zero();
@@ -281,6 +282,7 @@ void control(shared_ptr<Sai2Model::Sai2Model> robot,
 	VectorXd dsdq_norm = VectorXd::Zero(1);
 
 	logger.addToLog(svalues, "svalues");
+	logger.addToLog(evalues, "evalues");
 	logger.addToLog(robot_q, "robot_q");
 	logger.addToLog(robot_dq, "robot_dq");
 	logger.addToLog(pos_error, "pos_error");
@@ -486,6 +488,7 @@ void control(shared_ptr<Sai2Model::Sai2Model> robot,
             // log
 			{
             	svalues = motion_force_task->getSingularValues();
+            	evalues = motion_force_task->getSingularEigenValues();
 				unmodified_singular_task_torques = motion_force_task->getUnmodifiedSingularTaskTorques();
 		    	singular_task_torques = motion_force_task->getSingularTaskTorques();
 				non_singular_task_torques = motion_force_task->getNonSingularTaskTorques();

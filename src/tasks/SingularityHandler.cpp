@@ -338,6 +338,134 @@ namespace {
         return coeffs;
     }
 
+    VectorXd initFromSumSquares(const std::vector<MatrixXd>& A)
+    {
+        const int n = A[0].rows();
+        MatrixXd M = MatrixXd::Zero(n, n);
+
+        for (const auto& Ai : A)
+            M.noalias() += Ai * Ai;
+
+        Eigen::SelfAdjointEigenSolver<MatrixXd> es(M);
+        std::cout << "eigenvectors: " << es.eigenvectors().transpose() << "\n";
+        return es.eigenvectors().col(n - 1); // largest eigenvalue
+    }
+
+
+    /**
+     * Solve: max_{||x||=1} sum_i (x^T A_i x)^2
+     * via tensor power iteration.
+     *
+     * @param A     vector of symmetric matrices A_i
+     * @param max_iters
+     * @param tol
+     * @return dominant direction x
+     */
+    VectorXd maximizeSquaredQuadratic(
+        const std::vector<MatrixXd>& A,
+        const VectorXd& x_start,
+        int max_iters = 100,
+        double tol = 1e-12)
+    {
+        const int n = A[0].rows();
+        const int m = A.size();
+
+        // --- initialization ---
+        VectorXd x = x_start;
+        x.normalize();
+
+        std::cout << "x start: " << x_start.transpose() << "\n";
+
+        double prev_val = -1.0;
+        int cnt = 0;
+
+        for (int it = 0; it < max_iters; ++it)
+        {
+            VectorXd y = VectorXd::Zero(n);
+
+            // y = sum_i (x^T A_i x) A_i x
+            for (int i = 0; i < m; ++i)
+            {
+                const double s = x.dot(A[i] * x);
+                y.noalias() += s * (A[i] * x);
+            }
+
+            const double norm_y = y.norm();
+            if (norm_y < 1e-12) {
+                std::cout << "y norm break\n";
+                break;
+            }
+
+            x = y / norm_y;
+
+            // objective value
+            double val = 0.0;
+            for (int i = 0; i < m; ++i)
+            {
+                const double s = x.dot(A[i] * x);
+                val += s * s;
+            }
+
+            if (std::abs(val - prev_val) < tol) {
+                std::cout << "val delta break\n";
+                break;
+            }
+
+            prev_val = val;
+            cnt++;
+        }
+
+        std::cout << "solver iter: " << cnt << "\n";
+
+        return x;
+    }
+
+    VectorXd maximizeProjectedQuadraticNorm(
+    const std::vector<MatrixXd>& H,
+    const MatrixXd& U,
+    const VectorXd& x_start,
+    int max_iters = 100,
+    double tol = 1e-9)
+{
+    int n = H[0].rows();
+    int m = H.size();
+
+    // VectorXd x = VectorXd::Random(n);
+    VectorXd x = x_start;
+    x.normalize();
+
+    double prev = -1.0;
+
+    for (int it = 0; it < max_iters; ++it)
+    {
+        // compute y
+        VectorXd y(m);
+        for (int i = 0; i < m; ++i)
+            y(i) = x.dot(H[i] * x);
+
+        // projection
+        VectorXd z = U.transpose() * y;
+        double norm_z = z.norm();
+        if (norm_z < 1e-12) break;
+
+        VectorXd w = U * z; // UU^T y
+
+        // gradient-like step
+        VectorXd g = VectorXd::Zero(n);
+        for (int i = 0; i < m; ++i)
+            g.noalias() += w(i) * (H[i] * x);
+
+        x = g.normalized();
+
+        // objective
+        double obj = norm_z;
+        if (std::abs(obj - prev) < tol) break;
+        prev = obj;
+    }
+
+    return x;
+}
+
 }
 
 namespace Sai2Primitives {
@@ -351,12 +479,13 @@ bool SingularityHandler::classifySingularityType(const std::vector<MatrixXd>& ki
     double deviation = std::abs(u.transpose() * getSecondOrderExpansion(kinematic_hessian, v));
     // double deviation = std::abs(v.dot(getProjectedHessian(kinematic_hessian, u) * v));
 
-    // {
-    //     // debug 
-    //     std::cout << "classify u: " << u.transpose() << "\n";
-    //     std::cout << "classify v: " << v.transpose() << "\n";
-    //     std::cout << "classify deviation: " << deviation << "\n";
-    // }
+    {
+        // debug 
+        std::cout << "classify u: " << u.transpose() << "\n";
+        std::cout << "classify v: " << v.transpose() << "\n";
+        std::cout << "classify deviation: " << deviation << "\n";
+        std::cout << "2nd order deviation: " << getSecondOrderExpansion(kinematic_hessian, v).norm() << "\n";
+    }
 
     if (deviation > _type_1_tol) {
         return true;
@@ -422,6 +551,101 @@ std::pair<bool, VectorXd> SingularityHandler::checkBasisForType1(const std::vect
     return std::make_pair(false, VectorXd::Zero(V.cols()));
 }
 
+/*
+    Epigraph form
+*/
+double SingularityHandler::epigraph_objective(const std::vector<double> &x, std::vector<double> &grad, void* f_data) {
+    return x.back();
+}
+
+double SingularityHandler::upper_epigraph(const std::vector<double> &x, std::vector<double> &grad, void* f_data) {
+
+    auto* self = static_cast<SingularityHandler*>(f_data);
+
+    VectorXd v = VectorXd::Zero(self->_dof);
+    for (int i = 0; i < x.size(); ++i) {
+        v += x[i] * self->_nl_opt_data->basis[i];
+    }
+    v.normalize();
+
+    // compute matching u direction
+    // self->_robot->setQ(self->_nl_opt_data->starting_q + self->_nl_opt_data->perturb_step_size * dq);
+    // self->_robot->updateKinematics();
+    // Vector3d deviation = self->_robot->position(self->_link_name, self->_compliant_frame.translation()) - 
+    //                         self->_nl_opt_data->starting_position - 
+    //                         self->getLinearTaylorExpansion(self->_nl_opt_data->projected_jacobian, dq).head(3);
+    //                         // (self->_nl_opt_data->projected_jacobian * dq).head(3);
+
+    // compute matching singular direction
+    VectorXd u = vectorFromBasis(x, self->_nl_opt_data->singular_task_range).normalized();
+    if (self->_nl_opt_data->flag_zero_value) {
+        // get u_proj from the deviation, as {u, v} are individually rotated
+        self->_robot->setQ(self->_nl_opt_data->starting_q + self->_nl_opt_data->perturb_step_size * v);
+        self->_robot->updateKinematics();
+        u.head(3) = self->_robot->position(self->_link_name, self->_compliant_frame.translation()) - self->_nl_opt_data->starting_position; 
+        u.tail(3) = Sai2Model::orientationError(self->_robot->rotation(self->_link_name, self->_compliant_frame.linear()), self->_nl_opt_data->starting_orientation);
+
+        // project u_proj into the current task range
+        u = (self->_nl_opt_data->singular_task_range * self->_nl_opt_data->singular_task_range.transpose() * u).normalized();
+    }
+
+    double deviation = u.transpose() * self->getSecondOrderExpansion(self->_dJdq, v) - x.back();
+
+    return deviation;
+
+}
+
+double SingularityHandler::lower_epigraph(const std::vector<double> &x, std::vector<double> &grad, void* f_data) {
+
+    auto* self = static_cast<SingularityHandler*>(f_data);
+
+    VectorXd v = VectorXd::Zero(self->_dof);
+    for (int i = 0; i < x.size(); ++i) {
+        v += x[i] * self->_nl_opt_data->basis[i];
+    }
+    v.normalize();
+
+    // compute matching u direction
+    // self->_robot->setQ(self->_nl_opt_data->starting_q + self->_nl_opt_data->perturb_step_size * dq);
+    // self->_robot->updateKinematics();
+    // Vector3d deviation = self->_robot->position(self->_link_name, self->_compliant_frame.translation()) - 
+    //                         self->_nl_opt_data->starting_position - 
+    //                         self->getLinearTaylorExpansion(self->_nl_opt_data->projected_jacobian, dq).head(3);
+    //                         // (self->_nl_opt_data->projected_jacobian * dq).head(3);
+
+    // compute matching singular direction
+    VectorXd u = vectorFromBasis(x, self->_nl_opt_data->singular_task_range).normalized();
+    if (self->_nl_opt_data->flag_zero_value) {
+        // get u_proj from the deviation, as {u, v} are individually rotated
+        self->_robot->setQ(self->_nl_opt_data->starting_q + self->_nl_opt_data->perturb_step_size * v);
+        self->_robot->updateKinematics();
+        u.head(3) = self->_robot->position(self->_link_name, self->_compliant_frame.translation()) - self->_nl_opt_data->starting_position; 
+        u.tail(3) = Sai2Model::orientationError(self->_robot->rotation(self->_link_name, self->_compliant_frame.linear()), self->_nl_opt_data->starting_orientation);
+
+        // project u_proj into the current task range
+        u = (self->_nl_opt_data->singular_task_range * self->_nl_opt_data->singular_task_range.transpose() * u).normalized();
+    }
+
+    double deviation = - u.transpose() * self->getSecondOrderExpansion(self->_dJdq, v) - x.back();
+
+    return deviation;
+
+}
+
+double SingularityHandler::equality(const std::vector<double> &x, std::vector<double> &grad, void* f_data) {
+    // double sum = 0;
+    // for (int i = 0; i < x.size(); ++i) {
+    //     sum += x[i];
+    // }
+    // return 1 - sum;
+
+    double sum = 0;
+    for (int i = 0; i < x.size(); ++i) {
+        sum += x[i] * x[i];
+    }
+    return 1 - sqrt(sum);
+}
+
 double SingularityHandler::objective(const std::vector<double> &x, std::vector<double> &grad, void* f_data) {
 
     auto* self = static_cast<SingularityHandler*>(f_data);
@@ -454,23 +678,32 @@ double SingularityHandler::objective(const std::vector<double> &x, std::vector<d
     }
 
     double deviation = std::abs(u.transpose() * self->getSecondOrderExpansion(self->_dJdq, v));
+    // double deviation = u.transpose() * self->getSecondOrderExpansion(self->_dJdq, v);
 
     return deviation;
 
 }
 
-double SingularityHandler::equality(const std::vector<double> &x, std::vector<double> &grad, void* f_data) {
-    // double sum = 0;
-    // for (int i = 0; i < x.size(); ++i) {
-    //     sum += x[i];
-    // }
-    // return 1 - sum;
-
-    double sum = 0;
-    for (int i = 0; i < x.size(); ++i) {
-        sum += x[i] * x[i];
+VectorXd SingularityHandler::getType1Direction(const std::vector<MatrixXd>& kinematic_hessian,
+                                               const MatrixXd& U,
+                                               const MatrixXd& V) {
+    // compute vector of matrices H_i
+    std::vector<MatrixXd> H_dof = {6, MatrixXd::Zero(_robot->dof(), _robot->dof())};
+    for (int i = 0; i < 6; ++i) {
+        for (int j = 0; j < _robot->dof(); ++j) {
+            H_dof[i].row(j) = kinematic_hessian[j].row(i);
+        }
     }
-    return 1 - sqrt(sum);
+
+    for (int i = 0; i < H_dof.size(); ++i) {
+        H_dof[i] = V.transpose() * H_dof[i] * V;
+    }
+
+    auto x_start = initFromSumSquares(H_dof);
+    // auto x_sol = maximizeSquaredQuadratic(H_dof, x_start);
+    auto x_sol = maximizeProjectedQuadraticNorm(H_dof, U, x_start);
+
+    return x_sol;
 }
 
 std::pair<VectorXd, VectorXd> SingularityHandler::getTowardSingularityDirection(const VectorXd& curr_q,
@@ -666,13 +899,16 @@ SingularityHandler::SingularityHandler(std::shared_ptr<Sai2Model::Sai2Model> rob
         for (int j = 0; j < i; ++j) {
             lb.push_back(0);
             ub.push_back(1);
-            initial_step_size.push_back(0.1);
+            initial_step_size.push_back(0.01);
         }
         _nl_opt[i]->set_max_objective(objective, this);
+        // _nl_opt[i]->set_min_objective(objective, this);
         // _nl_opt[i]->set_lower_bounds(lb);
         // _nl_opt[i]->set_upper_bounds(ub);
-        _nl_opt[i]->add_equality_constraint(equality, this, 1e-2);
+        _nl_opt[i]->add_equality_constraint(equality, this, 1e-12);
         // _nl_opt[i]->add_equality_constraint(equality, this);
+        _nl_opt[i]->add_inequality_constraint(upper_epigraph, this, 1e-12);
+        _nl_opt[i]->add_inequality_constraint(lower_epigraph, this, 1e-12);
 
         _nl_opt[i]->set_xtol_rel(DefaultParameters::xtol_rel);  // 1e-12 default
         _nl_opt[i]->set_ftol_rel(DefaultParameters::ftol_rel);
@@ -960,6 +1196,11 @@ void SingularityHandler::classifySingularity(const MatrixXd& projected_jacobian,
     // handle degenerate singularities
     if (_is_in_singularity) {
         _degenerate_indices = findCloseGroups(_svd_s_singular, _degenerate_singular_value_spacing);
+
+        {
+            // debug
+            std::cout << "singular svd values: " << _svd_s_singular.transpose() << "\n";
+        }
     } 
 
     _degenerate_singularities.clear();  // clear map
@@ -988,6 +1229,19 @@ void SingularityHandler::classifySingularity(const MatrixXd& projected_jacobian,
         
         int group_id = 0;
         for (auto group : _degenerate_indices) {
+
+            // {
+            //     // debug 
+            //     VectorXd coeff = getType1Direction(_dJdq, _degenerate_singular_task_range[group_id], _degenerate_singular_joint_task_range[group_id]);
+            //     VectorXd u_test = (_degenerate_singular_task_range[group_id] * coeff).normalized();
+            //     VectorXd v_test = (_degenerate_singular_joint_task_range[group_id] * coeff).normalized();
+            //     std::cout << "coeff: " << coeff.transpose() << "\n";
+            //     std::cout << "u test: " << u_test.transpose() << "\n";
+            //     std::cout << "v test: " << v_test.transpose() << "\n";
+            //     std::cout << "test deviation: " << getSecondOrderExpansion(_dJdq, v_test).norm() << "\n";
+            //     std::cout << "projected test deviation: " << u_test.transpose() * getSecondOrderExpansion(_dJdq, v_test) << "\n";
+
+            // }
 
             // check for type 1
             auto [exists_type_1_singularity, basis_coefficients] = 
@@ -1021,13 +1275,14 @@ void SingularityHandler::classifySingularity(const MatrixXd& projected_jacobian,
                                           curr_pos, 
                                           curr_ori, 
                                           curr_q,
+                                        //   true);
                                           _degenerate_singular_values[group_id].maxCoeff() < _type_1_search_tol);
 
                     // nlopt routine
                     int n_coefficients = curr_singular_joint_task_range.cols();
                     std::vector<double> sjs_coefficients;
                     for (int i = 0; i < n_coefficients; ++i) {
-                        // sjs_coefficients.push_back(1.0 / n_coefficients);
+                        // sjs_coefficients.push_back(1.0 / sqrt(n_coefficients));
                         sjs_coefficients.push_back(basis_coefficients[i]);
                     }
 
@@ -1051,6 +1306,8 @@ void SingularityHandler::classifySingularity(const MatrixXd& projected_jacobian,
                         }
                     }
 
+                    sjs_coefficients.resize(curr_singular_task_range.cols());
+
                     {
                         // debug
                         auto t2 = high_resolution_clock::now();
@@ -1062,9 +1319,9 @@ void SingularityHandler::classifySingularity(const MatrixXd& projected_jacobian,
                             std::cout << val << ", ";
                         }
                         std::cout << "\n";
-                        // auto v = vectorFromBasis(sjs_coefficients, curr_singular_joint_task_range);
+                        auto v = vectorFromBasis(sjs_coefficients, curr_singular_joint_task_range);
                         // auto u = vectorFromBasis(sjs_coefficients, curr_singular_task_range);
-                        // std::cout << "nm vector: " << v.transpose() << "\n";
+                        std::cout << "nm vector: " << v.transpose() << "\n";
                         std::cout << "deviation: " << optimal_value << "\n";
                         // std::cout << "deviation from projected: " << std::abs(v.dot(getProjectedHessian(_dJdq, u) * v)) << "\n";
                         // std::cout << (curr_singular_task_range * curr_singular_task_range.transpose() * v.dot(getProjectedHessian(_dJdq, u) * v)).norm() << "\n";
@@ -1471,7 +1728,8 @@ VectorXd SingularityHandler::computeTorques(const VectorXd& unit_mass_force, con
                     double curr_singular_task_force = 
                         std::abs(_active_singularities[ind].u.transpose() * (unit_mass_force + force_related_terms));
                     double force_vel_scaling = std::clamp(curr_singular_task_force / _max_force_norm, 0.0, 1.0);
-                    double condition_number_scaling = 1 - std::pow((_s_max - _active_singularities[ind].lambda) / _s_max, 2);
+                    double condition_number_scaling = 1 - std::pow((_s_max - _active_singularities[ind].lambda) / _s_max, 1);
+                    // double condition_number_scaling = 1 - std::pow((_s_max - _active_singularities[ind].lambda) / _s_max, 2);
                         // std::clamp(_active_singularities[ind].lambda / _s_max, 0.0, 1.0);  // starts at 1 at _s_min, then goes to 0 towards s = 0
                     double vel_scaling = std::min(force_vel_scaling, condition_number_scaling);
 
