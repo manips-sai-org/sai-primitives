@@ -52,8 +52,8 @@ void simulation(shared_ptr<Sai2Model::Sai2Model> robot,
 /*
 	Control
 */
-bool flag_simulation = true;
-// bool flag_simulation = false;
+// bool flag_simulation = true;
+bool flag_simulation = false;
 Sai2Common::RedisClient* redis_client;
 std::string JOINT_ANGLES_KEY = "sai2::FrankaPanda::Romeo::sensors::q";
 std::string JOINT_VELOCITIES_KEY = "sai2::FrankaPanda::Romeo::sensors::dq";
@@ -187,15 +187,16 @@ void control(shared_ptr<Sai2Model::Sai2Model> robot,
 	motion_force_task->setMinBlending(0.2);
 	// motion_force_task->setType2Velocity(1.5 * M_PI / 3);  // mulitple of 60s
 	// motion_force_task->setType2Velocity(1.0 * M_PI);  // mulitple of 60s
-	// motion_force_task->setType2Velocity(M_PI * 1.5); 
-	motion_force_task->setType2Velocity(M_PI * 0.8); 
-	motion_force_task->setSingularityHandlingGains(100, 20, 100, 20);
+	// motion_force_task->setType2Velocity(M_PI * 1.2); 
+	motion_force_task->setType2Velocity(M_PI); 
+	// motion_force_task->setType2Velocity(M_PI * 2); 
+	motion_force_task->setSingularityHandlingGains(100, 20, 100, 16);
 	VectorXd vel_sf = VectorXd::Ones(7);
 	// vel_sf << 0.6, 0.6, 0.6, 0.6, 0.3, 0.3, 0.3;
 	// vel_sf << 0.6, 0.6, 0.6, 0.6, 0.3, 0.3, 0.3;
 	motion_force_task->setMaxJointVelocityScaleFactor(vel_sf);
 	motion_force_task->setMinMagnitudeThreshold(0.1);
-	motion_force_task->setType2SchedulingWeight(2);
+	motion_force_task->setType2SchedulingWeight(5);
 
 	VectorXd motion_force_task_torques = VectorXd::Zero(dof);
 
@@ -335,8 +336,10 @@ void control(shared_ptr<Sai2Model::Sai2Model> robot,
 			robot->setDq(redis_client->getEigen(JOINT_VELOCITIES_KEY));
 			MatrixXd M = redis_client->getEigen(MASS_MATRIX_KEY);
 			M(0, 0) += 0.15;
-            M.bottomRightCorner(4, 4) += 0.15 * MatrixXd::Identity(4, 4);
-            // M.bottomRightCorner(3, 3) += 0.1 * Matrix3d::Identity();  // use less for this 
+			// M(3, 3) += 0.1;
+			// M(3, 3) += 0.15;
+            M.bottomRightCorner(4, 4) += 0.05 * MatrixXd::Identity(4, 4);
+            // M.bottomRightCorner(3, 3) += 0.15 * Matrix3d::Identity();  // use less for this 
 			// M.block(4, 4, 2, 2) += 0.15 * MatrixXd::Identity(2, 2);
 			robot->updateModel(M);
 
@@ -395,7 +398,7 @@ void control(shared_ptr<Sai2Model::Sai2Model> robot,
                 // joint_task->disableVelocitySaturation();
                 // joint_task->enableVelocitySaturation(0.5);
                 // joint_task->enableVelocitySaturation(0.3);
-				joint_task->setGains(100, 20, 0);
+				joint_task->setGains(200, 20, 0);
                 joint_task->resetIntegrators();
 
                 motion_force_task->reInitializeTask();
@@ -457,6 +460,7 @@ void control(shared_ptr<Sai2Model::Sai2Model> robot,
             double freq = 0.1;
             // double freq = 0.15;
             double amplitude = 0.25;  
+			// double amplitude = 0.3;
             offset_trajectory(1) = amplitude * sin(2 * M_PI * freq * (time - time_transition));
             offset_velocity_trajectory(1) = 2 * M_PI * freq * amplitude * cos(2 * M_PI * freq * (time - time_transition));
             offset_acceleration_trajectory(1) = - std::pow(2 * M_PI * freq, 2) * amplitude * sin(2 * M_PI * freq * (time - time_transition));

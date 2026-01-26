@@ -57,8 +57,8 @@ void simulation(shared_ptr<Sai2Model::Sai2Model> robot,
 /*
 	Control
 */
-bool flag_simulation = true;
-// bool flag_simulation = false;
+// bool flag_simulation = true;
+bool flag_simulation = false;
 Sai2Common::RedisClient* redis_client;
 std::string JOINT_ANGLES_KEY = "sai2::FrankaPanda::Romeo::sensors::q";
 std::string JOINT_VELOCITIES_KEY = "sai2::FrankaPanda::Romeo::sensors::dq";
@@ -295,7 +295,7 @@ void control(shared_ptr<Sai2Model::Sai2Model> robot,
 			robot->setQ(redis_client->getEigen(JOINT_ANGLES_KEY));
 			robot->setDq(redis_client->getEigen(JOINT_VELOCITIES_KEY));
 			MatrixXd M = redis_client->getEigen(MASS_MATRIX_KEY);
-			// M(0, 0) += 0.15;
+			M(0, 0) += 0.1;
             M.bottomRightCorner(4, 4) += 0.15 * MatrixXd::Identity(4, 4);
             // M.bottomRightCorner(3, 3) += 0.25 * Matrix3d::Identity();
 			robot->updateModel(M);
