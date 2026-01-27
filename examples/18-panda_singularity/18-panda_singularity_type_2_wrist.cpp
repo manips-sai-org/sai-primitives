@@ -185,18 +185,22 @@ void control(shared_ptr<Sai2Model::Sai2Model> robot,
 	// motion_force_task->setBoundedInertiaEstimateThreshold(0, 0);
 
 	motion_force_task->setMinBlending(0.2);
+	// motion_force_task->setType1Tol(8e-2);
+	motion_force_task->setType1Tol(1e-2);
 	// motion_force_task->setType2Velocity(1.5 * M_PI / 3);  // mulitple of 60s
 	// motion_force_task->setType2Velocity(1.0 * M_PI);  // mulitple of 60s
-	// motion_force_task->setType2Velocity(M_PI * 1.2); 
-	motion_force_task->setType2Velocity(M_PI); 
+	motion_force_task->setType1Velocity(M_PI, M_PI);
+	motion_force_task->setType2Velocity(M_PI * 1); 
+	// motion_force_task->setType2Velocity(M_PI * 0.8); 
 	// motion_force_task->setType2Velocity(M_PI * 2); 
-	motion_force_task->setSingularityHandlingGains(100, 20, 100, 16);
+	motion_force_task->setSingularityHandlingGains(100, 20, 100, 15);
 	VectorXd vel_sf = VectorXd::Ones(7);
 	// vel_sf << 0.6, 0.6, 0.6, 0.6, 0.3, 0.3, 0.3;
 	// vel_sf << 0.6, 0.6, 0.6, 0.6, 0.3, 0.3, 0.3;
 	motion_force_task->setMaxJointVelocityScaleFactor(vel_sf);
 	motion_force_task->setMinMagnitudeThreshold(0.1);
-	motion_force_task->setType2SchedulingWeight(5);
+	motion_force_task->setType2SchedulingWeight(3);
+	motion_force_task->setBoundedInertiaEstimateThreshold(0.15, 0.15);
 
 	VectorXd motion_force_task_torques = VectorXd::Zero(dof);
 
@@ -256,6 +260,7 @@ void control(shared_ptr<Sai2Model::Sai2Model> robot,
 
     int state = POSTURE;
     bool integrator_on = false;
+	bool prev_is_type_2_active = false;
 
 	// create logger
 	Sai2Common::Logger logger("type_2_wrist", false);
@@ -338,7 +343,10 @@ void control(shared_ptr<Sai2Model::Sai2Model> robot,
 			M(0, 0) += 0.15;
 			// M(3, 3) += 0.1;
 			// M(3, 3) += 0.15;
-            M.bottomRightCorner(4, 4) += 0.05 * MatrixXd::Identity(4, 4);
+            M.bottomRightCorner(3, 3) += 0.15 * MatrixXd::Identity(3, 3);
+            // M.bottomRightCorner(4, 4) += 0.2 * MatrixXd::Identity(4, 4);
+			// M(4, 4) += 0.05;
+			// M(3, 3) += 0.5;
             // M.bottomRightCorner(3, 3) += 0.15 * Matrix3d::Identity();  // use less for this 
 			// M.block(4, 4, 2, 2) += 0.15 * MatrixXd::Identity(2, 2);
 			robot->updateModel(M);
@@ -397,8 +405,8 @@ void control(shared_ptr<Sai2Model::Sai2Model> robot,
                 joint_task->disableInternalOtg();
                 // joint_task->disableVelocitySaturation();
                 // joint_task->enableVelocitySaturation(0.5);
-                // joint_task->enableVelocitySaturation(0.3);
-				joint_task->setGains(200, 20, 0);
+                joint_task->enableVelocitySaturation(M_PI / 3);
+				joint_task->setGains(100, 20, 0);
                 joint_task->resetIntegrators();
 
                 motion_force_task->reInitializeTask();
@@ -422,7 +430,35 @@ void control(shared_ptr<Sai2Model::Sai2Model> robot,
 			// experimental comparison
 			if (time - time_transition > 5) {
 				// motion_force_task->disableJointStrategy();
+				// motion_force_task->setType2Velocity(M_PI * 1.0); 
+				// motion_force_task->setType2SchedulingWeight(5);
+				// motion_force_task->setSingularityHandlingGains(100, 20, 100, 15);
 			}
+
+			// type 2 conditioning for posture task 
+			auto active_singularities = motion_force_task->getSingularities();
+			bool is_type_2_active = false;
+			for (auto singularity : active_singularities) {
+				// if (singularity.type == Sai2Primitives::TYPE_2_SINGULARITY || singularity.type == Sai2Primitives::TYPE_1_SINGULARITY) {
+				if (singularity.type == Sai2Primitives::TYPE_2_SINGULARITY) {
+					is_type_2_active = true;
+					break;
+				}
+			}
+
+			if (is_type_2_active) {
+				joint_task->disableVelocitySaturation();
+				joint_task->disableInternalOtg();
+				joint_task->setGains(0, 0, 0);
+			} else if (prev_is_type_2_active) {
+				joint_task->enableVelocitySaturation(M_PI / 3);
+				joint_task->disableInternalOtg();
+				joint_task->setGains(100, 20, 0);
+				joint_task->setGoalPosition(robot->q());
+				motion_force_task->setType1Posture(robot->q());
+			}
+
+			prev_is_type_2_active = is_type_2_active;
 
             // update tasks model. Order is important to define the hierarchy
             N_prec = MatrixXd::Identity(dof, dof);
@@ -476,6 +512,10 @@ void control(shared_ptr<Sai2Model::Sai2Model> robot,
             // partial_joint_task_torques = partial_joint_task->computeTorques();
             joint_task_torques = joint_task->computeTorques();
 			// VectorXd ori_task_torques = ori_task->computeTorques();
+
+			if (time - time_transition > 5) {
+				// joint_task_torques.setZero();
+			}
 
             //------ compute the final torques
             {
