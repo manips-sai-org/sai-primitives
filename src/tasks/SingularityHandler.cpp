@@ -1725,8 +1725,28 @@ VectorXd SingularityHandler::computeTorques(const VectorXd& unit_mass_force, con
                     // debug
                     std::cout << "is moving towards singularity: " << is_moving_towards_singularity << "\n";
                     std::cout << "u towards singularity: " << _active_singularities[ind].u_toward_singularity.transpose() << "\n";
+                    std::cout << "dsdq toward singularity: " << - _active_singularities[ind].dsdq.transpose() << "\n";
                     std::cout << "force: " << (unit_mass_force + force_related_terms).transpose() << "\n";
                 }
+
+                // // compute singular task torque component for this singularity with highest priority 
+                // // compute with pseudo-inverse of Lambda_s near singularity
+                // MatrixXd curr_projected_jacobian = _active_singularities[ind].u.transpose() * _projected_jacobian;
+                // // MatrixXd curr_lambda = (curr_projected_jacobian * _robot->MInv() * curr_projected_jacobian.transpose()).inverse();
+                // MatrixXd curr_lambda = Sai2Model::computePseudoInverse(curr_projected_jacobian * _robot->MInv() * curr_projected_jacobian.transpose(), _s_abs_tol);
+                // VectorXd singular_torque_component = 
+                //     curr_projected_jacobian.transpose() * curr_lambda * _active_singularities[ind].u.transpose() * unit_mass_force + 
+                //     curr_projected_jacobian.transpose() * _active_singularities[ind].u.transpose() * force_related_terms;
+
+                // VectorXd type_1_direction = VectorXd::Zero(_robot->dof());
+
+                // for (int i = 0; i < _dof; ++i) {
+                //     type_1_direction(i) = sign(singular_torque_component(i));
+                // }
+
+                // VectorXd dq_des = _active_singularities[ind].v * _active_singularities[ind].v.transpose() * type_1_direction;
+                // dq_des = _type_2_max_vel * dq_des.normalized();
+                // unit_torques = - _kv_type_1 * (_robot->dq() - dq_des);
 
                 // compute control for approaching or leaving type 1 singularity
                 if (is_moving_towards_singularity) {
@@ -1746,7 +1766,17 @@ VectorXd SingularityHandler::computeTorques(const VectorXd& unit_mass_force, con
                     // q_des = saturateBox(q_des, _q_lower, _q_upper);  // saturate within joint limits 
 
                     // compute velocity control
-                    VectorXd dq_des = - _active_singularities[ind].v * _active_singularities[ind].v.transpose() * _active_singularities[ind].dsdq;
+                    // VectorXd dq_des = - _active_singularities[ind].v * _active_singularities[ind].v.transpose() * _active_singularities[ind].dsdq;
+                    VectorXd dq_des = - _active_singularities[ind].dsdq;
+
+                    {
+                        // debug comparison
+                        VectorXd _dq_des_comparison = - _active_singularities[ind].v * _active_singularities[ind].v.transpose() * _active_singularities[ind].dsdq;
+                        std::cout << "dq_des base: " << dq_des.normalized().transpose() << "\n";
+                        std::cout << "dq_des comparison: " << _dq_des_comparison.normalized().transpose() << "\n";
+
+                    }
+
                     dq_des = vel_scaling * _type_1_max_vel_towards_singularity * dq_des.normalized();
                     unit_torques = - _kv_type_1 * (_robot->dq() - dq_des);
 
@@ -1839,6 +1869,20 @@ VectorXd SingularityHandler::computeTorques(const VectorXd& unit_mass_force, con
                 // }
 
                 VectorXd dq_des = _active_singularities[ind].v * _active_singularities[ind].v.transpose() * _type_2_direction;
+
+                // if (is_moving_towards_singularity) {
+                //     dq_des = - _active_singularities[ind].v * _active_singularities[ind].v.transpose() * _active_singularities[ind].dsdq;
+                // } else {
+                //     // velocity-saturated towards holding posture (entering posture) 
+                //     VectorXd dq_des = (_kp_type_1 / _kv_type_1) * (_q_prior - curr_q);
+                //     if (_use_goal_posture) {
+                //         dq_des = (_kp_type_1 / _kv_type_1) * (_q_goal_posture - curr_q);
+                //     }
+
+                //     // project
+                //     dq_des = _active_singularities[ind].v * _active_singularities[ind].v.transpose() * dq_des;
+                // }
+
                 // VectorXd dq_des = - _active_singularities[ind].v * _active_singularities[ind].v.transpose() * _active_singularities[ind].dsdq;
                 // if (!is_moving_towards_singularity) {
                 //     dq_des *= -1;

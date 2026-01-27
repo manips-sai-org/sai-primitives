@@ -185,8 +185,8 @@ void control(shared_ptr<Sai2Model::Sai2Model> robot,
 	// motion_force_task->setBoundedInertiaEstimateThreshold(0, 0);
 
 	motion_force_task->setMinBlending(0.2);
-	// motion_force_task->setType1Tol(8e-2);
-	motion_force_task->setType1Tol(1e-2);
+	motion_force_task->setType1Tol(5e-2);
+	// motion_force_task->setType1Tol(2e-2);
 	// motion_force_task->setType2Velocity(1.5 * M_PI / 3);  // mulitple of 60s
 	// motion_force_task->setType2Velocity(1.0 * M_PI);  // mulitple of 60s
 	motion_force_task->setType1Velocity(M_PI, M_PI);

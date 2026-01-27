@@ -173,7 +173,7 @@ void control(shared_ptr<Sai2Model::Sai2Model> robot,
     motion_force_task->enableVelocitySaturation(0.4, M_PI / 3);
 	motion_force_task->setSingularityHandlingBound(5e-2);
 	// motion_force_task->setSingularityHandlingBound(6e-2);
-	motion_force_task->setType1Tol(8e-2);
+	motion_force_task->setType1Tol(5e-2);
 	motion_force_task->setType1Velocity(M_PI, M_PI);
 	motion_force_task->setSingularityHandlingGains(100, 20, 100, 15);
 	// motion_force_task->setSingularityHandlingBounds(7e-3, 7e-2);
@@ -445,6 +445,8 @@ void control(shared_ptr<Sai2Model::Sai2Model> robot,
 				singular_joint_space = motion_force_task->getSingularJointTaskRange().col(0);
 				classification.head(motion_force_task->getSingularityClassification().size()) = motion_force_task->getSingularityClassification();
 				condition_ratio = motion_force_task->getConditionRatio();
+
+				std::cout << "min evalue: " << evalues.minCoeff() << "\n";
 			}
 
 			// std::cout << "singular values: " << svalues.transpose() << "\n";
