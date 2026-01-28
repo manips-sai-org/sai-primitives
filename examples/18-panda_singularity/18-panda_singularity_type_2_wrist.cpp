@@ -174,7 +174,7 @@ void control(shared_ptr<Sai2Model::Sai2Model> robot,
 	motion_force_task->disableInternalOtg();
 	motion_force_task->enableTrackingMode();
     motion_force_task->disableVelocitySaturation();
-	motion_force_task->setSingularityHandlingBound(5e-2);
+	motion_force_task->setSingularityHandlingBound(4e-2);
     // motion_force_task->setSingularityHandlingBounds(1e-2, 7e-2);
     // motion_force_task->setSingularityHandlingBounds(2e-2, 7e-2);
     // motion_force_task->setSingularityHandlingBounds(6e-2, 7e-2);
@@ -190,7 +190,7 @@ void control(shared_ptr<Sai2Model::Sai2Model> robot,
 	// motion_force_task->setType2Velocity(1.5 * M_PI / 3);  // mulitple of 60s
 	// motion_force_task->setType2Velocity(1.0 * M_PI);  // mulitple of 60s
 	motion_force_task->setType1Velocity(M_PI, M_PI);
-	motion_force_task->setType2Velocity(M_PI * 1); 
+	motion_force_task->setType2Velocity(M_PI * 1.2); 
 	// motion_force_task->setType2Velocity(M_PI * 0.8); 
 	// motion_force_task->setType2Velocity(M_PI * 2); 
 	motion_force_task->setSingularityHandlingGains(100, 20, 100, 15);

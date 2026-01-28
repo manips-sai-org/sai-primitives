@@ -1769,16 +1769,19 @@ VectorXd SingularityHandler::computeTorques(const VectorXd& unit_mass_force, con
                     // VectorXd dq_des = - _active_singularities[ind].v * _active_singularities[ind].v.transpose() * _active_singularities[ind].dsdq;
                     VectorXd dq_des = - _active_singularities[ind].dsdq;
 
+                    dq_des = vel_scaling * _type_1_max_vel_towards_singularity * dq_des.normalized();
+                    unit_torques = - _kv_type_1 * (_robot->dq() - dq_des);
+
                     {
                         // debug comparison
                         VectorXd _dq_des_comparison = - _active_singularities[ind].v * _active_singularities[ind].v.transpose() * _active_singularities[ind].dsdq;
+                        std::cout << "v space: " << _active_singularities[ind].v.transpose() << "\n";
                         std::cout << "dq_des base: " << dq_des.normalized().transpose() << "\n";
                         std::cout << "dq_des comparison: " << _dq_des_comparison.normalized().transpose() << "\n";
+                        // std::cout << "dq_des base after projection: " << (_active_singularities[ind].v.transpose() * _active_singularities[ind].dsdq).transpose() << "\n";
+                        // std::cout << "dq_des comparison after projection: " << (_active_singularities[ind].v.transpose() * _dq_des_comparison).transpose() << "\n";
 
                     }
-
-                    dq_des = vel_scaling * _type_1_max_vel_towards_singularity * dq_des.normalized();
-                    unit_torques = - _kv_type_1 * (_robot->dq() - dq_des);
 
                 } else {
 
@@ -1794,7 +1797,7 @@ VectorXd SingularityHandler::computeTorques(const VectorXd& unit_mass_force, con
                     }
 
                     // project
-                    dq_des = _active_singularities[ind].v * _active_singularities[ind].v.transpose() * dq_des;
+                    // dq_des = _active_singularities[ind].v * _active_singularities[ind].v.transpose() * dq_des;
                     // dq_des = _active_singularities[ind].v * _active_singularities[ind].v.transpose() * _active_singularities[ind].dsdq;
 
                     double curr_singular_task_force = 
@@ -1828,8 +1831,8 @@ VectorXd SingularityHandler::computeTorques(const VectorXd& unit_mass_force, con
                 _force_dotted_singular_direction = force_dotted_singular_direction;  // experimental logging
 
                 // put force scaling through non-linear function for smoothing 
-                // force_dotted_singular_direction = std::clamp((1 - exp(-_type_2_vel_scheduling * force_dotted_singular_direction) / (1 - exp(-_type_2_vel_scheduling))), 0.0, 1.0);
-                force_dotted_singular_direction = std::clamp(std::pow(force_dotted_singular_direction, 1), 0.0, 1.0);
+                force_dotted_singular_direction = std::clamp((1 - exp(-_type_2_vel_scheduling * force_dotted_singular_direction) / (1 - exp(-_type_2_vel_scheduling))), 0.0, 1.0);
+                // force_dotted_singular_direction = std::clamp(std::pow(force_dotted_singular_direction, 1), 0.0, 1.0);
                 // force_dotted_singular_direction = std::clamp(std::pow(force_dotted_singular_direction, 2), 0.0, 1.0);
                 // force_dotted_singular_direction = std::clamp(std::pow(force_dotted_singular_direction, 3), 0.0, 1.0);
                 // force_dotted_singular_direction = (1 - std::cos(M_PI * force_dotted_singular_direction)) / 2;
@@ -1846,6 +1849,9 @@ VectorXd SingularityHandler::computeTorques(const VectorXd& unit_mass_force, con
                 VectorXd singular_torque_component = 
                     curr_projected_jacobian.transpose() * curr_lambda * _active_singularities[ind].u.transpose() * unit_mass_force + 
                     curr_projected_jacobian.transpose() * _active_singularities[ind].u.transpose() * force_related_terms;
+
+                // saturate torque components to max
+                singular_torque_component = saturateBox(singular_torque_component, _tau_lower, _tau_upper);
 
                 // change direction if angle threshold is met 
                 for (int i = 0; i < _dof; ++i) {
@@ -1868,7 +1874,12 @@ VectorXd SingularityHandler::computeTorques(const VectorXd& unit_mass_force, con
                 //     scaled_velocity_magnitude = 0;
                 // }
 
-                VectorXd dq_des = _active_singularities[ind].v * _active_singularities[ind].v.transpose() * _type_2_direction;
+                // set type 2 direction as normalized singular torque vector (already in Vs space)
+                // _type_2_direction =  _active_singularities[ind].v * _active_singularities[ind].v.transpose() * singular_torque_component.normalized();
+                _type_2_direction = singular_torque_component.normalized();
+                VectorXd dq_des = _type_2_direction;
+
+                // VectorXd dq_des = _active_singularities[ind].v * _active_singularities[ind].v.transpose() * _type_2_direction;
 
                 // if (is_moving_towards_singularity) {
                 //     dq_des = - _active_singularities[ind].v * _active_singularities[ind].v.transpose() * _active_singularities[ind].dsdq;

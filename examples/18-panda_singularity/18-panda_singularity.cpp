@@ -171,7 +171,7 @@ void control(shared_ptr<Sai2Model::Sai2Model> robot,
     motion_force_task->disableInternalOtg();
 	motion_force_task->enableTrackingMode();
     motion_force_task->enableVelocitySaturation(0.4, M_PI / 3);
-	motion_force_task->setSingularityHandlingBound(5e-2);
+	motion_force_task->setSingularityHandlingBound(4e-2);
 	// motion_force_task->setSingularityHandlingBound(6e-2);
 	motion_force_task->setType1Tol(5e-2);
 	motion_force_task->setType1Velocity(M_PI, M_PI);

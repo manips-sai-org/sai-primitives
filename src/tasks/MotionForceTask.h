@@ -78,7 +78,7 @@ public:
 		static constexpr double singularity_pos_exit_tol = 2e-2;
 		static constexpr double singularity_ori_exit_tol = 10 * M_PI / 180;
 		static constexpr double singularity_exit_velocity_scaling = 1.0;
-		static constexpr double singularity_linear_acceleration = 0.5;
+		static constexpr double singularity_linear_acceleration = 2.0;
 		static constexpr double singularity_angular_acceleration = 2.0 * M_PI;
 	};
 
