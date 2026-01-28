@@ -185,7 +185,7 @@ public:
         static constexpr double type_1_step_size_for_line_search = 10 * M_PI / 180;  // to determine motion direction for towards/away from type 1 singularity 
         // static constexpr double nm_step_size = 2 * M_PI / 180;
 
-        static constexpr double type_2_vel_scheduling = 5;
+        static constexpr double type_2_vel_scheduling = 2;
     };
 
     /**

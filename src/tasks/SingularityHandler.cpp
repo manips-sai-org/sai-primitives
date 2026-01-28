@@ -1757,7 +1757,8 @@ VectorXd SingularityHandler::computeTorques(const VectorXd& unit_mass_force, con
                     double curr_singular_task_force = 
                         std::abs(_active_singularities[ind].u.transpose() * (unit_mass_force + force_related_terms));
                     double force_vel_scaling = std::clamp(curr_singular_task_force / _max_force_norm, 0.0, 1.0);
-                    double condition_number_scaling =  _active_singularities[ind].lambda / _s_max;
+                    // double condition_number_scaling = std::pow(_active_singularities[ind].lambda / _s_max, 1);
+                    double condition_number_scaling = std::clamp((1 - exp(-_type_2_vel_scheduling * _active_singularities[ind].lambda / _s_max) / (1 - exp(-_type_2_vel_scheduling))), 0.0, 1.0);
                     // double condition_number_scaling = 1 - std::pow((_s_max - _active_singularities[ind].lambda) / _s_max, 1);
                     // double condition_number_scaling = 1 - std::pow((_s_max - _active_singularities[ind].lambda) / _s_max, 2);
                         // std::clamp(_active_singularities[ind].lambda / _s_max, 0.0, 1.0);  // starts at 1 at _s_min, then goes to 0 towards s = 0
@@ -1936,7 +1937,7 @@ VectorXd SingularityHandler::computeTorques(const VectorXd& unit_mass_force, con
                 // Lambda_sjs_modified = op_matrices.Lambda;
                 // Lambda_sjs_modified = Sai2Model::computePseudoInverse(Lambda_inv_BIE, _s_abs_tol);
             } 
-            singular_joint_task_torques -= (MatrixXd::Identity(_dof, _dof) - op_matrices.N).transpose() * (singular_joint_task_torques + _non_singular_task_torques);  // forward compensation 
+            singular_joint_task_torques -= (MatrixXd::Identity(_dof, _dof) - op_matrices.N).transpose() * (singular_joint_task_torques + 0 * _non_singular_task_torques);  // forward compensation 
             singular_joint_task_torques += sjs_jacobian.transpose() * Lambda_sjs_modified * _active_singularities[ind].v.transpose() * unit_torques;
             N_prec = op_matrices.N * N_prec;  // orthogonal tasks 
 
