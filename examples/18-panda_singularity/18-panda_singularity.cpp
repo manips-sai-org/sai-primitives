@@ -171,7 +171,7 @@ void control(shared_ptr<Sai2Model::Sai2Model> robot,
     motion_force_task->disableInternalOtg();
 	motion_force_task->enableTrackingMode();
     motion_force_task->enableVelocitySaturation(0.4, M_PI / 3);
-	motion_force_task->setSingularityHandlingBound(4e-2);
+	motion_force_task->setSingularityHandlingBound(5e-2);
 	// motion_force_task->setSingularityHandlingBound(6e-2);
 	motion_force_task->setType1Tol(5e-2);
 	motion_force_task->setType1Velocity(M_PI, M_PI);
@@ -298,8 +298,8 @@ void control(shared_ptr<Sai2Model::Sai2Model> robot,
 			robot->setDq(redis_client->getEigen(JOINT_VELOCITIES_KEY));
 			MatrixXd M = redis_client->getEigen(MASS_MATRIX_KEY);
 			M(0, 0) += 0.1;
-            M.bottomRightCorner(4, 4) += 0.15 * MatrixXd::Identity(4, 4);
-            // M.bottomRightCorner(3, 3) += 0.25 * Matrix3d::Identity();
+            // M.bottomRightCorner(4, 4) += 0.15 * MatrixXd::Identity(4, 4);
+            M.bottomRightCorner(3, 3) += 0.15 * Matrix3d::Identity();
 			robot->updateModel(M);
 
 			robot_q = robot->q();
@@ -341,7 +341,8 @@ void control(shared_ptr<Sai2Model::Sai2Model> robot,
 				// joint_task->reInitializeTask();
 
                 joint_task->disableInternalOtg();
-                joint_task->disableVelocitySaturation();
+				joint_task->enableVelocitySaturation(M_PI / 3);
+                // joint_task->disableVelocitySaturation();
                 // joint_task->enableVelocitySaturation(0.5);
                 // joint_task->enableVelocitySaturation(0.3);
 				joint_task->setGains(100, 20, 0);

@@ -1757,7 +1757,8 @@ VectorXd SingularityHandler::computeTorques(const VectorXd& unit_mass_force, con
                     double curr_singular_task_force = 
                         std::abs(_active_singularities[ind].u.transpose() * (unit_mass_force + force_related_terms));
                     double force_vel_scaling = std::clamp(curr_singular_task_force / _max_force_norm, 0.0, 1.0);
-                    double condition_number_scaling = 1 - std::pow((_s_max - _active_singularities[ind].lambda) / _s_max, 1);
+                    double condition_number_scaling =  _active_singularities[ind].lambda / _s_max;
+                    // double condition_number_scaling = 1 - std::pow((_s_max - _active_singularities[ind].lambda) / _s_max, 1);
                     // double condition_number_scaling = 1 - std::pow((_s_max - _active_singularities[ind].lambda) / _s_max, 2);
                         // std::clamp(_active_singularities[ind].lambda / _s_max, 0.0, 1.0);  // starts at 1 at _s_min, then goes to 0 towards s = 0
                     double vel_scaling = std::min(force_vel_scaling, condition_number_scaling);
