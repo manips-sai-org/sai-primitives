@@ -174,6 +174,7 @@ void control(shared_ptr<Sai2Model::Sai2Model> robot,
 	motion_force_task->setSingularityHandlingBound(5e-2);
 	// motion_force_task->setSingularityHandlingBound(6e-2);
 	motion_force_task->setType1Tol(5e-2);
+	// motion_force_task->setType1Tol(5e-1);
 	motion_force_task->setType1Velocity(M_PI, M_PI);
 	motion_force_task->setSingularityHandlingGains(200, 20, 100, 15);
 	// motion_force_task->setSingularityHandlingBounds(7e-3, 7e-2);
@@ -184,6 +185,7 @@ void control(shared_ptr<Sai2Model::Sai2Model> robot,
 	motion_force_task->setPosControlGains(100, 20, 0);
 	motion_force_task->setOriControlGains(100, 20, 0);
 	motion_force_task->setBoundedInertiaEstimateThreshold(0.15, 0.15);
+	motion_force_task->setType1SchedulingWeight(5);
 	VectorXd motion_force_task_torques = VectorXd::Zero(dof);
 
 	// motion_force_task->disableSingularityHandling();
@@ -378,7 +380,7 @@ void control(shared_ptr<Sai2Model::Sai2Model> robot,
 
 			// if (motion_force_task->getNumSingularities() > 0) {
 			// 	joint_task->disableVelocitySaturation();
-			// 	joint_task->setGains(0, 5, 0);
+			// 	joint_task->setGains(0, 0, 0);
 			// } else {
 			// 	joint_task->enableVelocitySaturation(M_PI / 3);
 			// 	joint_task->setGains(100, 20, 0);

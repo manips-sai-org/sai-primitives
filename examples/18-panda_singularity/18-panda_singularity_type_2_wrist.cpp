@@ -186,11 +186,11 @@ void control(shared_ptr<Sai2Model::Sai2Model> robot,
 
 	motion_force_task->setMinBlending(0.2);
 	motion_force_task->setType1Tol(5e-2);
-	// motion_force_task->setType1Tol(2e-2);
+	// motion_force_task->setType1Tol(1e-2);
 	// motion_force_task->setType2Velocity(1.5 * M_PI / 3);  // mulitple of 60s
 	// motion_force_task->setType2Velocity(1.0 * M_PI);  // mulitple of 60s
 	motion_force_task->setType1Velocity(M_PI, M_PI);
-	motion_force_task->setType2Velocity(M_PI * 1.2); 
+	motion_force_task->setType2Velocity(M_PI * 1); 
 	// motion_force_task->setType2Velocity(M_PI * 0.8); 
 	// motion_force_task->setType2Velocity(M_PI * 2); 
 	motion_force_task->setSingularityHandlingGains(100, 20, 100, 15);
@@ -199,7 +199,7 @@ void control(shared_ptr<Sai2Model::Sai2Model> robot,
 	// vel_sf << 0.6, 0.6, 0.6, 0.6, 0.3, 0.3, 0.3;
 	motion_force_task->setMaxJointVelocityScaleFactor(vel_sf);
 	motion_force_task->setMinMagnitudeThreshold(0.1);
-	motion_force_task->setType2SchedulingWeight(3);
+	motion_force_task->setType2SchedulingWeight(2);
 	motion_force_task->setBoundedInertiaEstimateThreshold(0.15, 0.15);
 
 	VectorXd motion_force_task_torques = VectorXd::Zero(dof);
@@ -439,8 +439,8 @@ void control(shared_ptr<Sai2Model::Sai2Model> robot,
 			auto active_singularities = motion_force_task->getSingularities();
 			bool is_type_2_active = false;
 			for (auto singularity : active_singularities) {
-				// if (singularity.type == Sai2Primitives::TYPE_2_SINGULARITY || singularity.type == Sai2Primitives::TYPE_1_SINGULARITY) {
-				if (singularity.type == Sai2Primitives::TYPE_2_SINGULARITY) {
+				if (singularity.type == Sai2Primitives::TYPE_2_SINGULARITY || singularity.type == Sai2Primitives::TYPE_1_SINGULARITY) {
+				// if (singularity.type == Sai2Primitives::TYPE_2_SINGULARITY) {
 					is_type_2_active = true;
 					break;
 				}
@@ -449,7 +449,7 @@ void control(shared_ptr<Sai2Model::Sai2Model> robot,
 			if (is_type_2_active) {
 				joint_task->disableVelocitySaturation();
 				joint_task->disableInternalOtg();
-				joint_task->setGains(0, 0, 0);
+				joint_task->setGains(0, 5, 0);
 			} else if (prev_is_type_2_active) {
 				joint_task->enableVelocitySaturation(M_PI / 3);
 				joint_task->disableInternalOtg();
@@ -501,7 +501,7 @@ void control(shared_ptr<Sai2Model::Sai2Model> robot,
             offset_velocity_trajectory(1) = 2 * M_PI * freq * amplitude * cos(2 * M_PI * freq * (time - time_transition));
             offset_acceleration_trajectory(1) = - std::pow(2 * M_PI * freq, 2) * amplitude * sin(2 * M_PI * freq * (time - time_transition));
             motion_force_task->setGoalPosition(initial_position + offset_trajectory);
-            motion_force_task->setGoalLinearVelocity(offset_velocity_trajectory);
+            // motion_force_task->setGoalLinearVelocity(offset_velocity_trajectory);
             // motion_force_task->setGoalLinearAcceleration(offset_acceleration_trajectory);
 
             // motion_force_task->setGoalLinearVelocity(Vector3d::Zero());

@@ -888,6 +888,7 @@ SingularityHandler::SingularityHandler(std::shared_ptr<Sai2Model::Sai2Model> rob
     _dsdq_norm = 1;
     _min_magnitude_thresh = 0.5;
     _type_2_vel_scheduling = DefaultParameters::type_2_vel_scheduling;
+    _type_1_vel_scheduling = DefaultParameters::type_1_vel_scheduling;
 
     // setup nlopt (setup optimizer for all dimensionality cases between 2 and 6)
     for (int i = 2; i < 7; ++i) {
@@ -1758,10 +1759,12 @@ VectorXd SingularityHandler::computeTorques(const VectorXd& unit_mass_force, con
                         std::abs(_active_singularities[ind].u.transpose() * (unit_mass_force + force_related_terms));
                     double force_vel_scaling = std::clamp(curr_singular_task_force / _max_force_norm, 0.0, 1.0);
                     // double condition_number_scaling = std::pow(_active_singularities[ind].lambda / _s_max, 1);
-                    double condition_number_scaling = std::clamp((1 - exp(-_type_2_vel_scheduling * _active_singularities[ind].lambda / _s_max) / (1 - exp(-_type_2_vel_scheduling))), 0.0, 1.0);
+                    double condition_number_scaling = 
+                        std::clamp((1 - exp(-_type_1_vel_scheduling * (_active_singularities[ind].lambda / _s_max))) / (1 - exp(-_type_1_vel_scheduling)), 0.0, 1.0);
                     // double condition_number_scaling = 1 - std::pow((_s_max - _active_singularities[ind].lambda) / _s_max, 1);
                     // double condition_number_scaling = 1 - std::pow((_s_max - _active_singularities[ind].lambda) / _s_max, 2);
                         // std::clamp(_active_singularities[ind].lambda / _s_max, 0.0, 1.0);  // starts at 1 at _s_min, then goes to 0 towards s = 0
+
                     double vel_scaling = std::min(force_vel_scaling, condition_number_scaling);
 
                     // VectorXd q_des = curr_q - _type_1_step_size_control_towards_singularity * _active_singularities[ind].dsdq;
@@ -1776,10 +1779,15 @@ VectorXd SingularityHandler::computeTorques(const VectorXd& unit_mass_force, con
 
                     {
                         // debug comparison
-                        VectorXd _dq_des_comparison = - _active_singularities[ind].v * _active_singularities[ind].v.transpose() * _active_singularities[ind].dsdq;
-                        std::cout << "v space: " << _active_singularities[ind].v.transpose() << "\n";
-                        std::cout << "dq_des base: " << dq_des.normalized().transpose() << "\n";
-                        std::cout << "dq_des comparison: " << _dq_des_comparison.normalized().transpose() << "\n";
+
+                        std::cout << "dq des: " << dq_des.transpose() << "\n";
+                        std::cout << "condition number scaling: " << condition_number_scaling << "\n";
+                        std::cout << "lambda ratio: " << _active_singularities[ind].lambda / _s_max << "\n";
+
+                        // VectorXd _dq_des_comparison = - _active_singularities[ind].v * _active_singularities[ind].v.transpose() * _active_singularities[ind].dsdq;
+                        // std::cout << "v space: " << _active_singularities[ind].v.transpose() << "\n";
+                        // std::cout << "dq_des base: " << dq_des.normalized().transpose() << "\n";
+                        // std::cout << "dq_des comparison: " << _dq_des_comparison.normalized().transpose() << "\n";
                         // std::cout << "dq_des base after projection: " << (_active_singularities[ind].v.transpose() * _active_singularities[ind].dsdq).transpose() << "\n";
                         // std::cout << "dq_des comparison after projection: " << (_active_singularities[ind].v.transpose() * _dq_des_comparison).transpose() << "\n";
 
@@ -1833,7 +1841,7 @@ VectorXd SingularityHandler::computeTorques(const VectorXd& unit_mass_force, con
                 _force_dotted_singular_direction = force_dotted_singular_direction;  // experimental logging
 
                 // put force scaling through non-linear function for smoothing 
-                force_dotted_singular_direction = std::clamp((1 - exp(-_type_2_vel_scheduling * force_dotted_singular_direction) / (1 - exp(-_type_2_vel_scheduling))), 0.0, 1.0);
+                force_dotted_singular_direction = std::clamp((1 - exp(-_type_2_vel_scheduling * force_dotted_singular_direction)) / (1 - exp(-_type_2_vel_scheduling)), 0.0, 1.0);
                 // force_dotted_singular_direction = std::clamp(std::pow(force_dotted_singular_direction, 1), 0.0, 1.0);
                 // force_dotted_singular_direction = std::clamp(std::pow(force_dotted_singular_direction, 2), 0.0, 1.0);
                 // force_dotted_singular_direction = std::clamp(std::pow(force_dotted_singular_direction, 3), 0.0, 1.0);
@@ -1913,7 +1921,7 @@ VectorXd SingularityHandler::computeTorques(const VectorXd& unit_mass_force, con
                 //     std::cout << "scaled velocity magnitude: " << scaled_velocity_magnitude << "\n";
                 //     std::cout << "kv type 2: " << _kv_type_2 << "\n";
                 //     std::cout << "type 2 unit torque: " << unit_torques.transpose() << "\n";
-                    std::cout << "dq des: " << dq_des.transpose() << "\n";
+                    // std::cout << "dq des: " << dq_des.transpose() << "\n";
                 //     std::cout << "type 2 direction: " << _active_singularities[ind].u.transpose() << "\n";
                 }
 
@@ -1937,7 +1945,7 @@ VectorXd SingularityHandler::computeTorques(const VectorXd& unit_mass_force, con
                 // Lambda_sjs_modified = op_matrices.Lambda;
                 // Lambda_sjs_modified = Sai2Model::computePseudoInverse(Lambda_inv_BIE, _s_abs_tol);
             } 
-            singular_joint_task_torques -= (MatrixXd::Identity(_dof, _dof) - op_matrices.N).transpose() * (singular_joint_task_torques + 0 * _non_singular_task_torques);  // forward compensation 
+            singular_joint_task_torques -= (MatrixXd::Identity(_dof, _dof) - op_matrices.N).transpose() * (singular_joint_task_torques + _non_singular_task_torques);  // forward compensation 
             singular_joint_task_torques += sjs_jacobian.transpose() * Lambda_sjs_modified * _active_singularities[ind].v.transpose() * unit_torques;
             N_prec = op_matrices.N * N_prec;  // orthogonal tasks 
 

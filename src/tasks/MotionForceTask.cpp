@@ -249,6 +249,7 @@ void MotionForceTask::initialSetup() {
 	enableZeroOrientationCrossing();
 
 	setSingularityExitInterpolatorNorm(DefaultParameters::singularity_pos_exit_tol, DefaultParameters::singularity_ori_exit_tol);
+	setSingularityVelExitInterpolatorNorm(DefaultParameters::singularity_linear_vel_exit_tol, DefaultParameters::singularity_angular_vel_exit_tol);
 
 	reInitializeTask();	
 
@@ -563,15 +564,28 @@ VectorXd MotionForceTask::computeTorques() {
 
 		if (!_is_in_singularity) {
 			if (goalPositionReached(_singularity_pos_exit_tol) && goalOrientationReached(_singularity_ori_exit_tol)) {
-				_handle_singularity_exit = false;
 
-				std::cout << "Exiting singularity interpolation exit\n";
-
-				if (_prev_velocity_saturation) {
-					enableVelocitySaturation(_user_linear_saturation_velocity, _user_angular_saturation_velocity);
-				} else {
-					disableVelocitySaturation();
+				double linear_vel_error = _current_linear_velocity.norm();
+				double angular_vel_error = _current_angular_velocity.norm();
+				if (_tracking_mode) {
+					linear_vel_error = (_current_linear_velocity - _goal_linear_velocity).norm();
+					angular_vel_error = (_current_angular_velocity - _goal_angular_velocity).norm();
 				}
+
+				if (linear_vel_error < _singularity_linear_vel_exit_tol && 
+					angular_vel_error < _singularity_angular_vel_exit_tol) {
+
+					_handle_singularity_exit = false;
+
+					std::cout << "Exiting singularity interpolation exit\n";
+
+					if (_prev_velocity_saturation) {
+						enableVelocitySaturation(_user_linear_saturation_velocity, _user_angular_saturation_velocity);
+					} else {
+						disableVelocitySaturation();
+					}
+				}
+
 			}
 		} 		
 			

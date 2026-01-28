@@ -77,9 +77,11 @@ public:
 		static constexpr double otg_max_angular_jerk = 10.0 * M_PI;
 		static constexpr double singularity_pos_exit_tol = 2e-2;
 		static constexpr double singularity_ori_exit_tol = 10 * M_PI / 180;
+		static constexpr double singularity_linear_vel_exit_tol = 1e-3;
+		static constexpr double singularity_angular_vel_exit_tol = 1e-3;
 		static constexpr double singularity_exit_velocity_scaling = 1.0;
-		static constexpr double singularity_linear_acceleration = 2.0;
-		static constexpr double singularity_angular_acceleration = 2.0 * M_PI;
+		static constexpr double singularity_linear_acceleration = 1.0;
+		static constexpr double singularity_angular_acceleration = 1.0 * M_PI;
 	};
 
 	//------------------------------------------------
@@ -928,6 +930,11 @@ public:
 		_singularity_ori_exit_tol = ori_exit_tol;
 	}
 
+	void setSingularityVelExitInterpolatorNorm(const double linear_vel_exit_tol, const double angular_vel_exit_tol) {
+		_singularity_linear_vel_exit_tol = linear_vel_exit_tol;
+		_singularity_angular_vel_exit_tol = angular_vel_exit_tol;
+	}
+
 	void setCompliantFrame(const Vector3d& pos_in_link, const Matrix3d& rot_in_link = Matrix3d::Identity()) {
 		_compliant_frame.translation() = pos_in_link;
 		_compliant_frame.linear() = rot_in_link;
@@ -1019,6 +1026,10 @@ public:
 
 	void setMinMagnitudeThreshold(const double threshold) {
 		_singularity_handler->setMinMagnitudeThreshold(threshold);
+	}
+
+	void setType1SchedulingWeight(const double val) {
+		_singularity_handler->setType2SchedulingWeight(val);
 	}
 	
 	void setType2SchedulingWeight(const double val) {
@@ -1183,6 +1194,7 @@ private:
 	// exit singularity transition 
 	std::vector<int> _joint_dependency;
 	double _singularity_pos_exit_tol, _singularity_ori_exit_tol;
+	double _singularity_linear_vel_exit_tol, _singularity_angular_vel_exit_tol;
 	bool _default_use_internal_otg;
 	bool _handle_singularity_exit;
 	bool _is_in_singularity;
