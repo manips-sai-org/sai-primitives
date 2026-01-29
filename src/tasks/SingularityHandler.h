@@ -37,7 +37,7 @@ struct Singularity {
     VectorXd v;
     double sigma;
     double lambda;
-    VectorXd dsdq;
+    VectorXd dsdq;  // gradient descent will increase singular value
     SingularityType type;
     VectorXd u_toward_singularity;  // for type 1 singularities 
     bool is_degenerate;
@@ -151,7 +151,7 @@ public:
         static constexpr double type_1_max_vel_away_from_singularity = 3 * 30 * M_PI / 180;  // type 1 retract
         static constexpr double type_1_max_vel_towards_singularity = 3 * 30 * M_PI / 180;  // type 1 approach
         static constexpr double type_1_step_size_control_towards_singularity = 3 * 60 * M_PI / 180;
-        static constexpr double type_1_step_size_classification_towards_singularity = 10 * M_PI / 180;  // to determine motion direction for towards/away from type 1 singularity 
+        static constexpr double type_1_step_size_classification_towards_singularity = 1 * M_PI / 180;  // to determine motion direction for towards/away from type 1 singularity 
  
         // type 2 parameters
         static constexpr double type_2_angle_threshold = 10 * M_PI / 180;
