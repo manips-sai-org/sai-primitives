@@ -81,7 +81,7 @@ public:
 		static constexpr double singularity_angular_vel_exit_tol = 1e-3;
 		static constexpr double singularity_exit_velocity_scaling = 1.0;
 		static constexpr double singularity_linear_acceleration = 0.2;
-		static constexpr double singularity_angular_acceleration = (M_PI / 3);
+		static constexpr double singularity_angular_acceleration = M_PI / 3;
 	};
 
 	//------------------------------------------------

@@ -187,6 +187,7 @@ public:
 
         static constexpr double type_1_vel_scheduling = 2;
         static constexpr double type_2_vel_scheduling = 2;
+        static constexpr double type_1_beta_factor = 5;
     };
 
     /**
@@ -752,6 +753,7 @@ private:
     double _min_magnitude_thresh;
     double _type_2_vel_scheduling;
     double _type_1_vel_scheduling;
+    double _type_1_beta_factor;
 
 };
 

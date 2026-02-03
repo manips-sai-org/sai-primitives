@@ -466,6 +466,15 @@ namespace {
     return x;
 }
 
+// weighting function
+inline double smoothExpSin(double x, double beta)
+{
+    constexpr double half_pi = M_PI * 0.5;
+    x = std::clamp(x, 0.0, 1.0); // clamp x to [0,1]
+    return (1.0 - std::exp(-beta * std::sin(half_pi * x)))
+           / (1.0 - std::exp(-beta));
+}
+
 }
 
 namespace Sai2Primitives {
@@ -889,6 +898,7 @@ SingularityHandler::SingularityHandler(std::shared_ptr<Sai2Model::Sai2Model> rob
     _min_magnitude_thresh = 0.5;
     _type_2_vel_scheduling = DefaultParameters::type_2_vel_scheduling;
     _type_1_vel_scheduling = DefaultParameters::type_1_vel_scheduling;
+    _type_1_beta_factor = DefaultParameters::type_1_beta_factor;
 
     // setup nlopt (setup optimizer for all dimensionality cases between 2 and 6)
     for (int i = 2; i < 7; ++i) {
@@ -1739,34 +1749,39 @@ VectorXd SingularityHandler::computeTorques(const VectorXd& unit_mass_force, con
                 std::cout << "full acceleration component: " << full_acceleration_component.transpose() << "\n";
                 std::cout << "singular acceleration component: " << singular_unit_acceleration_component.transpose() << "\n";
                 std::cout << "dsdq: " << _active_singularities[ind].dsdq.transpose() << "\n";
-                std::cout << "dot product check: " << singular_unit_acceleration_component.normalized().dot(_active_singularities[ind].dsdq) << "\n";                
+                std::cout << "dot product check: " << singular_unit_acceleration_component.normalized().dot(_active_singularities[ind].dsdq.normalized()) << "\n";                
             }
 
             if (_active_singularities[ind].type == TYPE_1_SINGULARITY) {
 
+                // compute alignment 
+                double singular_alignment = singular_unit_acceleration_component.normalized().dot(_active_singularities[ind].dsdq.normalized());
+
                 // joint-space classification of control towards/away from singularity
                 bool is_moving_towards_singularity;
-                if (singular_unit_acceleration_component.normalized().dot(_active_singularities[ind].dsdq) > 0) {
+                if (singular_alignment > 0) {
                     is_moving_towards_singularity = false;
                 } else {
                     is_moving_towards_singularity = true;
                 }
 
+                // compute scale factor based on singular alignment 
+                double scale_factor_singular_alignment = smoothExpSin(std::abs(singular_alignment), _type_1_beta_factor);
+
                 // compute control for approaching or leaving type 1 singularity
                 if (is_moving_towards_singularity) {
                     
-                    _type_1_retracting = false;
                     std::cout << "Type 1 towards singularity\n";
+                    _type_1_retracting = false;
 
                     double curr_singular_task_force = 
                         std::abs(_active_singularities[ind].u.transpose() * (unit_mass_force + force_related_terms));
-                    double force_vel_scaling = std::clamp(curr_singular_task_force / _max_force_norm, 0.0, 1.0);
+                    double force_scaling = std::clamp(curr_singular_task_force / _max_force_norm, 0.0, 1.0);
                     double condition_number_scaling = 
                         std::clamp((1 - exp(-_type_1_vel_scheduling * (_active_singularities[ind].lambda / _s_max))) / (1 - exp(-_type_1_vel_scheduling)), 0.0, 1.0);
-                    double vel_scaling = std::min(force_vel_scaling, condition_number_scaling);
+                    double vel_scaling = std::min(scale_factor_singular_alignment, std::min(force_scaling, condition_number_scaling));
 
                     VectorXd dq_des = - _active_singularities[ind].dsdq;
-                    // VectorXd dq_des = - _active_singularities[ind].v * _active_singularities[ind].v.transpose() * _active_singularities[ind].dsdq;
                     dq_des = vel_scaling * _type_1_max_vel_towards_singularity * dq_des.normalized();
                     unit_torques = - _kv_type_1 * (_robot->dq() - dq_des);
 
@@ -1787,18 +1802,22 @@ VectorXd SingularityHandler::computeTorques(const VectorXd& unit_mass_force, con
                 } else {
 
                     std::cout << "Type 1 retracting\n";
-
                     _type_1_retracting = true;
                     
                     double curr_singular_task_force = 
                         std::abs(_active_singularities[ind].u.transpose() * (unit_mass_force + force_related_terms));
 
-                    double condition_number_scaling =   
-                        std::clamp((1 - exp(-_type_1_vel_scheduling * (_active_singularities[ind].lambda / _s_max))) / (1 - exp(-_type_1_vel_scheduling)), 0.7, 1.0);
+                    // double condition_number_scaling =   
+                        // std::clamp((1 - exp(-_type_1_vel_scheduling * (_active_singularities[ind].lambda / _s_max))) / (1 - exp(-_type_1_vel_scheduling)), 0.7, 1.0);
 
-                    double vel_scaling = std::min(std::clamp(curr_singular_task_force / _max_force_norm, 0.0, 1.0), condition_number_scaling);
+                    // double vel_scaling = std::min(std::clamp(curr_singular_task_force / _max_force_norm, 0.0, 1.0), condition_number_scaling);
 
-                    VectorXd dq_des = vel_scaling * _type_1_max_vel_away_from_singularity * _active_singularities[ind].dsdq.normalized();
+                    double vel_scaling = std::min(std::clamp(curr_singular_task_force / _max_force_norm, 0.0, 1.0), scale_factor_singular_alignment);
+
+                    VectorXd dq_des = _active_singularities[ind].dsdq;
+                    // VectorXd dq_des = singular_unit_acceleration_component.normalized();
+
+                    dq_des = vel_scaling * _type_1_max_vel_away_from_singularity * dq_des.normalized();
                     // VectorXd dq_des = vel_scaling * _type_1_max_vel_away_from_singularity *
                                         // (_active_singularities[ind].v * _active_singularities[ind].v.transpose() * _active_singularities[ind].dsdq).normalized();
                     unit_torques = - _kv_type_1 * (_robot->dq() - dq_des);
