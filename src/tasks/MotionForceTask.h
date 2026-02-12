@@ -82,6 +82,7 @@ public:
 		static constexpr double singularity_exit_velocity_scaling = 1.0;
 		static constexpr double singularity_linear_acceleration = 0.2;
 		static constexpr double singularity_angular_acceleration = M_PI / 3;
+		static constexpr double singularity_bound = 5e-2;
 	};
 
 	//------------------------------------------------
@@ -700,6 +701,10 @@ public:
 
 	// -------- singularity handling methods --------
 
+	std::shared_ptr<SingularityHandler> getSingularityHandler() {
+		return _singularity_handler;
+	}
+
 	/**
 	 * @brief 	Set the Dynamic Decoupling Type. See the definition of the
 	 * DynamicDecouplingType enum for more details
@@ -728,101 +733,28 @@ public:
 		return _singularity_handler->getBoundedInertiaEstimateThreshold();
 	}
 
-    /**
-     * @brief Enforces type 1 handling behavior if set to true, otherwise handle 
-     * type 1 or type 2 as usual
-     * 
-     * @param flag true to enforce type 1 handling behavior 
-     */
-	void handleAllSingularitiesAsTypeOne(const bool flag) {
-		_singularity_handler->handleAllSingularitiesAsTypeOne(flag);
-	}
-	
-	/**
-	 * @brief Set the desired posture for type 1 singularity handling  
-	 * 
-	 * @param q_des desired posture 
-	 */
-	void setTypeOnePosture(const VectorXd& q_des) {
-		_singularity_handler->setTypeOnePosture(q_des);
-	}
-
-	/**
-	 * @brief Enables singularity handling 
-	 * 
-	 */
 	void enableSingularityHandling() {
 		_handle_singularity = true;
 		_singularity_handler->enableSingularityHandling();
 	}
 
-	/**
-	 * @brief Disables singularity handling 
-	 * 
-	 */
 	void disableSingularityHandling() {
 		_handle_singularity = false;
 		_singularity_handler->disableSingularityHandling();
-	}
-
-    /**
-     * @brief Set the singularity bounds for torque blending based on the inverse of the condition number
-     * The linear blending coefficient \alpha is computed as \alpha = (s - _s_min) / (_s_max - _s_min),
-     * and is clamped between 0 and 1.
-     * 
-     * @param s_min lower bound
-     * @param s_max upper bound 
-     */
-	void setSingularityHandlingBounds(const double& s_min, const double& s_max) {
-		_singularity_handler->setSingularityHandlingBounds(s_min, s_max);
 	}
 
 	void setSingularityHandlingBound(const double s_max) {
 		_singularity_handler->setSingularityHandlingBound(s_max);
 	}
 
-    /**
-     * @brief Set the gains for the partial joint task for the singularity strategy
-     * 
-     * @param kp_type_1 position gain for type 1 strategy
-     * @param kv_type_1 velocity damping gain for type 1 strategy
-     * @param kv_type_2 velocity damping gain for type 2 strategy
-     */
-	void setSingularityHandlingGains(const double& kp_type_1, const double& kv_type_1, const double& kp_type_2, const double& kv_type_2) {
-		_singularity_handler->setSingularityHandlingGains(kp_type_1, kv_type_1, kp_type_2, kv_type_2);
+	void setSingularityHandlingGains(const double kv_type_1, const double kv_type_2) {
+		_singularity_handler->setSingularityHandlingGains(kv_type_1, kv_type_2);
 	}
 
-	void setSingularityHandlingTypeTwoDirection(const VectorXd& type_2_direction) {
-		_singularity_handler->setTypeTwoDirection(type_2_direction);
-	}
-
-	bool isExistingSingularity() {
+	bool isExitingSingularity() {
 		return _singularity_handler->isExitingSingularity();
 	}
 
-	void setType1Posture(const VectorXd& q_des) {
-		_singularity_handler->setTypeOnePosture(q_des);
-	}
-
-	/**
-	 * @brief Set the Floating object
-	 * 
-	 * @param is_floating 
-	 */
-	void setFloating(const bool& is_floating) {
-		_is_floating = is_floating;
-	}
-
-	/**
-	 * @brief Get the Floating object
-	 * 
-	 * @return true 
-	 * @return false 
-	 */
-	bool getFloating() {
-		return _is_floating;
-	}
-		
 	// -------- getters for model parameters --------
 
 	VectorXi getSingularityClassification() {
@@ -831,10 +763,6 @@ public:
 
 	VectorXd getUnmodifiedSingularTaskTorques() {
 		return _singularity_handler->getUnmodifiedSingularTaskTorques();
-	}
-
-	VectorXd getConditionRatio() {
-		return _singularity_handler->getConditionRatio();
 	}
 
 	VectorXd getImpedanceForces() {
@@ -899,14 +827,6 @@ public:
 
 	VectorXd getSingularEigenValues() {
 		return _singularity_handler->getSingularEigenValues();
-	}
-
-	VectorXd getBlendingVector() {
-		return _singularity_handler->getBlendingVector();
-	}
-
-	MatrixXd getBlendingMatrix() {
-		return _singularity_handler->getBlendingMatrix();
 	}
 
 	std::vector<Singularity> getSingularities() {
@@ -1004,36 +924,16 @@ public:
 		_singularity_handler->setType2Velocity(velocity);
     }
 
-	void setMinBlending(const double value) {
-		_singularity_handler->setMinBlending(value);
-	}
-
-	VectorXd getType2DesiredVelocity() {
-		return _singularity_handler->getType2DesiredVelocity();
-	}
-
 	void disableJointStrategy() {
 		_singularity_handler->disableJointStrategy();
 	}
 
-	double getSingularGradientNorm() {
-		return _singularity_handler->getSingularGradientNorm();
-	}
-
-	void setMaxJointVelocityScaleFactor(const VectorXd& vel_sf) {
-		_singularity_handler->setMaxJointVelocityScaleFactor(vel_sf);
-	}
-
-	void setMinMagnitudeThreshold(const double threshold) {
-		_singularity_handler->setMinMagnitudeThreshold(threshold);
-	}
-
-	void setType1SchedulingWeight(const double val) {
-		_singularity_handler->setType2SchedulingWeight(val);
+	void setType1RampFactor(const double val) {
+		_singularity_handler->setType1RampFactor(val);
 	}
 	
-	void setType2SchedulingWeight(const double val) {
-		_singularity_handler->setType2SchedulingWeight(val);
+	void setType2RampFactor(const double val) {
+		_singularity_handler->setType2RampFactor(val);
 	}
 	
 private:
@@ -1176,7 +1076,7 @@ private:
 	VectorXd _impedance_force;
 
 	// singularity handler
-	std::unique_ptr<SingularityHandler> _singularity_handler;
+	std::shared_ptr<SingularityHandler> _singularity_handler;
 
 	// // pino model
 	// std::shared_ptr<pinocchio::Model> _pino_model;
@@ -1187,7 +1087,6 @@ private:
 	bool _use_user_step_orientation_flag;
 	Vector3d _user_step_position_error;
 	Vector3d _user_step_orientation_error;
-	bool _is_floating;
 
 	bool _tracking_mode;
 

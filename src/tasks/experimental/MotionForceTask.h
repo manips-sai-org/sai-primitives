@@ -1,5 +1,5 @@
 /*
- * RelMotionForceTask.h
+ * MotionForceTask.h
  *
  *      This class creates a 6Dof position + orientation hybrid controller for a
  * robotic manipulator using operational space formulation and an underlying PID
@@ -15,12 +15,13 @@
  *      Author: Mikael Jorda
  */
 
-#ifndef SAI2_PRIMITIVES_COMMOTIONTASK_TASK_H_
-#define SAI2_PRIMITIVES_COMMOTIONTASK_TASK_H_
+#ifndef SAI2_PRIMITIVES_MOTIONFORCETASK_TASK_H_
+#define SAI2_PRIMITIVES_MOTIONFORCETASK_TASK_H_
 
 #include <helper_modules/OTG_6dof_cartesian.h>
 #include <helper_modules/POPCExplicitForceControl.h>
 #include <helper_modules/Sai2PrimitivesCommonDefinitions.h>
+#include <helper_modules/ForceSensor.h>
 
 #include <Eigen/Dense>
 #include <memory>
@@ -35,8 +36,54 @@ using namespace std;
 
 namespace Sai2Primitives {
 
-class ComMotionTask : public TemplateTask {
+class MotionForceTask : public TemplateTask {
 public:
+
+	struct DefaultParameters {
+		static constexpr DynamicDecouplingType dynamic_decoupling_type =
+			DynamicDecouplingType::BOUNDED_INERTIA_ESTIMATES;
+		static constexpr double bie_threshold = 0.1;
+		static constexpr double singularity_bie_threshold = 0.5;
+		static constexpr double kp_pos = 100.0;
+		static constexpr double kv_pos = 20.0;
+		static constexpr double ki_pos = 0.0;
+		static constexpr double kp_ori = 200.0;
+		static constexpr double kv_ori = 28.3;
+		static constexpr double ki_ori = 0.0;
+		static constexpr double kp_force = 0.7;
+		static constexpr double kv_force = 10.0;
+		static constexpr double ki_force = 1.3;
+		static constexpr double kp_moment = 0.7;
+		static constexpr double kv_moment = 10.0;
+		static constexpr double ki_moment = 1.3;
+		static constexpr double kff_force = 0.95;
+		static constexpr double kff_moment = 0.95;
+		static constexpr double max_force_control_feedback_output = 20.0;
+		static constexpr double max_moment_control_feedback_output = 10.0;
+		static constexpr bool closed_loop_force_control = false;
+		static constexpr bool closed_loop_moment_control = false;
+		static constexpr int force_space_dimension = 0;
+		static constexpr int moment_space_dimension = 0;
+		static constexpr bool use_velocity_saturation = false;
+		static constexpr double linear_saturation_velocity = 0.3;
+		static constexpr double angular_saturation_velocity = M_PI / 3;
+		static constexpr bool use_internal_otg = true;
+		static constexpr double otg_max_linear_velocity = 0.3;
+		static constexpr double otg_max_linear_acceleration = 2.0;
+		static constexpr double otg_max_angular_velocity = M_PI / 3;
+		static constexpr double otg_max_angular_acceleration = 2.0 * M_PI;
+		static constexpr bool internal_otg_jerk_limited = false;
+		static constexpr double otg_max_linear_jerk = 10.0;
+		static constexpr double otg_max_angular_jerk = 10.0 * M_PI;
+		static constexpr double singularity_pos_exit_tol = 2e-2;
+		static constexpr double singularity_ori_exit_tol = 10 * M_PI / 180;
+		static constexpr double singularity_linear_vel_exit_tol = 1e-3;
+		static constexpr double singularity_angular_vel_exit_tol = 1e-3;
+		static constexpr double singularity_exit_velocity_scaling = 1.0;
+		static constexpr double singularity_linear_acceleration = 0.2;
+		static constexpr double singularity_angular_acceleration = M_PI / 3;
+	};
+
 	//------------------------------------------------
 	// Constructor
 	//------------------------------------------------
@@ -56,19 +103,19 @@ public:
 	 * @param loop_timestep Time taken by a control loop. Used in trajectory
 	 * generation and integral control.
 	 */
-	ComMotionTask(
+	MotionForceTask(
 		std::shared_ptr<Sai2Model::Sai2Model>& robot, const string& link_name,
 		const Affine3d& compliant_frame = Affine3d::Identity(),
-		const std::string& task_name = "com_motion_task",
+		const std::string& task_name = "motion_force_task",
 		const bool is_force_motion_parametrization_in_compliant_frame = false,
 		const double loop_timestep = 0.001);
 
-	ComMotionTask(
+	MotionForceTask(
 		std::shared_ptr<Sai2Model::Sai2Model>& robot, const string& link_name,
 		std::vector<Vector3d> controlled_directions_translation,
 		std::vector<Vector3d> controlled_directions_rotation,
 		const Affine3d& compliant_frame = Affine3d::Identity(),
-		const std::string& task_name = "com_motion_task",
+		const std::string& task_name = "partial_motion_force_task",
 		const bool is_force_motion_parametrization_in_compliant_frame = false,
 		const double loop_timestep = 0.001);
 
@@ -109,18 +156,43 @@ public:
 	}
 
 	/**
-	 * @brief Get the Sensed Force used for control, in robot world frame
+	 * @brief Get the Sensed Force used for control (resolved at the origin of
+	 * the compliant frame), in robot world frame
 	 *
-	 * @return const Vector3d& current sensed force in the control frame
+	 * @return const Vector3d& sensed force used for control
 	 */
-	const Vector3d& getSensedForce() const { return _sensed_force; }
+	const Vector3d& getSensedForceControlWorldFrame() const {
+		return _sensed_force_control_world_frame;
+	}
 
 	/**
 	 * @brief Get the Sensed Moment used for control, in robot world frame
 	 *
-	 * @return const Vector3d& current sensed moment in the control frame
+	 * @return const Vector3d& sensed moment used for control
 	 */
-	const Vector3d& getSensedMoment() const { return _sensed_moment; }
+	const Vector3d& getSensedMomentControlWorldFrame() const {
+		return _sensed_moment_control_world_frame;
+	}
+
+	/**
+	 * @brief Get the Sensed Force used for control as given directly by the
+	 * sensor, in sensor frame
+	 *
+	 * @return const Vector3d& sensed force from sensor
+	 */
+	const Vector3d& getSensedForceSensor() const {
+		return _sensed_force_sensor_frame;
+	}
+
+	/**
+	 * @brief Get the Sensed Moment used for control as given directly by the
+	 * sensor, in sensor frame
+	 *
+	 * @return const Vector3d& sensed moment from sensor
+	 */
+	const Vector3d& getSensedMomentSensor() const {
+		return _sensed_moment_sensor_frame;
+	}
 
 	/**
 	 * @brief Get the nullspace of this task associated with the constrained,
@@ -144,6 +216,20 @@ public:
 	 */
 	MatrixXd getTaskAndPreviousNullspace() const override {
 		return _N * _N_prec;
+	}
+
+	Affine3d getCurrentPose() {
+		Affine3d current_pose;
+		current_pose.translation() = _current_position;
+		current_pose.linear() = _current_orientation;
+		return current_pose;
+	}
+
+	Affine3d getGoalPose() {
+		Affine3d goal_pose;
+		goal_pose.translation() = _goal_position;
+		goal_pose.linear() = _goal_orientation;
+		return goal_pose;
 	}
 
 	void setGoalPosition(const Vector3d& goal_position) {
@@ -184,6 +270,23 @@ public:
 		return _goal_angular_acceleration;
 	}
 
+	const Vector3d& getDesiredPosition() const { return _desired_position; }
+	const Matrix3d& getDesiredOrientation() const {
+		return _desired_orientation;
+	}
+	const Vector3d& getDesiredLinearVelocity() const {
+		return _desired_linear_velocity;
+	}
+	const Vector3d& getDesiredAngularVelocity() const {
+		return _desired_angular_velocity;
+	}
+	const Vector3d& getDesiredLinearAcceleration() const {
+		return _desired_linear_acceleration;
+	}
+	const Vector3d& getDesiredAngularAcceleration() const {
+		return _desired_angular_acceleration;
+	}
+
 	const VectorXd& getUnitMassForce() const { return _unit_mass_force; }
 
 	Vector3d getPositionError() const;
@@ -196,8 +299,6 @@ public:
 		setPosControlGains(gains.kp, gains.kv, gains.ki);
 	}
 	void setPosControlGains(double kp_pos, double kv_pos, double ki_pos = 0);
-	void setPosControlGains(const Vector3d& kp_pos, const Vector3d& kv_pos,
-							const Vector3d& ki_pos = Vector3d::Zero());
 	void setPosControlGains(const VectorXd& kp_pos, const VectorXd& kv_pos,
 							const VectorXd& ki_pos);
 	void setPosControlGains(const VectorXd& kp_pos, const VectorXd& kv_pos) {
@@ -205,18 +306,24 @@ public:
 	}
 	vector<PIDGains> getPosControlGains() const;
 
+	void setPosControlGainsUnsafe(const VectorXd& kp_pos,
+								  const VectorXd& kv_pos,
+								  const VectorXd& ki_pos);
+
 	void setOriControlGains(const PIDGains& gains) {
 		setOriControlGains(gains.kp, gains.kv, gains.ki);
 	}
 	void setOriControlGains(double kp_ori, double kv_ori, double ki_ori = 0);
-	void setOriControlGains(const Vector3d& kp_ori, const Vector3d& kv_ori,
-							const Vector3d& ki_ori = Vector3d::Zero());
 	void setOriControlGains(const VectorXd& kp_ori, const VectorXd& kv_ori,
 							const VectorXd& ki_ori);
 	void setOriControlGains(const VectorXd& kp_ori, const VectorXd& kv_ori) {
 		setOriControlGains(kp_ori, kv_ori, VectorXd::Zero(kp_ori.size()));
 	}
 	vector<PIDGains> getOriControlGains() const;
+
+	void setOriControlGainsUnsafe(const VectorXd& kp_ori,
+								  const VectorXd& kv_ori,
+								  const VectorXd& ki_ori);
 
 	void setForceControlGains(const PIDGains& gains) {
 		setForceControlGains(gains.kp, gains.kv, gains.ki);
@@ -246,14 +353,39 @@ public:
 			1, PIDGains(_kp_moment(0, 0), _kv_moment(0, 0), _ki_moment(0, 0)));
 	}
 
+	void setFeedforwardForceGain(const double kff_force) {
+		_kff_force = kff_force;
+	}
+	double getFeedforwardForceGain() const { return _kff_force; }
+
+	void setFeedforwardmomentGain(const double kff_moment) {
+		_kff_moment = kff_moment;
+	}
+	double getFeedforwardmomentGain() const { return _kff_moment; }
+
+	void setMaxForceControlFeedbackOutput(
+		const double max_force_control_feedback_output) {
+		_max_force_control_feedback_output = max_force_control_feedback_output;
+	}
+	double getMaxForceControlFeedbackOutput() const {
+		return _max_force_control_feedback_output;
+	}
+
+	void setMaxMomentControlFeedbackOutput(
+		const double max_moment_control_feedback_output) {
+		_max_moment_control_feedback_output =
+			max_moment_control_feedback_output;
+	}
+	double getMaxMomentControlFeedbackOutput() const {
+		return _max_moment_control_feedback_output;
+	}
+
 	/**
 	 * @brief Set the Goal Force in robot world frame
 	 *
 	 * @param goal_force
 	 */
-	void setGoalForce(const Vector3d& goal_force) {
-		_goal_force = goal_force;
-	}
+	void setGoalForce(const Vector3d& goal_force) { _goal_force = goal_force; }
 
 	/**
 	 * @brief Get the goal Force in robot world frame
@@ -318,7 +450,12 @@ public:
 
 	bool getInternalOtgEnabled() const { return _use_internal_otg_flag; }
 
+	void enableTrackingMode() { _tracking_mode = true; }
+	void disableTrackingMode() { _tracking_mode = false; }
+
 	const OTG_6dof_cartesian& getInternalOtg() const { return *_otg; }
+
+	void setTrackingMode(const bool tracking_mode) { _tracking_mode = tracking_mode; };
 
 	// Velocity saturation flag and saturation values
 	void enableVelocitySaturation(const double linear_vel_sat = 0.3,
@@ -374,8 +511,8 @@ public:
 	VectorXd computeTorques() override;
 
 	/**
-	 * @brief      reinitializes the desired and goal states to the current robot
-	 *             configuration as well as the integrator terms
+	 * @brief      reinitializes the desired and goal states to the current
+	 * robot configuration as well as the integrator terms
 	 */
 	void reInitializeTask() override;
 
@@ -391,6 +528,10 @@ public:
 	bool goalPositionReached(const double tolerance,
 							 const bool verbose = false);
 
+	bool goalPositionReached(const MatrixXd& basis,
+							 const double tolerance,
+							 const bool verbose = false);
+
 	/**
 	 * @brief      Checks if the goal orientation has reched the goal up to a
 	 * tolerance
@@ -404,16 +545,14 @@ public:
 	bool goalOrientationReached(const double tolerance,
 								const bool verbose = false);
 
-	/**
-	 * @brief Set the Dynamic Decoupling Type. See the definition of the
-	 * DynamicDecouplingType enum for more details
-	 *
-	 *
-	 * @param type
-	 */
-	void setDynamicDecouplingType(const DynamicDecouplingType type) {
-		_singularity_handler->setDynamicDecouplingType(type);
-	}
+	bool goalOrientationReached(const MatrixXd& basis,
+							    const double tolerance,
+								const bool verbose = false);
+
+	bool goalPoseReached(const MatrixXd& basis,
+						 const double pos_tolerance,
+						 const double ori_tolerance,
+						 const bool verbose = false);
 
 	// -------- force control related methods --------
 
@@ -559,34 +698,344 @@ public:
 		return _partial_task_projection.block<3, 3>(3, 3);
 	}
 
+	// -------- singularity handling methods --------
+
 	/**
-	 * @brief Changes the bounds for the singularity blending. 			   
-	 * 
-	 * @param s_min		Upper bound to start blending  
-	 * @param s_max 	Lower bound to remove all singular task torque 
+	 * @brief 	Set the Dynamic Decoupling Type. See the definition of the
+	 * DynamicDecouplingType enum for more details
+	 *
+	 * @param type Dynamic decoupling type 
 	 */
+	void setDynamicDecouplingType(const DynamicDecouplingType type) {
+		_singularity_handler->setDynamicDecouplingType(type);
+	}
+
+	/**
+	 * @brief Set the threshold for the bounded inertia estimate
+	 * 
+	 * @param threshold threshold value 
+	 */
+	void setBoundedInertiaEstimateThreshold(const double threshold, const double singularity_threshold) {
+		_singularity_handler->setBoundedInertiaEstimateThreshold(threshold, singularity_threshold);
+	}
+
+	/**
+	 * @brief Get the threshold for the bounded inertia estimate
+	 * 
+	 * @return double threshold value 
+	 */
+	double getBoundedInertiaEstimateThreshold() {
+		return _singularity_handler->getBoundedInertiaEstimateThreshold();
+	}
+
+    /**
+     * @brief Enforces type 1 handling behavior if set to true, otherwise handle 
+     * type 1 or type 2 as usual
+     * 
+     * @param flag true to enforce type 1 handling behavior 
+     */
+	void handleAllSingularitiesAsTypeOne(const bool flag) {
+		_singularity_handler->handleAllSingularitiesAsTypeOne(flag);
+	}
+	
+	/**
+	 * @brief Set the desired posture for type 1 singularity handling  
+	 * 
+	 * @param q_des desired posture 
+	 */
+	void setTypeOnePosture(const VectorXd& q_des) {
+		_singularity_handler->setTypeOnePosture(q_des);
+	}
+
+	/**
+	 * @brief Enables singularity handling 
+	 * 
+	 */
+	void enableSingularityHandling() {
+		_handle_singularity = true;
+		_singularity_handler->enableSingularityHandling();
+	}
+
+	/**
+	 * @brief Disables singularity handling 
+	 * 
+	 */
+	void disableSingularityHandling() {
+		_handle_singularity = false;
+		_singularity_handler->disableSingularityHandling();
+	}
+
+    /**
+     * @brief Set the singularity bounds for torque blending based on the inverse of the condition number
+     * The linear blending coefficient \alpha is computed as \alpha = (s - _s_min) / (_s_max - _s_min),
+     * and is clamped between 0 and 1.
+     * 
+     * @param s_min lower bound
+     * @param s_max upper bound 
+     */
 	void setSingularityHandlingBounds(const double& s_min, const double& s_max) {
 		_singularity_handler->setSingularityHandlingBounds(s_min, s_max);
 	}
 
+	void setSingularityHandlingBound(const double s_max) {
+		_singularity_handler->setSingularityHandlingBound(s_max);
+	}
+
+    /**
+     * @brief Set the gains for the partial joint task for the singularity strategy
+     * 
+     * @param kp_type_1 position gain for type 1 strategy
+     * @param kv_type_1 velocity damping gain for type 1 strategy
+     * @param kv_type_2 velocity damping gain for type 2 strategy
+     */
+	void setSingularityHandlingGains(const double& kp_type_1, const double& kv_type_1, const double& kp_type_2, const double& kv_type_2) {
+		_singularity_handler->setSingularityHandlingGains(kp_type_1, kv_type_1, kp_type_2, kv_type_2);
+	}
+
+	void setSingularityHandlingTypeTwoDirection(const VectorXd& type_2_direction) {
+		_singularity_handler->setTypeTwoDirection(type_2_direction);
+	}
+
+	bool isExistingSingularity() {
+		return _singularity_handler->isExitingSingularity();
+	}
+
+	void setType1Posture(const VectorXd& q_des) {
+		_singularity_handler->setTypeOnePosture(q_des);
+	}
+
+	/**
+	 * @brief Set the Floating object
+	 * 
+	 * @param is_floating 
+	 */
+	void setFloating(const bool& is_floating) {
+		_is_floating = is_floating;
+	}
+
+	/**
+	 * @brief Get the Floating object
+	 * 
+	 * @return true 
+	 * @return false 
+	 */
+	bool getFloating() {
+		return _is_floating;
+	}
+		
 	// -------- getters for model parameters --------
+
+	VectorXi getSingularityClassification() {
+		return _singularity_handler->getClassification();
+	}
+
+	VectorXd getUnmodifiedSingularTaskTorques() {
+		return _singularity_handler->getUnmodifiedSingularTaskTorques();
+	}
+
+	VectorXd getConditionRatio() {
+		return _singularity_handler->getConditionRatio();
+	}
+
+	VectorXd getImpedanceForces() {
+		return _impedance_force;
+	}
+
+	int getNumSingularities() {
+		return _singularity_handler->getNumSingularities();
+	}
 
 	VectorXd getUnitControlForces() {
 		return _unit_mass_force;
 	}
 
-	MatrixXd getProjectedJacobian() {
-		return _singularity_handler->getProjectedJacobian();
+	MatrixXd getNonSingularJacobian() {
+		return _singularity_handler->getNonSingularJacobian();
 	}
 
-	MatrixXd getLambdaMatrix() {
-		return _singularity_handler->getLambda();
+	MatrixXd getNonSingularLambda() {
+		return _singularity_handler->getNonSingularLambda();
+	}
+
+	VectorXd getNonSingularTaskTorques() {
+		return _singularity_handler->getNonSingularTaskTorques();
 	}
 
 	MatrixXd getNonSingularTaskRange() {
-		return _singularity_handler->getTaskRange();
+		return _singularity_handler->getNonSingularTaskRange();
 	}
 
+	MatrixXd getJointSingularityHandlingTorques() {
+		return _singularity_handler->getJointSingularityHandlingTorques();
+	}
+
+	MatrixXd getSingularJacobian() {
+		return _singularity_handler->getSingularJacobian();
+	}
+
+	MatrixXd getSingularLambda() {
+		return _singularity_handler->getSingularLambda();
+	}
+
+	VectorXd getSingularTaskTorques() {
+		return _singularity_handler->getSingularTaskTorques();
+	}
+
+	MatrixXd getSingularTaskRange() {
+		return _singularity_handler->getSingularTaskRange();
+	}
+
+	MatrixXd getSingularJointTaskRange() {
+		return _singularity_handler->getSingularJointTaskRange();
+	}
+
+	VectorXd getSingularJointTaskTorques() {
+		return _singularity_handler->getJointSingularityHandlingTorques();
+	}
+
+	VectorXd getSingularValues() {
+		return _singularity_handler->getSingularValues();
+	}
+
+	VectorXd getSingularEigenValues() {
+		return _singularity_handler->getSingularEigenValues();
+	}
+
+	VectorXd getBlendingVector() {
+		return _singularity_handler->getBlendingVector();
+	}
+
+	MatrixXd getBlendingMatrix() {
+		return _singularity_handler->getBlendingMatrix();
+	}
+
+	std::vector<Singularity> getSingularities() {
+		return _singularity_handler->getActiveSingularities();
+	}
+
+    bool isFullySingularTask() {
+        return _singularity_handler->isFullySingularTask();
+    }
+
+	void setPosSingularityExit(const double tol) {
+		_singularity_pos_exit_tol = tol;
+	}
+
+	void setOriSingularityExitTol(const double tol) {
+		_singularity_ori_exit_tol = tol;
+	}
+
+	void setSingularityExitInterpolatorNorm(const double pos_exit_tol, const double ori_exit_tol) {
+		_singularity_pos_exit_tol = pos_exit_tol;
+		_singularity_ori_exit_tol = ori_exit_tol;
+	}
+
+	void setSingularityVelExitInterpolatorNorm(const double linear_vel_exit_tol, const double angular_vel_exit_tol) {
+		_singularity_linear_vel_exit_tol = linear_vel_exit_tol;
+		_singularity_angular_vel_exit_tol = angular_vel_exit_tol;
+	}
+
+	void setCompliantFrame(const Vector3d& pos_in_link, const Matrix3d& rot_in_link = Matrix3d::Identity()) {
+		_compliant_frame.translation() = pos_in_link;
+		_compliant_frame.linear() = rot_in_link;
+	}
+
+	// -------- override step computation ----------
+	void enableManualStepPositionError() {
+		_use_user_step_position_flag = true;
+	}
+	void disableManualStepPositionError() {
+		_use_user_step_position_flag = false;
+	}
+	void setStepPositionError(const Vector3d& user_step_position_error) {
+		_user_step_position_error = user_step_position_error;
+	}
+
+	void enableManualStepOrientationError() {
+		_use_user_step_orientation_flag = true;
+	}
+	void disableManualStepOrientationError() {
+		_use_user_step_orientation_flag = false;
+	}
+	void setStepOrientationError(const Vector3d& user_step_orientation_error) {
+		_user_step_orientation_error = user_step_orientation_error;
+	}
+
+	/*
+		Force coupling
+	*/
+    void enableForceDecoupling() {
+		_singularity_handler->enableForceDecoupling();
+	}
+
+	void disableForceDecoupling() {
+		_singularity_handler->disableForceDecoupling();
+	}
+
+	/*
+		Zero crossing 
+	*/
+    void enableZeroForceCrossing() { _zero_force_crossing_flag = true; }
+    void enableZeroMomentCrossing() { _zero_moment_crossing_flag = true; }
+    void disableZeroForceCrossing() { _zero_force_crossing_flag = false; }
+    void disableZeroMomentCrossing() { _zero_moment_crossing_flag = false; }
+
+	void enableZeroPositionCrossing() { _zero_position_crossing_flag = true; }
+    void enableZeroOrientationCrossing() { _zero_orientation_crossing_flag = true; }
+    void disableZeroPositionCrossing() { _zero_position_crossing_flag = false; }
+    void disableZeroOrientationCrossing() { _zero_orientation_crossing_flag = false; }
+
+	/*
+		Experimental
+	*/	
+    double getType2Alignment() {
+		return _singularity_handler->getType2Alignment();
+	}
+
+	void setType1Tol(const double tol) {
+		_singularity_handler->setType1Tol(tol);
+	}
+
+	void setType1Velocity(const double vel_toward, const double vel_away) {
+		_singularity_handler->setType1Velocity(vel_toward, vel_away);
+    }
+
+    void setType2Velocity(const double velocity) {
+		_singularity_handler->setType2Velocity(velocity);
+    }
+
+	void setMinBlending(const double value) {
+		_singularity_handler->setMinBlending(value);
+	}
+
+	VectorXd getType2DesiredVelocity() {
+		return _singularity_handler->getType2DesiredVelocity();
+	}
+
+	void disableJointStrategy() {
+		_singularity_handler->disableJointStrategy();
+	}
+
+	double getSingularGradientNorm() {
+		return _singularity_handler->getSingularGradientNorm();
+	}
+
+	void setMaxJointVelocityScaleFactor(const VectorXd& vel_sf) {
+		_singularity_handler->setMaxJointVelocityScaleFactor(vel_sf);
+	}
+
+	void setMinMagnitudeThreshold(const double threshold) {
+		_singularity_handler->setMinMagnitudeThreshold(threshold);
+	}
+
+	void setType1SchedulingWeight(const double val) {
+		_singularity_handler->setType2SchedulingWeight(val);
+	}
+	
+	void setType2SchedulingWeight(const double val) {
+		_singularity_handler->setType2SchedulingWeight(val);
+	}
+	
 private:
 	/**
 	 * @brief Initial setup of the task, called in the constructor to avoid
@@ -595,10 +1044,10 @@ private:
 	 */
 	void initialSetup();
 
-	// the goal pose is the pose the controller tries to reach. If OTG is on,
-	// the actual desired pose at each timestep will be interpolated between the
-	// initial pose and the goal pose, while the goal pose might not change.
-	// It defaults to the configuration when the task is created
+	// the goal state is the state the controller tries to reach. If OTG is on,
+	// the actual desired state at each timestep will be interpolated between
+	// the initial state and the goal state, while the goal state might not
+	// change. It defaults to the configuration when the task is created
 	// expressed in world frame
 	Vector3d _goal_position;
 	Matrix3d _goal_orientation;
@@ -606,6 +1055,16 @@ private:
 	Vector3d _goal_angular_velocity;
 	Vector3d _goal_linear_acceleration;
 	Vector3d _goal_angular_acceleration;
+
+	// the desired state is the state used in the control law. It is the output
+	// of the OTG if enabled, and the same as the goal state otherwise
+	// expressed in world frame
+	Vector3d _desired_position;
+	Matrix3d _desired_orientation;
+	Vector3d _desired_linear_velocity;
+	Vector3d _desired_angular_velocity;
+	Vector3d _desired_linear_acceleration;
+	Vector3d _desired_angular_acceleration;
 
 	// gains for motion controller
 	// defaults to isptropic 50 for p gains, 14 for d gains and 0 for i gains
@@ -626,13 +1085,19 @@ private:
 
 	// goal force and moment for the force part of the controller
 	// defaults to Zero
-	Vector3d _goal_force;   // robot world frame
-	Vector3d _goal_moment;  // robot world frame
+	Vector3d _goal_force;
+	Vector3d _goal_moment;
 
 	// velocity saturation is off by default
 	bool _use_velocity_saturation_flag;
 	double _linear_saturation_velocity;
 	double _angular_saturation_velocity;
+
+	double _user_linear_saturation_velocity;
+	double _user_angular_saturation_velocity;
+
+	double _singularity_linear_acceleration;
+	double _singularity_angular_acceleration;
 
 	// internal otg using ruckig, on by default with acceleration limited
 	// trajectory
@@ -659,10 +1124,14 @@ private:
 	Vector3d _integrated_position_error;	 // robot world frame
 
 	// force quantities
+	std::shared_ptr<ForceSensor> _force_sensor;
 	Affine3d _T_control_to_sensor;
 
-	Vector3d _sensed_force;	  // robot world frame
-	Vector3d _sensed_moment;  // robot world frame
+	Vector3d _sensed_force_control_world_frame;
+	Vector3d _sensed_moment_control_world_frame;
+
+	Vector3d _sensed_force_sensor_frame;
+	Vector3d _sensed_moment_sensor_frame;
 
 	Vector3d _integrated_force_error;	// robot world frame
 	Vector3d _integrated_moment_error;	// robot world frame
@@ -672,7 +1141,10 @@ private:
 
 	bool _closed_loop_force_control;
 	bool _closed_loop_moment_control;
-	double _k_ff;
+	double _kff_force;
+	double _kff_moment;
+	double _max_force_control_feedback_output;
+	double _max_moment_control_feedback_output;
 
 	// POPC for closed loop force control
 	std::unique_ptr<POPCExplicitForceControl> _POPC_force;
@@ -701,12 +1173,49 @@ private:
 	Matrix<double, 6, 6> _partial_task_projection;
 
 	VectorXd _unit_mass_force;
+	VectorXd _impedance_force;
 
 	// singularity handler
 	std::unique_ptr<SingularityHandler> _singularity_handler;
+
+	// // pino model
+	// std::shared_ptr<pinocchio::Model> _pino_model;
+	// std::shared_ptr<pinocchio::Data> _pino_data;
+
+	// manual stepping
+	bool _use_user_step_position_flag;
+	bool _use_user_step_orientation_flag;
+	Vector3d _user_step_position_error;
+	Vector3d _user_step_orientation_error;
+	bool _is_floating;
+
+	bool _tracking_mode;
+
+	// exit singularity transition 
+	std::vector<int> _joint_dependency;
+	double _singularity_pos_exit_tol, _singularity_ori_exit_tol;
+	double _singularity_linear_vel_exit_tol, _singularity_angular_vel_exit_tol;
+	bool _default_use_internal_otg;
+	bool _handle_singularity_exit;
+	bool _is_in_singularity;
+	bool _prev_is_in_singularity;
+
+	bool _prev_velocity_saturation;
+	bool _handle_singularity;
+
+	// zero crossing 
+	bool _zero_force_crossing_flag;
+	bool _zero_moment_crossing_flag;
+	bool _zero_position_crossing_flag;
+	bool _zero_orientation_crossing_flag;
+	Vector3d _prev_force_error;
+	Vector3d _prev_moment_error;
+	Vector3d _prev_position_error;
+	Vector3d _prev_orientation_error;
+
 };
 
 } /* namespace Sai2Primitives */
 
-/* SAI2_PRIMITIVES_COMMOTIONTASK_TASK_H_ */
+/* SAI2_PRIMITIVES_MOTIONFORCETASK_TASK_H_ */
 #endif

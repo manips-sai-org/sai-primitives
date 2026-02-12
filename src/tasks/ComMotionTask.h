@@ -28,7 +28,6 @@
 
 #include "Sai2Model.h"
 #include "TemplateTask.h"
-#include "SingularityHandler.h"
 
 using namespace Eigen;
 using namespace std;
@@ -36,6 +35,15 @@ using namespace std;
 namespace Sai2Primitives {
 
 class ComMotionTask : public TemplateTask {
+
+struct DefaultParameters {
+	static constexpr DynamicDecouplingType dynamic_decoupling_type =
+		DynamicDecouplingType::BOUNDED_INERTIA_ESTIMATES;
+	static constexpr double bie_threshold = 0.15;
+	static constexpr double s_abs_tol = 1e-4;
+};
+
+
 public:
 	//------------------------------------------------
 	// Constructor
@@ -404,17 +412,6 @@ public:
 	bool goalOrientationReached(const double tolerance,
 								const bool verbose = false);
 
-	// /**
-	//  * @brief Set the Dynamic Decoupling Type. See the definition of the
-	//  * DynamicDecouplingType enum for more details
-	//  *
-	//  *
-	//  * @param type
-	//  */
-	// void setDynamicDecouplingType(const DynamicDecouplingType type) {
-	// 	_singularity_handler->setDynamicDecouplingType(type);
-	// }
-
 	// -------- force control related methods --------
 
 	/**
@@ -559,112 +556,22 @@ public:
 		return _partial_task_projection.block<3, 3>(3, 3);
 	}
 
-	/**
-	 * @brief 	Set the Dynamic Decoupling Type. See the definition of the
-	 * DynamicDecouplingType enum for more details
-	 *
-	 * @param type Dynamic decoupling type 
-	 */
-	void setDynamicDecouplingType(const DynamicDecouplingType type) {
-		_singularity_handler->setDynamicDecouplingType(type);
-	}
-
-	/**
-	 * @brief Set the threshold for the bounded inertia estimate
-	 * 
-	 * @param threshold threshold value 
-	 */
-	void setBoundedInertiaEstimateThreshold(const double threshold, const double singularity_threshold) {
-		_singularity_handler->setBoundedInertiaEstimateThreshold(threshold, singularity_threshold);
-	}
-
-	/**
-	 * @brief Get the threshold for the bounded inertia estimate
-	 * 
-	 * @return double threshold value 
-	 */
-	double getBoundedInertiaEstimateThreshold() {
-		return _singularity_handler->getBoundedInertiaEstimateThreshold();
-	}
-
-    /**
-     * @brief Enforces type 1 handling behavior if set to true, otherwise handle 
-     * type 1 or type 2 as usual
-     * 
-     * @param flag true to enforce type 1 handling behavior 
-     */
-	void handleAllSingularitiesAsTypeOne(const bool flag) {
-		_singularity_handler->handleAllSingularitiesAsTypeOne(flag);
-	}
-	
-	/**
-	 * @brief Set the desired posture for type 1 singularity handling  
-	 * 
-	 * @param q_des desired posture 
-	 */
-	void setTypeOnePosture(const VectorXd& q_des) {
-		_singularity_handler->setTypeOnePosture(q_des);
-	}
-
-	/**
-	 * @brief Enables singularity handling 
-	 * 
-	 */
-	void enableSingularityHandling() {
-		_singularity_handler->enableSingularityHandling();
-	}
-
-	/**
-	 * @brief Disables singularity handling 
-	 * 
-	 */
-	void disableSingularityHandling() {
-		_singularity_handler->disableSingularityHandling();
-	}
-
-    /**
-     * @brief Set the singularity bounds for torque blending based on the inverse of the condition number
-     * The linear blending coefficient \alpha is computed as \alpha = (s - _s_min) / (_s_max - _s_min),
-     * and is clamped between 0 and 1.
-     * 
-     * @param s_min lower bound
-     * @param s_max upper bound 
-     */
-	void setSingularityHandlingBounds(const double& s_min, const double& s_max) {
-		_singularity_handler->setSingularityHandlingBounds(s_min, s_max);
-	}
-
-    /**
-     * @brief Set the gains for the partial joint task for the singularity strategy
-     * 
-     * @param kp_type_1 position gain for type 1 strategy
-     * @param kv_type_1 velocity damping gain for type 1 strategy
-     * @param kv_type_2 velocity damping gain for type 2 strategy
-     */
-	void setSingularityHandlingGains(const double& kp_type_1, const double& kv_type_1, const double& kp_type_2, const double& kv_type_2) {
-		_singularity_handler->setSingularityHandlingGains(kp_type_1, kv_type_1, kp_type_2, kv_type_2);
-	}
-
-	void setSingularityHandlingTypeTwoDirection(const VectorXd& type_2_direction) {
-		_singularity_handler->setTypeTwoDirection(type_2_direction);
-	}
-
 	// -------- getters for model parameters --------
 
 	VectorXd getUnitControlForces() {
 		return _unit_mass_force;
 	}
 
-	MatrixXd getNonSingularJacobian() {
-		return _singularity_handler->getNonSingularJacobian();
+	void setDynamicDecouplingType(const DynamicDecouplingType type) {
+		_dynamic_decoupling_type = type;
 	}
 
-	MatrixXd getNonSingularLambda() {
-		return _singularity_handler->getNonSingularLambda();
+	void setBieThreshold(const double val) {
+		_bie_threshold = val;
 	}
 
-	MatrixXd getNonSingularTaskRange() {
-		return _singularity_handler->getNonSingularTaskRange();
+	void setSingularityThreshold(const double val) {
+		_s_abs_tol = val;
 	}
 
 private:
@@ -782,8 +689,9 @@ private:
 
 	VectorXd _unit_mass_force;
 
-	// singularity handler
-	std::unique_ptr<SingularityHandler> _singularity_handler;
+	double _s_abs_tol;
+	double _bie_threshold;
+
 };
 
 } /* namespace Sai2Primitives */

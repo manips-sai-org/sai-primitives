@@ -52,8 +52,8 @@ void simulation(shared_ptr<Sai2Model::Sai2Model> robot,
 /*
 	Control
 */
-// bool flag_simulation = true;
-bool flag_simulation = false;
+bool flag_simulation = true;
+// bool flag_simulation = false;
 Sai2Common::RedisClient* redis_client;
 std::string JOINT_ANGLES_KEY = "sai2::FrankaPanda::Romeo::sensors::q";
 std::string JOINT_VELOCITIES_KEY = "sai2::FrankaPanda::Romeo::sensors::dq";
@@ -184,8 +184,8 @@ void control(shared_ptr<Sai2Model::Sai2Model> robot,
 
 	// motion_force_task->setBoundedInertiaEstimateThreshold(0, 0);
 
-	motion_force_task->setMinBlending(0.2);
-	motion_force_task->setType1Tol(8e-2);
+	// motion_force_task->setMinBlending(0.2);
+	motion_force_task->setType1Tol(5e-2);
 	// motion_force_task->setType1Tol(9e-3);
 	// motion_force_task->setType2Velocity(1.5 * M_PI / 3);  // mulitple of 60s
 	// motion_force_task->setType2Velocity(1.0 * M_PI);  // mulitple of 60s
@@ -193,13 +193,14 @@ void control(shared_ptr<Sai2Model::Sai2Model> robot,
 	motion_force_task->setType2Velocity(M_PI * 1); 
 	// motion_force_task->setType2Velocity(M_PI * 0.8); 
 	// motion_force_task->setType2Velocity(M_PI * 2); 
-	motion_force_task->setSingularityHandlingGains(100, 15, 100, 15);
+	// motion_force_task->setSingularityHandlingGains(100, 15, 100, 15);
+	motion_force_task->setSingularityHandlingGains(15, 15);
 	VectorXd vel_sf = VectorXd::Ones(7);
 	// vel_sf << 0.6, 0.6, 0.6, 0.6, 0.3, 0.3, 0.3;
 	// vel_sf << 0.6, 0.6, 0.6, 0.6, 0.3, 0.3, 0.3;
-	motion_force_task->setMaxJointVelocityScaleFactor(vel_sf);
-	motion_force_task->setMinMagnitudeThreshold(0.1);
-	motion_force_task->setType2SchedulingWeight(2);
+	// motion_force_task->setMaxJointVelocityScaleFactor(vel_sf);
+	// motion_force_task->setMinMagnitudeThreshold(0.1);
+	motion_force_task->setType2RampFactor(2);
 	motion_force_task->setBoundedInertiaEstimateThreshold(0.15, 0.15);
 
 	VectorXd motion_force_task_torques = VectorXd::Zero(dof);
@@ -231,7 +232,7 @@ void control(shared_ptr<Sai2Model::Sai2Model> robot,
     // q_des << 0,-0.133565,0.0153017,-2.16814,0,3.29317,0.797755;  // starting
 	q_des << -0.0279419,0.0511296,-0.00555499,-2.11259,0.0394067,3.34154,0.824835;
     joint_task->setGoalPosition(q_des);
-	motion_force_task->setTypeOnePosture(q_des);
+	// motion_force_task->setTypeOnePosture(q_des);
 	// partial_joint_task->setGoalPosition(q_des);
 
     // desired orientation offset 
@@ -456,7 +457,7 @@ void control(shared_ptr<Sai2Model::Sai2Model> robot,
 				joint_task->disableInternalOtg();
 				joint_task->setGains(100, 20, 0);
 				joint_task->setGoalPosition(robot->q());
-				motion_force_task->setType1Posture(robot->q());
+				// motion_force_task->setType1Posture(robot->q());
 			}
 
 			prev_is_type_2_active = is_type_2_active;
@@ -543,9 +544,9 @@ void control(shared_ptr<Sai2Model::Sai2Model> robot,
 				// classification.head(motion_force_task->getSingularityClassification().size()) = motion_force_task->getSingularityClassification();
 				// condition_ratio = motion_force_task->getConditionRatio();
 				force_dotted_singular_direction(0) = motion_force_task->getType2Alignment();
-				dq_des = motion_force_task->getType2DesiredVelocity();
+				// dq_des = motion_force_task->getType2DesiredVelocity();
 				unit_mass_force = motion_force_task->getUnitMassForce().normalized();
-				dsdq_norm(0) = motion_force_task->getSingularGradientNorm();
+				// dsdq_norm(0) = motion_force_task->getSingularGradientNorm();
 
 				// debug
 				if (std::abs(force_dotted_singular_direction(0)) > 1) {

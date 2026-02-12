@@ -168,17 +168,9 @@ void ComMotionTask::initialSetup() {
 		joint_dependency.push_back(i);
 	}
 
-	// singularity handler
-	_singularity_handler = std::make_unique<SingularityHandler>(getConstRobotModel(),
-		      													_link_name,
-																_compliant_frame,
-																_pos_range + _ori_range,
-															    joint_dependency,
-															    getLoopTimestep());
-	setSingularityHandlingBounds(6e-3, 6e-2);  
-	setDynamicDecouplingType(BOUNDED_INERTIA_ESTIMATES);
-
-	_singularity_handler->disableSingularityHandling();
+	setDynamicDecouplingType(DefaultParameters::dynamic_decoupling_type);
+	setBieThreshold(DefaultParameters::bie_threshold);
+	setSingularityThreshold(DefaultParameters::s_abs_tol);
 
 	reInitializeTask();	
 }
@@ -239,9 +231,8 @@ void ComMotionTask::updateTaskModel(const MatrixXd& N_prec) {
 
 	_jacobian = _partial_task_projection * J;
 	_projected_jacobian = _jacobian * _N_prec;
-
-	_singularity_handler->updateTaskModel(_projected_jacobian, _N_prec);
-	_N = _singularity_handler->getNullspace();  // N_posture * N_ns or N_ns 
+	_current_task_range = Sai2Model::matrixRangeBasis(_projected_jacobian, _s_abs_tol);
+	_N = getConstRobotModel()->nullspaceMatrix(_current_task_range.transpose() * _projected_jacobian);
 
 }
 
@@ -458,8 +449,43 @@ VectorXd ComMotionTask::computeTorques() {
 		force_feedback_related_force + feedforward_force_moment.head(3);
 	_linear_motion_control = position_related_force;
 
+	// dynamic decoupling 
+	switch (_dynamic_decoupling_type) {
+        case FULL_DYNAMIC_DECOUPLING: {
+            _Lambda_modified = getConstRobotModel()->taskInertiaMatrix(_current_task_range.transpose() * _projected_jacobian);
+            break;
+        }
+
+        case IMPEDANCE: {
+            _Lambda_modified = MatrixXd::Identity(_projected_jacobian.rows(), _projected_jacobian.rows());
+			_current_task_range = MatrixXd::Identity(_projected_jacobian.rows(), _projected_jacobian.rows());
+            break;
+        }
+
+        case BOUNDED_INERTIA_ESTIMATES: {
+            MatrixXd M_BIE = getConstRobotModel()->M();
+            for (int i = 0; i < getConstRobotModel()->dof(); i++) {
+                if (M_BIE(i, i) < _bie_threshold) {
+                    M_BIE(i, i) = _bie_threshold;
+                }
+            }
+            MatrixXd M_inv_BIE = M_BIE.llt().solve(MatrixXd::Identity(getConstRobotModel()->dof(), getConstRobotModel()->dof()));
+			MatrixXd Lambda_inv = _current_task_range.transpose() * _projected_jacobian * 
+									M_inv_BIE * (_current_task_range.transpose() * _projected_jacobian).transpose();
+			_Lambda_modified = Lambda_inv.llt().solve(MatrixXd::Identity(Lambda_inv.rows(), Lambda_inv.rows()));
+            break;
+        }
+
+        default: {
+			_Lambda_modified = getConstRobotModel()->taskInertiaMatrix(_current_task_range.transpose() * _projected_jacobian);
+            break;
+        }
+	}
+
 	// compute torque through singularity handler 
-	task_joint_torques = _singularity_handler->computeTorques(_unit_mass_force, (force_moment_contribution + feedforward_force_moment));
+	task_joint_torques = (_current_task_range.transpose() * _projected_jacobian).transpose() * 
+							(_Lambda_modified * _current_task_range.transpose() * _unit_mass_force + 
+							 _current_task_range.transpose() * (force_moment_contribution + feedforward_force_moment));
 
 	return task_joint_torques;
 }

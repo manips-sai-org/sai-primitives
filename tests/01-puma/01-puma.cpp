@@ -117,13 +117,15 @@ int main(int argc, char** argv) {
 	graphics->addUIForceInteraction(robot_name);
 	// graphics->showTransparency(true, robot_name, 0.5);
 	// graphics->showLinkFrame(true, robot_name, "end-effector-frame", 0.15);
-	graphics->showObjectLinkFrame(true, "goal_frame", 0.15);
+	// graphics->showObjectLinkFrame(true, "goal_frame", 0.15);
 	// graphics->showObjectLinkFrame(true, "control_force", 0.25);
 	graphics->setBackgroundColor(135./255, 206./255, 235./255);
 
 	// add cylinders for singularity direction
-	double radius = 0.005;
-	cylinder_length = 0.2;
+	// double radius = 0.005;
+	double radius = 0.01;
+	// double radius = 0.02;
+	cylinder_length = 0.3;
 	chai3d::cColorf linear_singularity_color(1, 0, 0);
 	chai3d::cColorf angular_singularity_color(0, 1, 0);
 	for (int i = 0; i < 4; ++i) {
@@ -154,6 +156,15 @@ int main(int argc, char** argv) {
         Simultaneous type 1 and 2
     */
     init_q << -10 * M_PI / 180 * 0, 0, M_PI / 2, M_PI / 2, 0, 0;
+
+	// elbow
+	// init_q << -10 * M_PI / 180 * 0, 0, M_PI / 2, 0, 0, 0;
+
+	// wrist-lock
+	// init_q << 0, 0, 0, M_PI / 2, 0, 0;
+
+	// overhead
+	// init_q << 0, -M_PI / 4, 0, M_PI / 2, -M_PI / 4, 0;
 
 	// /*
 	// 	Extended elbow condition 
@@ -240,10 +251,11 @@ void control(shared_ptr<Sai2Model::Sai2Model> robot,
 	motion_force_task->setSingularityHandlingBound(5e-2);
 	motion_force_task->setPosControlGains(100, 20, 0);
 	motion_force_task->setOriControlGains(100, 20, 0);
-	motion_force_task->setType1Posture(robot->q());
-	motion_force_task->setSingularityHandlingGains(100, 20, 100, 20);
-	// motion_force_task->setType1Tol(1e-3);
-	// motion_force_task->setBoundedInertiaEstimateThreshold(0, 0);
+	// motion_force_task->setType1Posture(robot->q());
+	// motion_force_task->setSingularityHandlingGains(100, 20, 100, 20);
+	motion_force_task->setSingularityHandlingGains(20, 20);
+	motion_force_task->setType1Tol(8e-2);
+	motion_force_task->setBoundedInertiaEstimateThreshold(0, 0);
 
 	// motion_force_task->setType1Velocity(M_PI, M_PI);
 	// motion_force_task->setType2Velocity(M_PI);
@@ -456,7 +468,7 @@ void control(shared_ptr<Sai2Model::Sai2Model> robot,
 			singular_direction = motion_force_task->getSingularTaskRange().col(0);
 			singular_joint_space = motion_force_task->getSingularJointTaskRange().col(0);
 			classification.head(motion_force_task->getSingularityClassification().size()) = motion_force_task->getSingularityClassification();
-			condition_ratio = motion_force_task->getConditionRatio();
+			// condition_ratio = motion_force_task->getConditionRatio();
 
 		}
 
@@ -469,45 +481,64 @@ void control(shared_ptr<Sai2Model::Sai2Model> robot,
 
 			auto active_singularities = motion_force_task->getSingularities();
 			int n_singularities = active_singularities.size();
+			std::cout << "num singularities: " << n_singularities << "\n";
+
+			// show cylinder for graphics 
+
+			// // wrist-lock
+			// ee_pos = robot->position("end-effector", Vector3d(0.01, 0, 0));
+			// auto R_angular = rotationFromZ(ee_ori.col(2).normalized());
+
+			// elbow-lock
+			ee_pos = robot->position("end-effector", Vector3d(0.01, 0, 0));
+			auto R_angular = rotationFromZ(ee_ori.col(0).normalized());
+
+			// overhead
+			// ee_pos = robot->position("end-effector", Vector3d(0, 0, 0));
+			// auto R_angular = rotationFromZ(ee_ori.col(1).normalized());
+
+			Vector3d center_position = ee_pos - cylinder_length / 2 * R_angular.col(2);
+			singularity_cylinders[0]->setLocalPos(chai3d::cVector3d(center_position));
+			singularity_cylinders[0]->setLocalRot(chai3d::cMatrix3d(R_angular));
 
 			// // show only type 1
 			// for (int i = 0; i < n_singularities; ++i) {
 			// 	if (active_singularities[i].type == Sai2Primitives::TYPE_1_SINGULARITY) {
 
-			// 		VectorXd u = active_singularities[i].u;
+			// 		// VectorXd u = active_singularities[i].u;
 
-			// 		auto R_linear = rotationFromZ(u.head(3).normalized());
+			// 		auto R_linear = rotationFromZ(active_singularities[i].u.head(3).normalized());
 			// 		Vector3d center_position = ee_pos - cylinder_length / 2 * R_linear.col(2);
 			// 		singularity_cylinders[0]->setLocalPos(chai3d::cVector3d(center_position));
 			// 		singularity_cylinders[0]->setLocalRot(chai3d::cMatrix3d(R_linear));
 					
-			// 		auto R_angular = rotationFromZ(u.tail(3).normalized());
+			// 		auto R_angular = rotationFromZ(active_singularities[i].u.tail(3).normalized());
 			// 		center_position = ee_pos - cylinder_length / 2 * R_angular.col(2);
-			// 		singularity_cylinders[1]->setLocalPos(chai3d::cVector3d(center_position * 100));
+			// 		singularity_cylinders[1]->setLocalPos(chai3d::cVector3d(center_position));
 			// 		singularity_cylinders[1]->setLocalRot(chai3d::cMatrix3d(R_angular));
 			// 	} else {
-			// 		singularity_cylinders[0]->setLocalPos(chai3d::cVector3d(100, 0, 0));
-			// 		singularity_cylinders[1]->setLocalPos(chai3d::cVector3d(100, 0, 0));
+			// 		// singularity_cylinders[0]->setLocalPos(chai3d::cVector3d(100, 0, 0));
+			// 		// singularity_cylinders[1]->setLocalPos(chai3d::cVector3d(100, 0, 0));
 			// 	}
 			// }
 
-			// first singularity
-			if (task_range_s.cols() > 0)
-			{
-				// auto R_linear = rotationFromZ(task_range_s.col(0).head(3).normalized());
-				auto R_linear = rotationFromZ(active_singularities[0].u.head(3).normalized());
-				Vector3d center_position = ee_pos - cylinder_length / 2 * R_linear.col(2);
-				singularity_cylinders[0]->setLocalPos(chai3d::cVector3d(center_position));
-				singularity_cylinders[0]->setLocalRot(chai3d::cMatrix3d(R_linear));
+			// // first singularity
+			// if (task_range_s.cols() > 0)
+			// {
+			// 	// auto R_linear = rotationFromZ(task_range_s.col(0).head(3).normalized());
+			// 	auto R_linear = rotationFromZ(active_singularities[0].u.head(3).normalized());
+			// 	Vector3d center_position = ee_pos - cylinder_length / 2 * R_linear.col(2);
+			// 	singularity_cylinders[0]->setLocalPos(chai3d::cVector3d(center_position));
+			// 	singularity_cylinders[0]->setLocalRot(chai3d::cMatrix3d(R_linear));
 				
-				auto R_angular = rotationFromZ(task_range_s.col(0).tail(3).normalized());
-				center_position = ee_pos - cylinder_length / 2 * R_angular.col(2);
-				singularity_cylinders[1]->setLocalPos(chai3d::cVector3d(center_position * 100));
-				singularity_cylinders[1]->setLocalRot(chai3d::cMatrix3d(R_angular));
-			} else {
-				singularity_cylinders[0]->setLocalPos(chai3d::cVector3d(100, 0, 0));
-				singularity_cylinders[1]->setLocalPos(chai3d::cVector3d(100, 0, 0));
-			}
+			// 	auto R_angular = rotationFromZ(task_range_s.col(0).tail(3).normalized());
+			// 	center_position = ee_pos - cylinder_length / 2 * R_angular.col(2);
+			// 	singularity_cylinders[1]->setLocalPos(chai3d::cVector3d(center_position * 100));
+			// 	singularity_cylinders[1]->setLocalRot(chai3d::cMatrix3d(R_angular));
+			// } else {
+			// 	singularity_cylinders[0]->setLocalPos(chai3d::cVector3d(100, 0, 0));
+			// 	singularity_cylinders[1]->setLocalPos(chai3d::cVector3d(100, 0, 0));
+			// }
 
 			// // second singularity 
 			// if (task_range_s.cols() > 1) 

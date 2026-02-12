@@ -57,8 +57,8 @@ void simulation(shared_ptr<Sai2Model::Sai2Model> robot,
 /*
 	Control
 */
-// bool flag_simulation = true;
-bool flag_simulation = false;
+bool flag_simulation = true;
+// bool flag_simulation = false;
 Sai2Common::RedisClient* redis_client;
 std::string JOINT_ANGLES_KEY = "sai2::FrankaPanda::Romeo::sensors::q";
 std::string JOINT_VELOCITIES_KEY = "sai2::FrankaPanda::Romeo::sensors::dq";
@@ -174,9 +174,10 @@ void control(shared_ptr<Sai2Model::Sai2Model> robot,
 	motion_force_task->setSingularityHandlingBound(5e-2);
 	// motion_force_task->setSingularityHandlingBound(6e-2);
 	// motion_force_task->setType1Tol(5e-2);
-	motion_force_task->setType1Tol(8e-2);
+	motion_force_task->setType1Tol(5e-2);
 	motion_force_task->setType1Velocity(M_PI, M_PI);
-	motion_force_task->setSingularityHandlingGains(100, 15, 100, 15);
+	motion_force_task->setSingularityHandlingGains(15, 15);
+	// motion_force_task->setSingularityHandlingGains(100, 15, 100, 15);
 	// motion_force_task->setSingularityHandlingBounds(7e-3, 7e-2);
 	// motion_force_task->setSingularityHandlingBounds(3e-2, 7e-2);
 	// motion_force_task->setSingularityHandlingBounds(3e-2, 7e-2);
@@ -185,7 +186,7 @@ void control(shared_ptr<Sai2Model::Sai2Model> robot,
 	motion_force_task->setPosControlGains(100, 20, 0);
 	motion_force_task->setOriControlGains(100, 20, 0);
 	motion_force_task->setBoundedInertiaEstimateThreshold(0.15, 0.15);
-	motion_force_task->setType1SchedulingWeight(2);
+	motion_force_task->setType1RampFactor(2);
 	VectorXd motion_force_task_torques = VectorXd::Zero(dof);
 
 	// motion_force_task->disableSingularityHandling();
@@ -210,7 +211,7 @@ void control(shared_ptr<Sai2Model::Sai2Model> robot,
 	// q_des << -0.109943,-1.44935,-0.0982967,-2.21411,-0.100156,0.785034,0.756978;
     joint_task->setGoalPosition(q_des);
 	// partial_joint_task->setGoalPosition(q_des);
-	motion_force_task->setTypeOnePosture(q_des);
+	// motion_force_task->setTypeOnePosture(q_des);
 
 	VectorXd q_transition(robot->dof());
 	double time_transition = 0;
@@ -456,7 +457,7 @@ void control(shared_ptr<Sai2Model::Sai2Model> robot,
 		    	singular_direction = motion_force_task->getSingularTaskRange().col(0);
 				singular_joint_space = motion_force_task->getSingularJointTaskRange().col(0);
 				classification.head(motion_force_task->getSingularityClassification().size()) = motion_force_task->getSingularityClassification();
-				condition_ratio = motion_force_task->getConditionRatio();
+				// condition_ratio = motion_force_task->getConditionRatio();
 
 				std::cout << "min evalue: " << evalues.minCoeff() << "\n";
 			}

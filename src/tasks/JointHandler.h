@@ -17,37 +17,32 @@
 using namespace Eigen;
 namespace Sai2Primitives {
 
+struct DefaultParameters {
+    static constexpr double pos_zone_1 = 12 * M_PI / 180;  // outer zone
+    static constexpr double pos_zone_2 = 8 * M_PI / 180;  // inner zone
+    static constexpr double t_delta_pos = 0.15;
+    static constexpr double t_delta_vel = 0.15;
+    static constexpr double kv_damping = 15;
+    static constexpr double eta = 0.05;
+};
+
 enum JointState {
     SAFE = 0,
-    MIN_SOFT_VEL,  // 1
-    MIN_HARD_VEL,  // 2
-    MAX_SOFT_VEL,  // 3
-    MAX_HARD_VEL,  // 4
-    MIN_SOFT_POS,  // 5
-    MIN_HARD_POS,  // 6
-    MAX_SOFT_POS,  // 7 
-    MAX_HARD_POS   // 8
+    MIN_VEL,
+    MAX_VEL,
+    MIN_SOFT_POS,  
+    MIN_HARD_POS,  
+    MAX_SOFT_POS,   
+    MAX_HARD_POS   
 };
 
 class JointHandler {
 public:
 
-    JointHandler(std::shared_ptr<Sai2Model::Sai2Model> robot,
-                 const bool& verbose = false,
-                 const bool& truncation_flag = false,
-                 const bool& is_floating = false,
-                 const double& pos_zone_1 = 8,
-                 const double& pos_zone_2 = 4,
-                //  const double& pos_zone_1 = -100,  // baseline
-                //  const double& pos_zone_2 = 4,  // baseline 
-                 const double& vel_zone_1 = 40,
-                 const double& vel_zone_2 = 30,
-                 const double& tau_thresh = 0.5,
-                 const double& tau_vel_thresh = 1,
-                 const double& t_delta = 0.01,
-                 const double& kv = 20,
-                 const double& gamma = 1e0,
-                 const std::vector<int>& joint_selection = {});
+    JointHandler(
+        std::shared_ptr<Sai2Model::Sai2Model> robot,
+        const std::vector<int>& joint_selection_to_skip = {},
+        const bool verbose = false);
 
     void enableJointLimits() {
         _enable_limit_flag = true; 
@@ -65,18 +60,14 @@ public:
         _enable_vel_limits = false;
     }
 
-    void setJointSelection(const std::vector<int>& joint_selection) {
-        _joint_selection = joint_selection;
+    void setJointSelection(const std::vector<int>& joint_selection_to_skip) {
+        _joint_selection_to_skip = joint_selection_to_skip;
     }
 
-    MatrixXd getBlendingMatrix() {
-        return _blending_matrix;
-    }
+    void updateTaskModel(const MatrixXd& N_prec);
+    VectorXd computeTorques(const VectorXd& torques);
 
-    VectorXd getNonTaskSafetyTorques() {
-        return _non_task_safety_torques;
-    }
-
+    // model parameters
     MatrixXd getTaskJacobian() {
         return _projected_jacobian;
     }
@@ -89,18 +80,7 @@ public:
         return _Nc;
     }
 
-    void updateTaskModel(const MatrixXd& N_prec);
-
-    VectorXd computeTorques(const VectorXd& torques,
-                            const bool constraint_only = false,
-                            const bool baseline = false,
-                            const bool no_exit = false,
-                            const bool joint_task = false);
-
-    /*
-        Threshold and parameter setting 
-    */
-
+    // settings
     void setMaxJointLimit(const VectorXd& q_max) {
         _q_max = q_max;
     }
@@ -129,7 +109,7 @@ public:
         _pos_zone_1_threshold = zone_1_threshold;
     }
 
-    void setPosZone1ThresholdIndex(const double& threshold, const int index) {
+    void setPosZone1ThresholdIndex(const double threshold, const int index) {
         _pos_zone_1_threshold(index) = threshold;
     }
 
@@ -138,100 +118,63 @@ public:
         _rho_0 = zone_2_threshold;
     }
 
-    void setPosZone2ThresholdIndex(const double& threshold, const int index) {
+    void setPosZone2ThresholdIndex(const double threshold, const int index) {
         _pos_zone_2_threshold(index) = threshold;
     }
 
-    void setVelZone1Threshold(const VectorXd& zone_1_threshold) {
-        _vel_zone_1_threshold = zone_1_threshold;
+    void setTorqueThreshold(const double tau) {
+        _unit_tau_thresh = tau;
     }
 
-    void setVelZone2Threshold(const VectorXd& zone_2_threshold) {
-        _vel_zone_2_threshold = zone_2_threshold;
-    }
-
-    void setDampingCoeff(const double& kv) {
-        _kv_pos_limit = kv * VectorXd::Ones(_dof);
-    }
-
-    void setTorqueThreshold(const double& tau) {
-        _tau_thresh = tau;
-    }
-
-    void setEta(const double& eta) {
+    void setEta(const double eta) {
         _eta = eta * VectorXd::Ones(_dof);
     }
 
-    VectorXd getAPFTorques() {
+    VectorXd getApfTorques() {
         return _apf_torques;
     }
 
-    void setCollisionTime(const double time) {
-        _t_collision = time;
+    void setPosTimeBuffer(const double time) {
+        _t_delta_pos = time;
     }
 
-    VectorXd computePositionIntegration(const VectorXd& q, 
-                                        const VectorXd& dq, 
-                                        const double& t_delta) {
-        VectorXd result(q.size());
-        for (int i = 0; i < q.size(); ++i) {
-            result[i] = q[i] + (dq[i] / _kv_pos_limit[i]) * (1 - std::exp(-_kv_pos_limit[i] * t_delta));
-        }
-        return result;
+    void setVelTimeBuffer(const double time) {
+        _t_delta_vel = time;
     }
 
-    std::pair<VectorXi, VectorXi> getJointState() {
-        return std::make_pair(_joint_state, _joint_vel_state);
-    }
-
-    VectorXi getJointLimitState() {
+    std::vector<JointState> getJointState() {
         return _joint_state;
     }
 
-    VectorXd getJointLimitDistances() {
-        return _joint_distances;
-    }
-
-    VectorXd getJointBlendingCoefficients() {
-        return _blending_coefficients;
-    }
-
-    void setVelocityTol(const double tol) {
-        _dq_exit_tol = tol;
-    }
-
-    void setTorqueTol(const double tol) {
-        _tau_thresh = tol;
-    }
-
     void setDamping(const double kv) {
-        _kv_pos_limit = kv * VectorXd::Ones(_robot->dof());
+        _kv_pos_limit = kv * VectorXd::Ones(_dof);
     }
-
-    // double getMaxVelocity() {
-        // return _max_vel_vector.minCoeff();
-    // }
-
-    // std::vector<double> getCoefficientsInViolation() {
-        // return _alpha_in_violation;
-    // }
 
     void enableVariableVelocityZone(const bool flag) {
         _variable_vel_zone = flag;
     }
 
-    VectorXi getExitState(const VectorXd& torques);
-
     void setApfThreshFlag(const bool flag) {
-        _apf_thresh = flag;
+        _use_apf_thresh_flag = flag;
     }
 
 private:
 
     std::shared_ptr<Sai2Model::Sai2Model> _robot;
-    std::vector<int> _joint_selection;
+    std::vector<int> _joint_selection_to_skip;
     bool _verbose;
     bool _enable_limit_flag;
+
+    std::vector<JointState> _joint_state;
+
+    double _t_delta_pos;
+    double _t_delta_vel;
+
+    double _rho_min_tol;
+    double _unit_tau_thresh;
+
+    bool _use_apf_thresh_flag;
+
     bool _is_floating;
     int _dof;
     int _num_con;
@@ -241,22 +184,7 @@ private:
     VectorXd _tau_abs_max;
     VectorXd _pos_zone_1_threshold;
     VectorXd _pos_zone_2_threshold;
-    VectorXd _var_pos_zone_1_threshold;
-    VectorXd _vel_zone_1_threshold;
-    VectorXd _vel_zone_2_threshold;
-    VectorXi _joint_state;
-    VectorXi _joint_vel_state;
-    VectorXi _joint_entry_state;
-    VectorXi _task_direction_wrt_constraint;
-    VectorXd _vel_gamma;
     VectorXd _kv_pos_limit;
-    bool _truncation_flag;
-    double _tau_thresh;
-    double _tau_vel_thresh;
-    double _t_delta;
-    VectorXd _pos_entry_velocities;
-    VectorXd _vel_entry_velocities;
-    std::vector<double> _alpha_in_violation;
 
     bool _enable_vel_limits;
     VectorXd _rho;
@@ -266,16 +194,7 @@ private:
     VectorXd _damping_torques;
     VectorXd _max_vel;
 
-    // verbose output 
-    std::vector<std::string> _constraint_description;
-
     // task parameters
-    // std::vector<double> _blending_coefficients;
-    // std::vector<double> _vel_blending_coefficients;
-    VectorXd _blending_coefficients;
-    VectorXd _vel_blending_coefficients;
-    MatrixXd _blending_matrix;
-    VectorXd _non_task_safety_torques;
     MatrixXd _N_prec;
     MatrixXd _Jc;
     MatrixXd _Jbar_c;
@@ -283,11 +202,8 @@ private:
     MatrixXd _Lambda_c;
     MatrixXd _projected_jacobian;
     MatrixXd _current_task_range;
-
-    VectorXd _joint_distances;
     
     // collision handling
-    double _t_collision;
     VectorXd _entry_velocity;
     VectorXd _exit_velocity;
     double _dq_exit_tol;
