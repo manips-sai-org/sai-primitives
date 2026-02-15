@@ -17,149 +17,167 @@
 
 using namespace Eigen;
 
-namespace {
-AngleAxisd orientationDiffAngleAxis(const Matrix3d& goal_orientation,
-									const Matrix3d& current_orientation,
-									const double scaling_factor = 1.0) {
-	if (scaling_factor <= 0) {
-		throw std::runtime_error(
-			"Scaling factor must be between positive in "
-			"scaledOrientationErrorFromAngleAxis");
+namespace
+{
+	AngleAxisd orientationDiffAngleAxis(const Matrix3d &goal_orientation,
+										const Matrix3d &current_orientation,
+										const double scaling_factor = 1.0)
+	{
+		if (scaling_factor <= 0)
+		{
+			throw std::runtime_error(
+				"Scaling factor must be between positive in "
+				"scaledOrientationErrorFromAngleAxis");
+		}
+
+		// expressed in base frame common to goal and current orientation
+		AngleAxisd current_orientation_from_goal_orientation_aa(
+			current_orientation * goal_orientation.transpose());
+
+		return AngleAxisd(
+			scaling_factor * current_orientation_from_goal_orientation_aa.angle(),
+			current_orientation_from_goal_orientation_aa.axis());
 	}
 
-	// expressed in base frame common to goal and current orientation
-	AngleAxisd current_orientation_from_goal_orientation_aa(
-		current_orientation * goal_orientation.transpose());
-
-	return AngleAxisd(
-		scaling_factor * current_orientation_from_goal_orientation_aa.angle(),
-		current_orientation_from_goal_orientation_aa.axis());
-}
-
-Vector3d angleAxisToVector(const AngleAxisd& aa) {
-	return aa.angle() * aa.axis();
-}
-
-Vector3d projectAlongDirection(const Vector3d& vector_to_project,
-							   const Vector3d& direction) {
-	if (direction.norm() <= 0.001) {
-		throw std::runtime_error(
-			"direction should be a non zero vector in projectAlongDirection");
-	}
-	return direction.dot(vector_to_project) * direction /
-		   direction.squaredNorm();
-}
-
-double computeInterpolationCoeff(const double x, const double x0,
-								 const double x1) {
-	if (x0 > x1) {
-		throw std::runtime_error(
-			"x0 should be smaller than x1 in compute_interpolation_coeff");
-	}
-	if (x <= x0) {
-		return 0;
-	}
-	if (x >= x1) {
-		return 1;
-	}
-	return (x - x0) / (x1 - x0);
-}
-
-}  // namespace
-
-namespace SaiPrimitives {
-
-////////////////////////////////////////////////////////////////////////////////////////////////////
-//// Constructor, Destructor and Initialization of the haptic controllers
-////////////////////////////////////////////////////////////////////////////////////////////////////
-
-HapticDeviceController::HapticDeviceController(
-	const DeviceLimits& device_limits, const Affine3d& robot_initial_pose,
-	const Affine3d& device_home_pose,
-	const Matrix3d& device_base_rotation_in_world)
-	: _device_limits(device_limits),
-	  _robot_center_pose(robot_initial_pose),
-	  _R_world_device(device_base_rotation_in_world),
-	  _device_home_pose(device_home_pose) {
-	_reset_robot_linear_offset = false;
-	_reset_robot_angular_offset = false;
-
-	_latest_output.robot_goal_position = _robot_center_pose.translation();
-	_latest_output.robot_goal_orientation = _robot_center_pose.rotation();
-
-	// Initialize homing task
-	_device_homed = false;
-	_haptic_control_type = DefaultParameters::haptic_control_type;
-
-	// Initialize scaling factors
-	setScalingFactors(DefaultParameters::scaling_factor_pos,
-					  DefaultParameters::scaling_factor_ori);
-
-	// Initialize position controller parameters
-	_kp_haptic_pos = 0.5 * _device_limits.max_linear_stiffness;
-	_kp_haptic_ori = 0.5 * _device_limits.max_angular_stiffness;
-	_kv_haptic_pos = 2.0 * sqrt(_kp_haptic_pos);
-	_kv_haptic_ori = 2.0 * sqrt(_kp_haptic_ori);
-	if (_kv_haptic_pos > 0.5 * _device_limits.max_linear_damping) {
-		_kv_haptic_pos = 0.5 * _device_limits.max_linear_damping;
-	}
-	if (_kv_haptic_ori > 0.5 * _device_limits.max_angular_damping) {
-		_kv_haptic_ori = 0.5 * _device_limits.max_angular_damping;
+	Vector3d angleAxisToVector(const AngleAxisd &aa)
+	{
+		return aa.angle() * aa.axis();
 	}
 
-	_homing_max_linvel = DefaultParameters::homing_max_linvel;
-	_homing_max_angvel = DefaultParameters::homing_max_angvel;
+	Vector3d projectAlongDirection(const Vector3d &vector_to_project,
+								   const Vector3d &direction)
+	{
+		if (direction.norm() <= 0.001)
+		{
+			throw std::runtime_error(
+				"direction should be a non zero vector in projectAlongDirection");
+		}
+		return direction.dot(vector_to_project) * direction /
+			   direction.squaredNorm();
+	}
 
-	_reduction_factor_force = DefaultParameters::reduction_factor_force;
-	_reduction_factor_moment = DefaultParameters::reduction_factor_moment;
+	double computeInterpolationCoeff(const double x, const double x0,
+									 const double x1)
+	{
+		if (x0 > x1)
+		{
+			throw std::runtime_error(
+				"x0 should be smaller than x1 in compute_interpolation_coeff");
+		}
+		if (x <= x0)
+		{
+			return 0;
+		}
+		if (x >= x1)
+		{
+			return 1;
+		}
+		return (x - x0) / (x1 - x0);
+	}
 
-	_device_force_to_robot_delta_position =
-		DefaultParameters::device_force_to_robot_delta_position;
-	_device_moment_to_robot_delta_orientation =
-		DefaultParameters::device_moment_to_robot_delta_orientation;
-	_force_deadband = DefaultParameters::force_deadband;
-	_moment_deadband = DefaultParameters::moment_deadband;
+} // namespace
 
-	// Initialiaze force feedback space
-	_sigma_proxy_force_feedback.setZero();
-	_sigma_proxy_moment_feedback.setZero();
+namespace SaiPrimitives
+{
 
-	// Device workspace virtual limits
-	_device_workspace_virtual_limits_enabled = false;
+	////////////////////////////////////////////////////////////////////////////////////////////////////
+	//// Constructor, Destructor and Initialization of the haptic controllers
+	////////////////////////////////////////////////////////////////////////////////////////////////////
 
-	// Initialize haptic guidance parameters
-	_plane_guidance_enabled = false;
-	_line_guidance_enabled = false;
-	_kp_guidance_pos = 1.2 * _kp_haptic_pos;
-	_kp_guidance_ori = 1.2 * _kp_haptic_ori;
-	_kv_guidance_pos = _kv_haptic_pos;
-	_kv_guidance_ori = _kv_haptic_ori;
+	HapticDeviceController::HapticDeviceController(
+		const DeviceLimits &device_limits, const Affine3d &robot_initial_pose,
+		const Affine3d &device_home_pose,
+		const Matrix3d &device_base_rotation_in_world,
+		const Affine3d &T_reference_world)
+		: _device_limits(device_limits),
+		  _robot_center_pose(robot_initial_pose),
+		  _R_world_device(device_base_rotation_in_world),
+		  _device_home_pose(device_home_pose),
+		  _T_reference_world(T_reference_world)
+	{
+		_reset_robot_linear_offset = false;
+		_reset_robot_angular_offset = false;
 
-	_plane_origin_point = _device_home_pose.translation();
-	_plane_normal_direction = Vector3d::UnitZ();
-	_line_origin_point = _device_home_pose.translation();
-	_line_direction = Vector3d::UnitZ();
+		_latest_output.robot_goal_position = _robot_center_pose.translation();
+		_latest_output.robot_goal_orientation = _robot_center_pose.rotation();
 
-	_device_workspace_radius_limit =
-		DefaultParameters::device_workspace_radius_limit;
-	_device_workspace_angle_limit =
-		DefaultParameters::device_workspace_angle_limit;
+		// Initialize homing task
+		_device_homed = false;
+		_haptic_control_type = DefaultParameters::haptic_control_type;
 
-	_variable_damping_linvel_thresholds = VectorXd::Zero(0);
-	_variable_damping_angvel_thresholds = VectorXd::Zero(0);
-	_variable_damping_gains_pos = VectorXd::Zero(0);
-	_variable_damping_gains_ori = VectorXd::Zero(0);
-}
+		// Initialize scaling factors
+		setScalingFactors(DefaultParameters::scaling_factor_pos,
+						  DefaultParameters::scaling_factor_ori);
 
-////////////////////////////////////////////////////////////////////////////////////////////////////
-// Haptic controllers for all the sypported controler types
-////////////////////////////////////////////////////////////////////////////////////////////////////
+		// Initialize position controller parameters
+		_kp_haptic_pos = 0.5 * _device_limits.max_linear_stiffness;
+		_kp_haptic_ori = 0.5 * _device_limits.max_angular_stiffness;
+		_kv_haptic_pos = 2.0 * sqrt(_kp_haptic_pos);
+		_kv_haptic_ori = 2.0 * sqrt(_kp_haptic_ori);
+		if (_kv_haptic_pos > 0.5 * _device_limits.max_linear_damping)
+		{
+			_kv_haptic_pos = 0.5 * _device_limits.max_linear_damping;
+		}
+		if (_kv_haptic_ori > 0.5 * _device_limits.max_angular_damping)
+		{
+			_kv_haptic_ori = 0.5 * _device_limits.max_angular_damping;
+		}
 
-HapticControllerOutput HapticDeviceController::computeHapticControl(
-	const HapticControllerInput& input, const bool verbose) {
-	HapticControllerOutput output;
-	_latest_input = input;
-	switch (_haptic_control_type) {
+		_homing_max_linvel = DefaultParameters::homing_max_linvel;
+		_homing_max_angvel = DefaultParameters::homing_max_angvel;
+
+		_reduction_factor_force = DefaultParameters::reduction_factor_force;
+		_reduction_factor_moment = DefaultParameters::reduction_factor_moment;
+
+		_device_force_to_robot_delta_position =
+			DefaultParameters::device_force_to_robot_delta_position;
+		_device_moment_to_robot_delta_orientation =
+			DefaultParameters::device_moment_to_robot_delta_orientation;
+		_force_deadband = DefaultParameters::force_deadband;
+		_moment_deadband = DefaultParameters::moment_deadband;
+
+		// Initialiaze force feedback space
+		_sigma_proxy_force_feedback.setZero();
+		_sigma_proxy_moment_feedback.setZero();
+
+		// Device workspace virtual limits
+		_device_workspace_virtual_limits_enabled = false;
+
+		// Initialize haptic guidance parameters
+		_plane_guidance_enabled = false;
+		_line_guidance_enabled = false;
+		_kp_guidance_pos = 1.2 * _kp_haptic_pos;
+		_kp_guidance_ori = 1.2 * _kp_haptic_ori;
+		_kv_guidance_pos = _kv_haptic_pos;
+		_kv_guidance_ori = _kv_haptic_ori;
+
+		_plane_origin_point = _device_home_pose.translation();
+		_plane_normal_direction = Vector3d::UnitZ();
+		_line_origin_point = _device_home_pose.translation();
+		_line_direction = Vector3d::UnitZ();
+
+		_device_workspace_radius_limit =
+			DefaultParameters::device_workspace_radius_limit;
+		_device_workspace_angle_limit =
+			DefaultParameters::device_workspace_angle_limit;
+
+		_variable_damping_linvel_thresholds = VectorXd::Zero(0);
+		_variable_damping_angvel_thresholds = VectorXd::Zero(0);
+		_variable_damping_gains_pos = VectorXd::Zero(0);
+		_variable_damping_gains_ori = VectorXd::Zero(0);
+	}
+
+	////////////////////////////////////////////////////////////////////////////////////////////////////
+	// Haptic controllers for all the sypported controler types
+	////////////////////////////////////////////////////////////////////////////////////////////////////
+
+	HapticControllerOutput HapticDeviceController::computeHapticControl(
+		const HapticControllerInput &input, const bool verbose)
+	{
+		HapticControllerOutput output;
+		_latest_input = input;
+		switch (_haptic_control_type)
+		{
 		case HapticControlType::CLUTCH:
 			output = computeClutchControl(input);
 			break;
@@ -175,552 +193,744 @@ HapticControllerOutput HapticDeviceController::computeHapticControl(
 		default:
 			throw std::runtime_error("Unimplemented haptic control type");
 			break;
-	}
-	validateOutput(output, verbose);
-	_latest_output = output;
-	return output;
-}
-
-void HapticDeviceController::validateOutput(HapticControllerOutput& output,
-											const bool verbose) {
-	if (output.device_command_force.norm() > _device_limits.max_force) {
-		if (verbose) {
-			std::cout << "Warning: device feedback force norm is too high. "
-						 "Saturating to "
-					  << _device_limits.max_force << std::endl;
 		}
-		output.device_command_force *=
-			_device_limits.max_force / output.device_command_force.norm();
+		validateOutput(output, verbose);
+		_latest_output = output;
+		return output;
 	}
-	if (output.device_command_moment.norm() > _device_limits.max_torque) {
-		if (verbose) {
-			std::cout << "Warning: device feedback moment norm is too high. "
-						 "Saturating to "
-					  << _device_limits.max_torque << std::endl;
+
+	void HapticDeviceController::validateOutput(HapticControllerOutput &output,
+												const bool verbose)
+	{
+		if (output.device_command_force.norm() > _device_limits.max_force)
+		{
+			if (verbose)
+			{
+				std::cout << "Warning: device feedback force norm is too high. "
+							 "Saturating to "
+						  << _device_limits.max_force << std::endl;
+			}
+			output.device_command_force *=
+				_device_limits.max_force / output.device_command_force.norm();
 		}
-		output.device_command_moment *=
-			_device_limits.max_torque / output.device_command_moment.norm();
-	}
-}
-
-HapticControllerOutput HapticDeviceController::computeClutchControl(
-	const HapticControllerInput& input) {
-	HapticControllerOutput output;
-	output.robot_goal_position = _latest_output.robot_goal_position;
-	output.robot_goal_orientation = _latest_output.robot_goal_orientation;
-
-	applyWorkspaceVirtualLimitsForceMoment(input, output);
-	applyLineGuidanceForce(output.device_command_force, input, false);
-	applyPlaneGuidanceForce(output.device_command_force, input, false);
-
-	return output;
-}
-
-HapticControllerOutput HapticDeviceController::computeHomingControl(
-	const HapticControllerInput& input) {
-	_device_homed = false;
-	HapticControllerOutput output;
-	output.robot_goal_position = _latest_output.robot_goal_position;
-	output.robot_goal_orientation = _latest_output.robot_goal_orientation;
-
-	if (_kv_haptic_pos > 0) {
-		Vector3d desired_velocity =
-			-_kp_haptic_pos / _kv_haptic_pos *
-			(input.device_position - _device_home_pose.translation());
-		if (desired_velocity.norm() > _homing_max_linvel) {
-			desired_velocity *= _homing_max_linvel / desired_velocity.norm();
+		if (output.device_command_moment.norm() > _device_limits.max_torque)
+		{
+			if (verbose)
+			{
+				std::cout << "Warning: device feedback moment norm is too high. "
+							 "Saturating to "
+						  << _device_limits.max_torque << std::endl;
+			}
+			output.device_command_moment *=
+				_device_limits.max_torque / output.device_command_moment.norm();
 		}
-		output.device_command_force =
-			-_kv_haptic_pos * (input.device_linear_velocity - desired_velocity);
 	}
 
-	Vector3d orientation_error = Vector3d::Zero();
-	if (_kv_haptic_ori > 0) {
-		orientation_error = angleAxisToVector(orientationDiffAngleAxis(
-			_device_home_pose.rotation(), input.device_orientation));
-		Vector3d desired_velocity =
-			-_kp_haptic_ori / _kv_haptic_ori * orientation_error;
-		if (desired_velocity.norm() > _homing_max_angvel) {
-			desired_velocity *= _homing_max_angvel / desired_velocity.norm();
+	HapticControllerOutput HapticDeviceController::computeClutchControl(
+		const HapticControllerInput &input)
+	{
+		HapticControllerOutput output;
+		output.robot_goal_position = _latest_output.robot_goal_position;
+		output.robot_goal_orientation = _latest_output.robot_goal_orientation;
+
+		applyWorkspaceVirtualLimitsForceMoment(input, output);
+		applyLineGuidanceForce(output.device_command_force, input, false);
+		applyPlaneGuidanceForce(output.device_command_force, input, false);
+
+		return output;
+	}
+
+	HapticControllerOutput HapticDeviceController::computeHomingControl(
+		const HapticControllerInput &input)
+	{
+		_device_homed = false;
+		HapticControllerOutput output;
+		output.robot_goal_position = _latest_output.robot_goal_position;
+		output.robot_goal_orientation = _latest_output.robot_goal_orientation;
+
+		if (_kv_haptic_pos > 0)
+		{
+			Vector3d desired_velocity =
+				-_kp_haptic_pos / _kv_haptic_pos *
+				(input.device_position - _device_home_pose.translation());
+			if (desired_velocity.norm() > _homing_max_linvel)
+			{
+				desired_velocity *= _homing_max_linvel / desired_velocity.norm();
+			}
+			output.device_command_force =
+				-_kv_haptic_pos * (input.device_linear_velocity - desired_velocity);
 		}
-		output.device_command_moment =
-			-_kv_haptic_ori *
-			(input.device_angular_velocity - desired_velocity);
-	}
 
-	if ((input.device_position - _device_home_pose.translation()).norm() <
-			0.001 &&
-		input.device_linear_velocity.norm() < 0.01 &&
-		(!_orientation_teleop_enabled ||
-		 orientation_error.norm() < 0.01 &&
-			 input.device_angular_velocity.norm() < 0.1)) {
-		_device_homed = true;
-	}
-
-	return output;
-}
-
-HapticControllerOutput HapticDeviceController::computeMotionMotionControl(
-	const HapticControllerInput& input) {
-	HapticControllerOutput output;
-	output.robot_goal_position = _latest_output.robot_goal_position;
-	output.robot_goal_orientation = _latest_output.robot_goal_orientation;
-
-	// position and orientation control
-	motionMotionControlPosition(input, output);
-	motionMotionControlOrientation(input, output);
-
-	// consume reset robot offsets
-	_reset_robot_linear_offset = false;
-	_reset_robot_angular_offset = false;
-
-	// Apply haptic guidances
-	applyWorkspaceVirtualLimitsForceMoment(input, output);
-	applyLineGuidanceForce(output.device_command_force, input, false);
-	applyPlaneGuidanceForce(output.device_command_force, input, false);
-
-	return output;
-}
-
-void HapticDeviceController::motionMotionControlPosition(
-	const HapticControllerInput& input, HapticControllerOutput& output) {
-	// Compute robot goal position
-	Vector3d device_home_to_current_position =
-		input.device_position -
-		_device_home_pose.translation();  // in device base frame
-
-	if (_reset_robot_linear_offset) {
-		_robot_center_pose.translation() =
-			input.robot_position - _scaling_factor_pos * _R_world_device *
-									   device_home_to_current_position;
-	}
-
-	// compute robot goal position
-	if (_device_workspace_virtual_limits_enabled &&
-		device_home_to_current_position.norm() >
-			_device_workspace_radius_limit) {
-		device_home_to_current_position =
-			_device_workspace_radius_limit * device_home_to_current_position /
-			device_home_to_current_position.norm();
-	}
-	output.robot_goal_position =
-		_robot_center_pose.translation() +
-		_scaling_factor_pos * _R_world_device * device_home_to_current_position;
-
-	if (_plane_guidance_enabled) {
-		// saturate goal position to be in the plane
-		Vector3d plane_origin_robot_frame =
-			_robot_center_pose.translation() +
-			_R_world_device * _scaling_factor_pos *
-				(_plane_origin_point - _device_home_pose.translation());
-		Vector3d plane_normal_robot_frame =
-			_R_world_device * _plane_normal_direction;
-
-		output.robot_goal_position -= projectAlongDirection(
-			output.robot_goal_position - plane_origin_robot_frame,
-			plane_normal_robot_frame);
-	} else if (_line_guidance_enabled) {
-		// saturate goal position to be along the line
-		Vector3d line_origin_robot_frame =
-			_robot_center_pose.translation() +
-			_R_world_device * _scaling_factor_pos *
-				(_line_origin_point - _device_home_pose.translation());
-		Vector3d line_direction_robot_frame = _R_world_device * _line_direction;
-
-		output.robot_goal_position =
-			line_origin_robot_frame +
-			projectAlongDirection(
-				output.robot_goal_position - line_origin_robot_frame,
-				line_direction_robot_frame);
-	}
-
-	// Compute the force feedback in robot frame
-	Vector3d haptic_forces_robot_space_direct_feedback =
-		-input.robot_sensed_force;
-
-	// scale and rotate to device frame
-	Vector3d haptic_force_direct_feedback =
-		_R_world_device.transpose() * _reduction_factor_force /
-		_scaling_factor_pos * haptic_forces_robot_space_direct_feedback;
-
-	// add damping to the direct force feedback
-	if (haptic_force_direct_feedback.norm() > 1e-2) {
-		haptic_force_direct_feedback -=
-			computeKvPosVariableDamping(input.device_linear_velocity.norm()) *
-			input.device_linear_velocity;
-	}
-
-	// Find proxy position and velocity
-	Vector3d proxy_position =
-		_device_home_pose.translation() +
-		_R_world_device.transpose() / _scaling_factor_pos *
-			(input.robot_position - _robot_center_pose.translation());
-	Vector3d proxy_linear_velocity = _R_world_device.transpose() *
-									 input.robot_linear_velocity /
-									 _scaling_factor_pos;
-
-	// Evaluate the feedback force through proxy
-	Vector3d haptic_forces_proxy =
-		-_kp_haptic_pos * (input.device_position - proxy_position) -
-		_kv_haptic_pos * (input.device_linear_velocity - proxy_linear_velocity);
-
-	// final haptic command force
-	Matrix3d sigma_direct_force_feedback =
-		Matrix3d::Identity() - _sigma_proxy_force_feedback;
-	output.device_command_force =
-		sigma_direct_force_feedback * haptic_force_direct_feedback +
-		_sigma_proxy_force_feedback * haptic_forces_proxy;
-}
-
-void HapticDeviceController::motionMotionControlOrientation(
-	const HapticControllerInput& input, HapticControllerOutput& output) {
-	if (!_orientation_teleop_enabled) {
-		return;
-	}
-
-	// compute robot goal orientation
-	AngleAxisd scaled_device_home_to_current_orientation_aa =
-		orientationDiffAngleAxis(_device_home_pose.rotation(),
-								 input.device_orientation, _scaling_factor_ori);
-
-	double scaled_angle_limit =
-		_scaling_factor_ori * _device_workspace_angle_limit;
-	if (_device_workspace_virtual_limits_enabled &&
-		scaled_device_home_to_current_orientation_aa.angle() >
-			scaled_angle_limit) {
-		scaled_device_home_to_current_orientation_aa.angle() =
-			scaled_angle_limit;
-	}
-
-	if (_reset_robot_angular_offset) {
-		_robot_center_pose.linear() =
-			_R_world_device *
-			scaled_device_home_to_current_orientation_aa.toRotationMatrix()
-				.transpose() *
-			_R_world_device.transpose() * input.robot_orientation;
-	}
-
-	output.robot_goal_orientation =
-		_R_world_device *
-		scaled_device_home_to_current_orientation_aa.toRotationMatrix() *
-		_R_world_device.transpose() * _robot_center_pose.rotation();
-
-	// Compute the moment feedback in robot frame
-	Vector3d haptic_moments_robot_space_direct_feedback =
-		-input.robot_sensed_moment;
-
-	// scale and rotate to device frame
-	Vector3d haptic_moment_direct_feedback =
-		_R_world_device.transpose() * _reduction_factor_moment /
-		_scaling_factor_ori * haptic_moments_robot_space_direct_feedback;
-
-	// add damping to the direct force feedback
-	if (haptic_moment_direct_feedback.norm() > 1e-2) {
-		haptic_moment_direct_feedback -=
-			computeKvOriVariableDamping(input.device_angular_velocity.norm()) *
-			input.device_angular_velocity;
-	}
-
-	// Find proxy orientation and angular velocity
-	AngleAxisd scaled_robot_orientation_from_center_aa =
-		orientationDiffAngleAxis(_robot_center_pose.rotation(),
-								 input.robot_orientation,
-								 1.0 / _scaling_factor_ori);
-	Matrix3d proxy_orientation =
-		_R_world_device.transpose() *
-		scaled_robot_orientation_from_center_aa.toRotationMatrix() *
-		_R_world_device * _device_home_pose.rotation();
-
-	Vector3d proxy_angular_velocity = _R_world_device.transpose() *
-									  input.robot_angular_velocity /
-									  _scaling_factor_ori;
-
-	// Evaluate the feedback moment through proxy
-	Vector3d orientation_error_from_proxy = angleAxisToVector(
-		orientationDiffAngleAxis(proxy_orientation, input.device_orientation));
-	Vector3d haptic_moments_proxy =
-		-_kp_haptic_ori * orientation_error_from_proxy -
-		_kv_haptic_ori *
-			(input.device_angular_velocity - proxy_angular_velocity);
-
-	// final haptic command moment
-	Matrix3d sigma_direct_moment_feedback =
-		Matrix3d::Identity() - _sigma_proxy_moment_feedback;
-	output.device_command_moment =
-		sigma_direct_moment_feedback * haptic_moment_direct_feedback +
-		_sigma_proxy_moment_feedback * haptic_moments_proxy;
-}
-
-HapticControllerOutput HapticDeviceController::computeForceMotionControl(
-	const HapticControllerInput& input) {
-	HapticControllerOutput output;
-	output.robot_goal_position = _latest_output.robot_goal_position;
-	output.robot_goal_orientation = _latest_output.robot_goal_orientation;
-
-	// compute force from stiffness/damping field
-	Vector3d device_force =
-		-_kp_haptic_pos *
-			(input.device_position - _device_home_pose.translation()) -
-		_kv_haptic_pos * input.device_linear_velocity;
-
-	// compute robot goal position
-	Vector3d projected_device_force = device_force;
-	if (_plane_guidance_enabled) {
-		projected_device_force =
-			device_force -
-			projectAlongDirection(device_force, _plane_normal_direction);
-	} else if (_line_guidance_enabled) {
-		projected_device_force =
-			projectAlongDirection(device_force, _line_direction);
-	}
-
-	if (projected_device_force.norm() < _force_deadband) {
-		projected_device_force.setZero();
-	} else {
-		projected_device_force -=
-			_force_deadband * projected_device_force.normalized();
-	}
-
-	Vector3d robot_goal_position_increment =
-		_device_force_to_robot_delta_position * _R_world_device *
-		projected_device_force;
-	output.robot_goal_position -= robot_goal_position_increment;
-
-	applyLineGuidanceForce(device_force, input, true);
-	applyPlaneGuidanceForce(device_force, input, true);
-
-	output.device_command_force = device_force;
-
-	// orientation control
-	// moments from stiffness/damping field
-	AngleAxisd home_to_current_orientation = orientationDiffAngleAxis(
-		_device_home_pose.rotation(), input.device_orientation);
-	Vector3d device_moment =
-		-_kp_haptic_ori * angleAxisToVector(home_to_current_orientation) -
-		_kv_haptic_ori * input.device_angular_velocity;
-
-	output.device_command_moment = device_moment;
-
-	if (_orientation_teleop_enabled) {
-		Vector3d device_moment_after_deadband = device_moment;
-		if (device_moment_after_deadband.norm() < _moment_deadband) {
-			device_moment_after_deadband.setZero();
-		} else {
-			device_moment_after_deadband -=
-				_moment_deadband * device_moment_after_deadband.normalized();
+		Vector3d orientation_error = Vector3d::Zero();
+		if (_kv_haptic_ori > 0)
+		{
+			orientation_error = angleAxisToVector(orientationDiffAngleAxis(
+				_device_home_pose.rotation(), input.device_orientation));
+			Vector3d desired_velocity =
+				-_kp_haptic_ori / _kv_haptic_ori * orientation_error;
+			if (desired_velocity.norm() > _homing_max_angvel)
+			{
+				desired_velocity *= _homing_max_angvel / desired_velocity.norm();
+			}
+			output.device_command_moment =
+				-_kv_haptic_ori *
+				(input.device_angular_velocity - desired_velocity);
 		}
-		// compute robot goal orientation
-		Matrix3d robot_goal_orientation_increment = Matrix3d::Identity();
-		if (device_moment_after_deadband.norm() > 1e-3) {
-			robot_goal_orientation_increment =
-				AngleAxisd(
-					-_device_moment_to_robot_delta_orientation *
-						device_moment_after_deadband.norm(),
-					_R_world_device * device_moment_after_deadband.normalized())
-					.toRotationMatrix();
+
+		if ((input.device_position - _device_home_pose.translation()).norm() <
+				0.001 &&
+			input.device_linear_velocity.norm() < 0.01 &&
+			(!_orientation_teleop_enabled ||
+			 orientation_error.norm() < 0.01 &&
+				 input.device_angular_velocity.norm() < 0.1))
+		{
+			_device_homed = true;
 		}
-		output.robot_goal_orientation =
-			robot_goal_orientation_increment * output.robot_goal_orientation;
+
+		return output;
 	}
 
-	return output;
-}
+	HapticControllerOutput HapticDeviceController::computeMotionMotionControl(
+		const HapticControllerInput &input)
+	{
+		HapticControllerOutput output;
+		output.robot_goal_position = _latest_output.robot_goal_position;
+		output.robot_goal_orientation = _latest_output.robot_goal_orientation;
 
-void HapticDeviceController::applyPlaneGuidanceForce(
-	Vector3d& force_to_update, const HapticControllerInput& input,
-	const bool use_device_home_as_origin) {
-	if (!_plane_guidance_enabled) {
-		return;
+		// position and orientation control
+		motionMotionControlPosition(input, output);
+		motionMotionControlOrientation(input, output);
+
+		// consume reset robot offsets
+		_reset_robot_linear_offset = false;
+		_reset_robot_angular_offset = false;
+
+		// Apply haptic guidances
+		applyWorkspaceVirtualLimitsForceMoment(input, output);
+		applyLineGuidanceForce(output.device_command_force, input, false);
+		applyPlaneGuidanceForce(output.device_command_force, input, false);
+
+		return output;
 	}
 
-	Vector3d reference_point = use_device_home_as_origin
-								   ? _device_home_pose.translation()
-								   : _plane_origin_point;
+	void HapticDeviceController::motionMotionControlPosition(
+		const HapticControllerInput &input, HapticControllerOutput &output)
+	{
+		// Compute robot goal position
+		Vector3d device_home_to_current_position =
+			input.device_position -
+			_device_home_pose.translation(); // in device base frame
 
-	// apply a spring damper system to bring the haptic device to the origin
-	// point, and only keep the component along the plane normal
-	Vector3d guidance_force_3d =
-		-_kp_guidance_pos * (input.device_position - reference_point) -
-		_kv_guidance_pos * input.device_linear_velocity;
-	Vector3d guidance_force_1d =
-		projectAlongDirection(guidance_force_3d, _plane_normal_direction);
+		if (_reset_robot_linear_offset)
+		{
+			_robot_center_pose.translation() =
+				input.robot_position - _scaling_factor_pos * _R_world_device *
+										   device_home_to_current_position;
+		}
 
-	// only keep the component of the non guidance haptic force inside the plane
-	force_to_update =
-		force_to_update -
-		projectAlongDirection(force_to_update, _plane_normal_direction) +
-		guidance_force_1d;
-}
+		// compute robot goal position
+		if (_device_workspace_virtual_limits_enabled &&
+			device_home_to_current_position.norm() >
+				_device_workspace_radius_limit)
+		{
+			device_home_to_current_position =
+				_device_workspace_radius_limit * device_home_to_current_position /
+				device_home_to_current_position.norm();
+		}
 
-void HapticDeviceController::applyLineGuidanceForce(
-	Vector3d& force_to_update, const HapticControllerInput& input,
-	const bool use_device_home_as_origin) {
-	if (!_line_guidance_enabled) {
-		return;
-	}
+		// Compute the offset position and rotation due to the reference frame transformation
+		Vector3d translation_world_to_reference =
+			_T_reference_world.translation();
+		Matrix3d rotation_world_to_reference =
+			_T_reference_world.rotation();
 
-	Vector3d reference_point = use_device_home_as_origin
-								   ? _device_home_pose.translation()
-								   : _line_origin_point;
+		// output.robot_goal_position =
+		// 	_robot_center_pose.translation() +
+		// 	_scaling_factor_pos * _R_world_device * device_home_to_current_position;
 
-	// apply a spring damper system to bring the haptic device to the origin
-	// point, and remove the component along the line
-	Vector3d guidance_force_3d =
-		-_kp_guidance_pos * (input.device_position - reference_point) -
-		_kv_guidance_pos * input.device_linear_velocity;
-	Vector3d guidance_force_2d =
-		guidance_force_3d -
-		projectAlongDirection(guidance_force_3d, _line_direction);
+		Vector3d center_pos_world = input.robot_position;
 
-	// only keep the component of the non guidance haptic force along the line
-	force_to_update = projectAlongDirection(force_to_update, _line_direction) +
-					  guidance_force_2d;
-}
+		Vector3d current_offset_world = center_pos_world - translation_world_to_reference;
+		Vector3d offset_body = rotation_world_to_reference.transpose() * current_offset_world;
+		Vector3d haptic_disp_body = _scaling_factor_pos * _R_world_device * device_home_to_current_position;
+		Vector3d new_offset_body = offset_body + haptic_disp_body;
 
-void HapticDeviceController::applyWorkspaceVirtualLimitsForceMoment(
-	const HapticControllerInput& input, HapticControllerOutput& output) {
-	if (!_device_workspace_virtual_limits_enabled) {
-		return;
-	}
+		output.robot_goal_position = translation_world_to_reference + (rotation_world_to_reference * new_offset_body);
 
-	// Add virtual forces according to the device virtual workspace limits
-	Vector3d torque_virtual = Vector3d::Zero();
+		// output.robot_goal_position =
+		// 	_robot_center_pose.translation() +
+		// 	translation_world_to_reference +
+		// 	_scaling_factor_pos * rotation_world_to_reference *
+		// 		_R_world_device * device_home_to_current_position;
 
-	Vector3d device_home_to_current_position =
-		input.device_position - _device_home_pose.translation();
-	if (device_home_to_current_position.norm() >=
-		_device_workspace_radius_limit) {
-		// add force to bring the device back inside the workspace
-		output.device_command_force +=
-			-_kp_guidance_pos *
-				(device_home_to_current_position.norm() -
-				 _device_workspace_radius_limit) *
-				device_home_to_current_position /
-				device_home_to_current_position.norm() -
-			_kv_guidance_pos *
-				projectAlongDirection(input.device_linear_velocity,
-									  device_home_to_current_position);
-	}
+		if (_plane_guidance_enabled)
+		{
+			// saturate goal position to be in the plane
+			Vector3d plane_origin_robot_frame =
+				_robot_center_pose.translation() +
+				_R_world_device * _scaling_factor_pos *
+					(_plane_origin_point - _device_home_pose.translation());
+			Vector3d plane_normal_robot_frame =
+				_R_world_device * _plane_normal_direction;
 
-	AngleAxisd device_home_to_current_orientation_aa = orientationDiffAngleAxis(
-		_device_home_pose.rotation(), input.device_orientation);
-	if (device_home_to_current_orientation_aa.angle() >=
-		// add moment to bring the device back inside the workspace
-		_device_workspace_angle_limit) {
-		output.device_command_moment +=
-			-_kp_guidance_ori *
-				(device_home_to_current_orientation_aa.angle() -
-				 _device_workspace_angle_limit) *
-				device_home_to_current_orientation_aa.axis() -
-			_kv_guidance_ori *
+			output.robot_goal_position -= projectAlongDirection(
+				output.robot_goal_position - plane_origin_robot_frame,
+				plane_normal_robot_frame);
+		}
+		else if (_line_guidance_enabled)
+		{
+			// saturate goal position to be along the line
+			Vector3d line_origin_robot_frame =
+				_robot_center_pose.translation() +
+				_R_world_device * _scaling_factor_pos *
+					(_line_origin_point - _device_home_pose.translation());
+			Vector3d line_direction_robot_frame = _R_world_device * _line_direction;
+
+			output.robot_goal_position =
+				line_origin_robot_frame +
 				projectAlongDirection(
-					input.device_angular_velocity,
-					device_home_to_current_orientation_aa.axis());
-	}
-}
+					output.robot_goal_position - line_origin_robot_frame,
+					line_direction_robot_frame);
+		}
 
-double HapticDeviceController::computeKvPosVariableDamping(
-	const double device_velocity) const {
-	if (_variable_damping_linvel_thresholds.size() == 0) {
-		return 0;
+		// Compute the force feedback in robot frame
+		Vector3d haptic_forces_robot_space_direct_feedback =
+			-input.robot_sensed_force;
+
+		// scale and rotate to device frame
+		Vector3d haptic_force_direct_feedback =
+			_R_world_device.transpose() * rotation_world_to_reference.transpose() * _reduction_factor_force /
+			_scaling_factor_pos * haptic_forces_robot_space_direct_feedback;
+
+		// add damping to the direct force feedback
+		if (haptic_force_direct_feedback.norm() > 1e-2)
+		{
+			haptic_force_direct_feedback -=
+				computeKvPosVariableDamping(input.device_linear_velocity.norm()) *
+				input.device_linear_velocity;
+		}
+
+		// Find proxy position and velocity
+		// Vector3d proxy_position =
+		// 	_device_home_pose.translation() +
+		// 	_R_world_device.transpose() / _scaling_factor_pos *
+		// 		(input.robot_position - _robot_center_pose.translation());
+		// Vector3d proxy_linear_velocity = _R_world_device.transpose() *
+		// 								 input.robot_linear_velocity /
+		// 								 _scaling_factor_pos;
+
+		// create the proxy position and proxy linear velocity with reference frame
+		Vector3d proxy_position =
+			_device_home_pose.translation() +
+			_R_world_device.transpose() * rotation_world_to_reference.transpose() /
+				_scaling_factor_pos *
+				(input.robot_position - _robot_center_pose.translation());
+		Vector3d proxy_linear_velocity = _R_world_device.transpose() *
+										 rotation_world_to_reference.transpose() *
+										 input.robot_linear_velocity /
+										 _scaling_factor_pos;
+
+		// Evaluate the feedback force through proxy
+		Vector3d haptic_forces_proxy =
+			-_kp_haptic_pos * (input.device_position - proxy_position) -
+			_kv_haptic_pos * (input.device_linear_velocity - proxy_linear_velocity);
+
+		// final haptic command force
+		Matrix3d sigma_direct_force_feedback =
+			Matrix3d::Identity() - _sigma_proxy_force_feedback;
+		output.device_command_force =
+			sigma_direct_force_feedback * haptic_force_direct_feedback +
+			_sigma_proxy_force_feedback * haptic_forces_proxy;
 	}
 
-	if (device_velocity < _variable_damping_linvel_thresholds(0)) {
-		double interpolation_coeff = computeInterpolationCoeff(
-			device_velocity, 0, _variable_damping_linvel_thresholds(0));
-		return interpolation_coeff * _variable_damping_gains_pos(0);
+	// void HapticDeviceController::motionMotionControlOrientation(
+	// 	const HapticControllerInput &input, HapticControllerOutput &output)
+	// {
+	// 	if (!_orientation_teleop_enabled)
+	// 	{
+	// 		return;
+	// 	}
+
+	// 	// compute robot goal orientation
+	// 	AngleAxisd scaled_device_home_to_current_orientation_aa =
+	// 		orientationDiffAngleAxis(_device_home_pose.rotation(),
+	// 								 input.device_orientation, _scaling_factor_ori);
+
+	// 	double scaled_angle_limit =
+	// 		_scaling_factor_ori * _device_workspace_angle_limit;
+	// 	if (_device_workspace_virtual_limits_enabled &&
+	// 		scaled_device_home_to_current_orientation_aa.angle() >
+	// 			scaled_angle_limit)
+	// 	{
+	// 		scaled_device_home_to_current_orientation_aa.angle() =
+	// 			scaled_angle_limit;
+	// 	}
+
+	// 	if (_reset_robot_angular_offset)
+	// 	{
+	// 		_robot_center_pose.linear() =
+	// 			_R_world_device *
+	// 			scaled_device_home_to_current_orientation_aa.toRotationMatrix()
+	// 				.transpose() *
+	// 			_R_world_device.transpose() * input.robot_orientation;
+	// 	}
+
+	// 	output.robot_goal_orientation =
+	// 		_R_world_device *
+	// 		scaled_device_home_to_current_orientation_aa.toRotationMatrix() *
+	// 		_R_world_device.transpose() * _robot_center_pose.rotation();
+
+	// 	// Compute the moment feedback in robot frame
+	// 	Vector3d haptic_moments_robot_space_direct_feedback =
+	// 		-input.robot_sensed_moment;
+
+	// 	// scale and rotate to device frame
+	// 	Vector3d haptic_moment_direct_feedback =
+	// 		_R_world_device.transpose() * _reduction_factor_moment /
+	// 		_scaling_factor_ori * haptic_moments_robot_space_direct_feedback;
+
+	// 	// add damping to the direct force feedback
+	// 	if (haptic_moment_direct_feedback.norm() > 1e-2)
+	// 	{
+	// 		haptic_moment_direct_feedback -=
+	// 			computeKvOriVariableDamping(input.device_angular_velocity.norm()) *
+	// 			input.device_angular_velocity;
+	// 	}
+
+	// 	// Find proxy orientation and angular velocity
+	// 	AngleAxisd scaled_robot_orientation_from_center_aa =
+	// 		orientationDiffAngleAxis(_robot_center_pose.rotation(),
+	// 								 input.robot_orientation,
+	// 								 1.0 / _scaling_factor_ori);
+	// 	Matrix3d proxy_orientation =
+	// 		_R_world_device.transpose() *
+	// 		scaled_robot_orientation_from_center_aa.toRotationMatrix() *
+	// 		_R_world_device * _device_home_pose.rotation();
+
+	// 	Vector3d proxy_angular_velocity = _R_world_device.transpose() *
+	// 									  input.robot_angular_velocity /
+	// 									  _scaling_factor_ori;
+
+	// 	// Evaluate the feedback moment through proxy
+	// 	Vector3d orientation_error_from_proxy = angleAxisToVector(
+	// 		orientationDiffAngleAxis(proxy_orientation, input.device_orientation));
+	// 	Vector3d haptic_moments_proxy =
+	// 		-_kp_haptic_ori * orientation_error_from_proxy -
+	// 		_kv_haptic_ori *
+	// 			(input.device_angular_velocity - proxy_angular_velocity);
+
+	// 	// final haptic command moment
+	// 	Matrix3d sigma_direct_moment_feedback =
+	// 		Matrix3d::Identity() - _sigma_proxy_moment_feedback;
+	// 	output.device_command_moment =
+	// 		sigma_direct_moment_feedback * haptic_moment_direct_feedback +
+	// 		_sigma_proxy_moment_feedback * haptic_moments_proxy;
+	// }
+
+	void HapticDeviceController::motionMotionControlOrientation(
+		const HapticControllerInput &input, HapticControllerOutput &output)
+	{
+		if (!_orientation_teleop_enabled)
+		{
+			return;
+		}
+
+		// 1. Compute haptic delta from device home (in device frame)
+		AngleAxisd scaled_device_delta_aa =
+			orientationDiffAngleAxis(_device_home_pose.rotation(),
+									 input.device_orientation, _scaling_factor_ori);
+
+		double scaled_angle_limit = _scaling_factor_ori * _device_workspace_angle_limit;
+		if (_device_workspace_virtual_limits_enabled &&
+			scaled_device_delta_aa.angle() > scaled_angle_limit)
+		{
+			scaled_device_delta_aa.angle() = scaled_angle_limit;
+		}
+
+		// Convert haptic delta to the robot's coordinate system
+		// This is the rotation the user is "commanding"
+		Matrix3d R_haptic_delta = _R_world_device * scaled_device_delta_aa.toRotationMatrix() * _R_world_device.transpose();
+
+		Matrix3d R_world_to_reference = _T_reference_world.rotation();
+
+		// 2. Reset logic: Anchor the "zero" point to the current relative orientation
+		if (_reset_robot_angular_offset)
+		{
+			// We want: R_goal = R_ref * R_haptic_delta * R_relative_offset
+			// To reset, we find the R_relative_offset that makes R_goal == input.robot_orientation
+			// when the haptic delta is Identity.
+			_robot_center_pose.linear() = R_world_to_reference.transpose() * input.robot_orientation;
+		}
+
+		// 3. Compute robot goal orientation in the Reference Frame
+		// Current orientation in body frame = R_ref^T * R_robot
+		// But since we are teleoperating, we apply the delta to our "anchor" relative pose
+		Matrix3d relative_goal = R_haptic_delta * _robot_center_pose.rotation();
+
+		// Transform back to World Frame
+		output.robot_goal_orientation = R_world_to_reference * relative_goal;
+
+		// 4. Feedback: Find proxy orientation in device frame
+		// This represents where the device "should" be based on the robot's actual state
+		// relative to the reference frame.
+
+		// Get actual current relative orientation
+		Matrix3d current_relative_R = R_world_to_reference.transpose() * input.robot_orientation;
+
+		// Remove the anchor offset and "un-scale" the rotation
+		Matrix3d relative_to_anchor = current_relative_R * _robot_center_pose.rotation().transpose();
+
+		AngleAxisd scaled_robot_delta_aa(relative_to_anchor);
+		scaled_robot_delta_aa.angle() /= _scaling_factor_ori; // Scale back to device intensity
+
+		// Map this back to the device's home orientation
+		Matrix3d proxy_orientation =
+			_R_world_device.transpose() *
+			scaled_robot_delta_aa.toRotationMatrix() *
+			_R_world_device * _device_home_pose.rotation();
+
+		// 5. Angular Velocity in Reference Frame
+		// We rotate world velocity into reference frame, then to device frame
+		Vector3d proxy_angular_velocity = _R_world_device.transpose() *
+										  R_world_to_reference.transpose() *
+										  input.robot_angular_velocity /
+										  _scaling_factor_ori;
+
+		// 6. Evaluate feedback (Standard Proxy Control)
+		Vector3d orientation_error_from_proxy = angleAxisToVector(
+			orientationDiffAngleAxis(proxy_orientation, input.device_orientation));
+
+		Vector3d haptic_moments_proxy =
+			-_kp_haptic_ori * orientation_error_from_proxy -
+			_kv_haptic_ori * (input.device_angular_velocity - proxy_angular_velocity);
+
+		// 7. Direct force feedback (Sensed moments)
+		Vector3d haptic_moment_direct_feedback =
+			_R_world_device.transpose() * _reduction_factor_moment /
+			_scaling_factor_ori * (-input.robot_sensed_moment);
+
+		if (haptic_moment_direct_feedback.norm() > 1e-2)
+		{
+			haptic_moment_direct_feedback -=
+				computeKvOriVariableDamping(input.device_angular_velocity.norm()) *
+				input.device_angular_velocity;
+		}
+
+		Matrix3d sigma_direct_moment_feedback = Matrix3d::Identity() - _sigma_proxy_moment_feedback;
+		output.device_command_moment =
+			sigma_direct_moment_feedback * haptic_moment_direct_feedback +
+			_sigma_proxy_moment_feedback * haptic_moments_proxy;
 	}
 
-	for (int i = 1; i < _variable_damping_linvel_thresholds.size(); ++i) {
-		if (device_velocity < _variable_damping_linvel_thresholds(i)) {
-			double interpolation_coeff = computeInterpolationCoeff(
-				device_velocity, _variable_damping_linvel_thresholds(i - 1),
-				_variable_damping_linvel_thresholds(i));
-			return interpolation_coeff * _variable_damping_gains_pos(i) +
-				   (1 - interpolation_coeff) *
-					   _variable_damping_gains_pos(i - 1);
+	HapticControllerOutput HapticDeviceController::computeForceMotionControl(
+		const HapticControllerInput &input)
+	{
+		HapticControllerOutput output;
+		output.robot_goal_position = _latest_output.robot_goal_position;
+		output.robot_goal_orientation = _latest_output.robot_goal_orientation;
+
+		// compute force from stiffness/damping field
+		Vector3d device_force =
+			-_kp_haptic_pos *
+				(input.device_position - _device_home_pose.translation()) -
+			_kv_haptic_pos * input.device_linear_velocity;
+
+		// compute robot goal position
+		Vector3d projected_device_force = device_force;
+		if (_plane_guidance_enabled)
+		{
+			projected_device_force =
+				device_force -
+				projectAlongDirection(device_force, _plane_normal_direction);
+		}
+		else if (_line_guidance_enabled)
+		{
+			projected_device_force =
+				projectAlongDirection(device_force, _line_direction);
+		}
+
+		if (projected_device_force.norm() < _force_deadband)
+		{
+			projected_device_force.setZero();
+		}
+		else
+		{
+			projected_device_force -=
+				_force_deadband * projected_device_force.normalized();
+		}
+
+		Vector3d robot_goal_position_increment =
+			_device_force_to_robot_delta_position * _R_world_device *
+			projected_device_force;
+		output.robot_goal_position -= robot_goal_position_increment;
+
+		applyLineGuidanceForce(device_force, input, true);
+		applyPlaneGuidanceForce(device_force, input, true);
+
+		output.device_command_force = device_force;
+
+		// orientation control
+		// moments from stiffness/damping field
+		AngleAxisd home_to_current_orientation = orientationDiffAngleAxis(
+			_device_home_pose.rotation(), input.device_orientation);
+		Vector3d device_moment =
+			-_kp_haptic_ori * angleAxisToVector(home_to_current_orientation) -
+			_kv_haptic_ori * input.device_angular_velocity;
+
+		output.device_command_moment = device_moment;
+
+		if (_orientation_teleop_enabled)
+		{
+			Vector3d device_moment_after_deadband = device_moment;
+			if (device_moment_after_deadband.norm() < _moment_deadband)
+			{
+				device_moment_after_deadband.setZero();
+			}
+			else
+			{
+				device_moment_after_deadband -=
+					_moment_deadband * device_moment_after_deadband.normalized();
+			}
+			// compute robot goal orientation
+			Matrix3d robot_goal_orientation_increment = Matrix3d::Identity();
+			if (device_moment_after_deadband.norm() > 1e-3)
+			{
+				robot_goal_orientation_increment =
+					AngleAxisd(
+						-_device_moment_to_robot_delta_orientation *
+							device_moment_after_deadband.norm(),
+						_R_world_device * device_moment_after_deadband.normalized())
+						.toRotationMatrix();
+			}
+			output.robot_goal_orientation =
+				robot_goal_orientation_increment * output.robot_goal_orientation;
+		}
+
+		return output;
+	}
+
+	void HapticDeviceController::applyPlaneGuidanceForce(
+		Vector3d &force_to_update, const HapticControllerInput &input,
+		const bool use_device_home_as_origin)
+	{
+		if (!_plane_guidance_enabled)
+		{
+			return;
+		}
+
+		Vector3d reference_point = use_device_home_as_origin
+									   ? _device_home_pose.translation()
+									   : _plane_origin_point;
+
+		// apply a spring damper system to bring the haptic device to the origin
+		// point, and only keep the component along the plane normal
+		Vector3d guidance_force_3d =
+			-_kp_guidance_pos * (input.device_position - reference_point) -
+			_kv_guidance_pos * input.device_linear_velocity;
+		Vector3d guidance_force_1d =
+			projectAlongDirection(guidance_force_3d, _plane_normal_direction);
+
+		// only keep the component of the non guidance haptic force inside the plane
+		force_to_update =
+			force_to_update -
+			projectAlongDirection(force_to_update, _plane_normal_direction) +
+			guidance_force_1d;
+	}
+
+	void HapticDeviceController::applyLineGuidanceForce(
+		Vector3d &force_to_update, const HapticControllerInput &input,
+		const bool use_device_home_as_origin)
+	{
+		if (!_line_guidance_enabled)
+		{
+			return;
+		}
+
+		Vector3d reference_point = use_device_home_as_origin
+									   ? _device_home_pose.translation()
+									   : _line_origin_point;
+
+		// apply a spring damper system to bring the haptic device to the origin
+		// point, and remove the component along the line
+		Vector3d guidance_force_3d =
+			-_kp_guidance_pos * (input.device_position - reference_point) -
+			_kv_guidance_pos * input.device_linear_velocity;
+		Vector3d guidance_force_2d =
+			guidance_force_3d -
+			projectAlongDirection(guidance_force_3d, _line_direction);
+
+		// only keep the component of the non guidance haptic force along the line
+		force_to_update = projectAlongDirection(force_to_update, _line_direction) +
+						  guidance_force_2d;
+	}
+
+	void HapticDeviceController::applyWorkspaceVirtualLimitsForceMoment(
+		const HapticControllerInput &input, HapticControllerOutput &output)
+	{
+		if (!_device_workspace_virtual_limits_enabled)
+		{
+			return;
+		}
+
+		// Add virtual forces according to the device virtual workspace limits
+		Vector3d torque_virtual = Vector3d::Zero();
+
+		Vector3d device_home_to_current_position =
+			input.device_position - _device_home_pose.translation();
+		if (device_home_to_current_position.norm() >=
+			_device_workspace_radius_limit)
+		{
+			// add force to bring the device back inside the workspace
+			output.device_command_force +=
+				-_kp_guidance_pos *
+					(device_home_to_current_position.norm() -
+					 _device_workspace_radius_limit) *
+					device_home_to_current_position /
+					device_home_to_current_position.norm() -
+				_kv_guidance_pos *
+					projectAlongDirection(input.device_linear_velocity,
+										  device_home_to_current_position);
+		}
+
+		AngleAxisd device_home_to_current_orientation_aa = orientationDiffAngleAxis(
+			_device_home_pose.rotation(), input.device_orientation);
+		if (device_home_to_current_orientation_aa.angle() >=
+			// add moment to bring the device back inside the workspace
+			_device_workspace_angle_limit)
+		{
+			output.device_command_moment +=
+				-_kp_guidance_ori *
+					(device_home_to_current_orientation_aa.angle() -
+					 _device_workspace_angle_limit) *
+					device_home_to_current_orientation_aa.axis() -
+				_kv_guidance_ori *
+					projectAlongDirection(
+						input.device_angular_velocity,
+						device_home_to_current_orientation_aa.axis());
 		}
 	}
-	return _variable_damping_gains_pos.tail(1)(0);
-}
 
-double HapticDeviceController::computeKvOriVariableDamping(
-	const double device_velocity) const {
-	if (_variable_damping_angvel_thresholds.size() == 0) {
-		return 0;
-	}
-
-	if (device_velocity < _variable_damping_angvel_thresholds(0)) {
-		double interpolation_coeff = computeInterpolationCoeff(
-			device_velocity, 0, _variable_damping_angvel_thresholds(0));
-		return interpolation_coeff * _variable_damping_gains_ori(0);
-	}
-
-	for (int i = 1; i < _variable_damping_angvel_thresholds.size(); ++i) {
-		if (device_velocity < _variable_damping_angvel_thresholds(i)) {
-			double interpolation_coeff = computeInterpolationCoeff(
-				device_velocity, _variable_damping_angvel_thresholds(i - 1),
-				_variable_damping_angvel_thresholds(i));
-			return interpolation_coeff * _variable_damping_gains_ori(i) +
-				   (1 - interpolation_coeff) *
-					   _variable_damping_gains_ori(i - 1);
+	double HapticDeviceController::computeKvPosVariableDamping(
+		const double device_velocity) const
+	{
+		if (_variable_damping_linvel_thresholds.size() == 0)
+		{
+			return 0;
 		}
-	}
-	return _variable_damping_gains_ori.tail(1)(0);
-}
 
-///////////////////////////////////////////////////////////////////////////////////
-// Parameter setting methods
-///////////////////////////////////////////////////////////////////////////////////
+		if (device_velocity < _variable_damping_linvel_thresholds(0))
+		{
+			double interpolation_coeff = computeInterpolationCoeff(
+				device_velocity, 0, _variable_damping_linvel_thresholds(0));
+			return interpolation_coeff * _variable_damping_gains_pos(0);
+		}
 
-void HapticDeviceController::setHapticControlType(
-	const HapticControlType& haptic_control_type) {
-	if (haptic_control_type == _haptic_control_type) {
-		return;
-	}
-	_device_homed = false;
-	_reset_robot_linear_offset = true;
-	_reset_robot_angular_offset = true;
-	if (haptic_control_type == HapticControlType::FORCE_MOTION &&
-		_haptic_control_type != HapticControlType::HOMING) {
-		cout << "warning: force motion control can only be set from homing "
-				"control. Setting homing control"
-			 << endl;
-		_haptic_control_type = HapticControlType::HOMING;
-		return;
-	}
-	_haptic_control_type = haptic_control_type;
-}
-
-void HapticDeviceController::enableOrientationTeleop() {
-	_orientation_teleop_enabled = true;
-	_reset_robot_angular_offset = true;
-}
-
-void HapticDeviceController::parametrizeProxyForceFeedbackSpace(
-	const int proxy_feedback_space_dimension,
-	const Vector3d& proxy_or_direct_feedback_axis) {
-	if (proxy_feedback_space_dimension < 0 ||
-		proxy_feedback_space_dimension > 3) {
-		throw std::runtime_error(
-			"Proxy feedback space dimension must be between 0 and 3 in "
-			"HapticDeviceController::parametrizeProxyForceFeedbackSpace");
+		for (int i = 1; i < _variable_damping_linvel_thresholds.size(); ++i)
+		{
+			if (device_velocity < _variable_damping_linvel_thresholds(i))
+			{
+				double interpolation_coeff = computeInterpolationCoeff(
+					device_velocity, _variable_damping_linvel_thresholds(i - 1),
+					_variable_damping_linvel_thresholds(i));
+				return interpolation_coeff * _variable_damping_gains_pos(i) +
+					   (1 - interpolation_coeff) *
+						   _variable_damping_gains_pos(i - 1);
+			}
+		}
+		return _variable_damping_gains_pos.tail(1)(0);
 	}
 
-	Vector3d normalized_axis = proxy_or_direct_feedback_axis;
-	if (proxy_feedback_space_dimension == 1 ||
-		proxy_feedback_space_dimension == 2) {
-		if (proxy_or_direct_feedback_axis.norm() < 0.001) {
+	double HapticDeviceController::computeKvOriVariableDamping(
+		const double device_velocity) const
+	{
+		if (_variable_damping_angvel_thresholds.size() == 0)
+		{
+			return 0;
+		}
+
+		if (device_velocity < _variable_damping_angvel_thresholds(0))
+		{
+			double interpolation_coeff = computeInterpolationCoeff(
+				device_velocity, 0, _variable_damping_angvel_thresholds(0));
+			return interpolation_coeff * _variable_damping_gains_ori(0);
+		}
+
+		for (int i = 1; i < _variable_damping_angvel_thresholds.size(); ++i)
+		{
+			if (device_velocity < _variable_damping_angvel_thresholds(i))
+			{
+				double interpolation_coeff = computeInterpolationCoeff(
+					device_velocity, _variable_damping_angvel_thresholds(i - 1),
+					_variable_damping_angvel_thresholds(i));
+				return interpolation_coeff * _variable_damping_gains_ori(i) +
+					   (1 - interpolation_coeff) *
+						   _variable_damping_gains_ori(i - 1);
+			}
+		}
+		return _variable_damping_gains_ori.tail(1)(0);
+	}
+
+	///////////////////////////////////////////////////////////////////////////////////
+	// Parameter setting methods
+	///////////////////////////////////////////////////////////////////////////////////
+
+	void HapticDeviceController::setHapticControlType(
+		const HapticControlType &haptic_control_type)
+	{
+		if (haptic_control_type == _haptic_control_type)
+		{
+			return;
+		}
+		_device_homed = false;
+		_reset_robot_linear_offset = true;
+		_reset_robot_angular_offset = true;
+		if (haptic_control_type == HapticControlType::FORCE_MOTION &&
+			_haptic_control_type != HapticControlType::HOMING)
+		{
+			cout << "warning: force motion control can only be set from homing "
+					"control. Setting homing control"
+				 << endl;
+			_haptic_control_type = HapticControlType::HOMING;
+			return;
+		}
+		_haptic_control_type = haptic_control_type;
+	}
+
+	void HapticDeviceController::enableOrientationTeleop()
+	{
+		_orientation_teleop_enabled = true;
+		_reset_robot_angular_offset = true;
+	}
+
+	void HapticDeviceController::parametrizeProxyForceFeedbackSpace(
+		const int proxy_feedback_space_dimension,
+		const Vector3d &proxy_or_direct_feedback_axis)
+	{
+		if (proxy_feedback_space_dimension < 0 ||
+			proxy_feedback_space_dimension > 3)
+		{
 			throw std::runtime_error(
-				"Proxy or direct feedback axis must be non-zero in "
-				"HapticDeviceController::parametrizeProxyForceFeedbackSpace if "
-				"the dimension of the space is 1 or 2");
+				"Proxy feedback space dimension must be between 0 and 3 in "
+				"HapticDeviceController::parametrizeProxyForceFeedbackSpace");
 		}
-		normalized_axis = proxy_or_direct_feedback_axis /
-						  proxy_or_direct_feedback_axis.norm();
-	}
 
-	switch (proxy_feedback_space_dimension) {
+		Vector3d normalized_axis = proxy_or_direct_feedback_axis;
+		if (proxy_feedback_space_dimension == 1 ||
+			proxy_feedback_space_dimension == 2)
+		{
+			if (proxy_or_direct_feedback_axis.norm() < 0.001)
+			{
+				throw std::runtime_error(
+					"Proxy or direct feedback axis must be non-zero in "
+					"HapticDeviceController::parametrizeProxyForceFeedbackSpace if "
+					"the dimension of the space is 1 or 2");
+			}
+			normalized_axis = proxy_or_direct_feedback_axis /
+							  proxy_or_direct_feedback_axis.norm();
+		}
+
+		switch (proxy_feedback_space_dimension)
+		{
 		case 0:
 			_sigma_proxy_force_feedback.setZero();
 			break;
@@ -736,52 +946,60 @@ void HapticDeviceController::parametrizeProxyForceFeedbackSpace(
 		case 3:
 			_sigma_proxy_force_feedback = Matrix3d::Identity();
 			break;
-	}
-}
-
-void HapticDeviceController::
-	parametrizeProxyForceFeedbackSpaceFromRobotForceSpace(
-		const Matrix3d& robot_sigma_force) {
-	if (!robot_sigma_force.isApprox(robot_sigma_force.transpose())) {
-		throw std::runtime_error(
-			"Robot sigma force matrix must be symmetric in "
-			"HapticDeviceController::"
-			"parametrizeProxyForceFeedbackSpaceFromRobotForceSpace");
-	}
-	if (!robot_sigma_force.isApprox(robot_sigma_force * robot_sigma_force)) {
-		throw std::runtime_error(
-			"Robot sigma force matrix must be a projection matrix in "
-			"HapticDeviceController::"
-			"parametrizeProxyForceFeedbackSpaceFromRobotForceSpace");
-	}
-	_sigma_proxy_force_feedback =
-		_R_world_device.transpose() * robot_sigma_force * _R_world_device;
-}
-
-void HapticDeviceController::parametrizeProxyMomentFeedbackSpace(
-	const int proxy_feedback_space_dimension,
-	const Vector3d& proxy_or_direct_feedback_axis) {
-	if (proxy_feedback_space_dimension < 0 ||
-		proxy_feedback_space_dimension > 3) {
-		throw std::runtime_error(
-			"Proxy feedback space dimension must be between 0 and 3 in "
-			"HapticDeviceController::parametrizeProxyMomentFeedbackSpace");
-	}
-
-	Vector3d normalized_axis = proxy_or_direct_feedback_axis;
-	if (proxy_feedback_space_dimension == 1 ||
-		proxy_feedback_space_dimension == 2) {
-		if (proxy_or_direct_feedback_axis.norm() < 0.001) {
-			throw std::runtime_error(
-				"Proxy or direct feedback axis must be non-zero in "
-				"HapticDeviceController::parametrizeProxyMomentFeedbackSpace "
-				"if the dimension of the space is 1 or 2");
 		}
-		normalized_axis = proxy_or_direct_feedback_axis /
-						  proxy_or_direct_feedback_axis.norm();
 	}
 
-	switch (proxy_feedback_space_dimension) {
+	void HapticDeviceController::
+		parametrizeProxyForceFeedbackSpaceFromRobotForceSpace(
+			const Matrix3d &robot_sigma_force)
+	{
+		if (!robot_sigma_force.isApprox(robot_sigma_force.transpose()))
+		{
+			throw std::runtime_error(
+				"Robot sigma force matrix must be symmetric in "
+				"HapticDeviceController::"
+				"parametrizeProxyForceFeedbackSpaceFromRobotForceSpace");
+		}
+		if (!robot_sigma_force.isApprox(robot_sigma_force * robot_sigma_force))
+		{
+			throw std::runtime_error(
+				"Robot sigma force matrix must be a projection matrix in "
+				"HapticDeviceController::"
+				"parametrizeProxyForceFeedbackSpaceFromRobotForceSpace");
+		}
+		_sigma_proxy_force_feedback =
+			_R_world_device.transpose() * robot_sigma_force * _R_world_device;
+	}
+
+	void HapticDeviceController::parametrizeProxyMomentFeedbackSpace(
+		const int proxy_feedback_space_dimension,
+		const Vector3d &proxy_or_direct_feedback_axis)
+	{
+		if (proxy_feedback_space_dimension < 0 ||
+			proxy_feedback_space_dimension > 3)
+		{
+			throw std::runtime_error(
+				"Proxy feedback space dimension must be between 0 and 3 in "
+				"HapticDeviceController::parametrizeProxyMomentFeedbackSpace");
+		}
+
+		Vector3d normalized_axis = proxy_or_direct_feedback_axis;
+		if (proxy_feedback_space_dimension == 1 ||
+			proxy_feedback_space_dimension == 2)
+		{
+			if (proxy_or_direct_feedback_axis.norm() < 0.001)
+			{
+				throw std::runtime_error(
+					"Proxy or direct feedback axis must be non-zero in "
+					"HapticDeviceController::parametrizeProxyMomentFeedbackSpace "
+					"if the dimension of the space is 1 or 2");
+			}
+			normalized_axis = proxy_or_direct_feedback_axis /
+							  proxy_or_direct_feedback_axis.norm();
+		}
+
+		switch (proxy_feedback_space_dimension)
+		{
 		case 0:
 			_sigma_proxy_moment_feedback.setZero();
 			break;
@@ -797,411 +1015,473 @@ void HapticDeviceController::parametrizeProxyMomentFeedbackSpace(
 		case 3:
 			_sigma_proxy_moment_feedback = Matrix3d::Identity();
 			break;
-	}
-}
-
-void HapticDeviceController::
-	parametrizeProxyMomentFeedbackSpaceFromRobotForceSpace(
-		const Matrix3d& robot_sigma_moment) {
-	if (!robot_sigma_moment.isApprox(robot_sigma_moment.transpose())) {
-		throw std::runtime_error(
-			"Robot sigma moment matrix must be symmetric in "
-			"HapticDeviceController::"
-			"parametrizeProxyMomentFeedbackSpaceFromRobotForceSpace");
-	}
-	if (!robot_sigma_moment.isApprox(robot_sigma_moment * robot_sigma_moment)) {
-		throw std::runtime_error(
-			"Robot sigma moment matrix must be a projection matrix in "
-			"HapticDeviceController::"
-			"parametrizeProxyMomentFeedbackSpaceFromRobotForceSpace");
-	}
-	_sigma_proxy_moment_feedback =
-		_R_world_device.transpose() * robot_sigma_moment * _R_world_device;
-}
-
-void HapticDeviceController::setScalingFactors(
-	const double scaling_factor_pos, const double scaling_factor_ori) {
-	if (scaling_factor_pos <= 0 || scaling_factor_ori <= 0) {
-		throw std::runtime_error(
-			"Scaling factors must be positive in "
-			"HapticDeviceController::setScalingFactors");
-	}
-	_scaling_factor_pos = scaling_factor_pos;
-	_scaling_factor_ori = scaling_factor_ori;
-}
-
-void HapticDeviceController::setReductionFactorForce(
-	const double reduction_factor_force) {
-	if (reduction_factor_force < 0 || reduction_factor_force > 1) {
-		throw std::runtime_error(
-			"Reduction factors must be between 0 and 1 in "
-			"HapticDeviceController::setReductionFactorForceMoment");
-	}
-	_reduction_factor_force = reduction_factor_force;
-}
-
-void HapticDeviceController::setReductionFactorMoment(
-	const double reduction_factor_moment) {
-	if (reduction_factor_moment < 0 || reduction_factor_moment > 1) {
-		throw std::runtime_error(
-			"Reduction factors must be between 0 and 1 in "
-			"HapticDeviceController::setReductionFactorForceMoment");
-	}
-	_reduction_factor_moment = reduction_factor_moment;
-}
-
-void HapticDeviceController::setDeviceControlGains(const double kp_pos,
-												   const double kv_pos) {
-	if (kp_pos < 0 || kv_pos < 0) {
-		throw std::runtime_error(
-			"Device control gains must be positive in "
-			"HapticDeviceController::setDeviceControlGains");
-	}
-	_kp_haptic_pos = kp_pos;
-	_kv_haptic_pos = kv_pos;
-
-	if (_kp_haptic_pos > _device_limits.max_linear_stiffness) {
-		cout << "Warning: kp_pos is higher than the device max linear "
-				"stiffness. "
-				"Saturating to the device max linear stiffness."
-			 << endl;
-		_kp_haptic_pos = _device_limits.max_linear_stiffness;
-	}
-	if (_kv_haptic_pos > _device_limits.max_linear_damping) {
-		cout << "Warning: kv_pos is higher than the device max linear damping. "
-				"Saturating to the device max linear damping."
-			 << endl;
-		_kv_haptic_pos = _device_limits.max_linear_damping;
-	}
-}
-
-void HapticDeviceController::setDeviceControlGains(const double kp_pos,
-												   const double kv_pos,
-												   const double kp_ori,
-												   const double kv_ori) {
-	if (kp_pos < 0 || kv_pos < 0 || kp_ori < 0 || kv_ori < 0) {
-		throw std::runtime_error(
-			"Device control gains must be positive in "
-			"HapticDeviceController::setDeviceControlGains");
-	}
-	_kp_haptic_pos = kp_pos;
-	_kv_haptic_pos = kv_pos;
-	_kp_haptic_ori = kp_ori;
-	_kv_haptic_ori = kv_ori;
-	if (_kp_haptic_pos > _device_limits.max_linear_stiffness) {
-		cout << "Warning: kp_pos is higher than the device max linear "
-				"stiffness. "
-				"Saturating to the device max linear stiffness."
-			 << endl;
-		_kp_haptic_pos = _device_limits.max_linear_stiffness;
-	}
-	if (_kv_haptic_pos > _device_limits.max_linear_damping) {
-		cout << "Warning: kv_pos is higher than the device max linear damping. "
-				"Saturating to the device max linear damping."
-			 << endl;
-		_kv_haptic_pos = _device_limits.max_linear_damping;
-	}
-	if (_kp_haptic_ori > _device_limits.max_angular_stiffness) {
-		cout << "Warning: kp_ori is higher than the device max angular "
-				"stiffness. "
-				"Saturating to the device max angular stiffness."
-			 << endl;
-		_kp_haptic_ori = _device_limits.max_angular_stiffness;
-	}
-	if (_kv_haptic_ori > _device_limits.max_angular_damping) {
-		cout
-			<< "Warning: kv_ori is higher than the device max angular damping. "
-			   "Saturating to the device max angular damping."
-			<< endl;
-		_kv_haptic_ori = _device_limits.max_angular_damping;
-	}
-}
-
-void HapticDeviceController::setHapticGuidanceGains(
-	const double kp_guidance_pos, const double kv_guidance_pos) {
-	if (kp_guidance_pos < 0 || kv_guidance_pos < 0) {
-		throw std::runtime_error(
-			"Guidance gains must be positive in "
-			"HapticDeviceController::setHapticGuidanceGains");
-	}
-	_kp_guidance_pos = kp_guidance_pos;
-	_kv_guidance_pos = kv_guidance_pos;
-	if (_kp_guidance_pos > _device_limits.max_linear_stiffness) {
-		cout << "Warning: kp_guidance_pos is higher than the device max linear "
-				"stiffness. "
-				"Saturating to the device max linear stiffness."
-			 << endl;
-		_kp_guidance_pos = _device_limits.max_linear_stiffness;
-	}
-	if (_kv_guidance_pos > _device_limits.max_linear_damping) {
-		cout << "Warning: kv_guidance_pos is higher than the device max linear "
-				"damping. "
-				"Saturating to the device max linear damping."
-			 << endl;
-		_kv_guidance_pos = _device_limits.max_linear_damping;
-	}
-}
-
-void HapticDeviceController::setHapticGuidanceGains(
-	const double kp_guidance_pos, const double kv_guidance_pos,
-	const double kp_guidance_ori, const double kv_guidance_ori) {
-	if (kp_guidance_pos < 0 || kv_guidance_pos < 0 || kp_guidance_ori < 0 ||
-		kv_guidance_ori < 0) {
-		throw std::runtime_error(
-			"Guidance gains must be positive in "
-			"HapticDeviceController::setHapticGuidanceGains");
-	}
-	_kp_guidance_pos = kp_guidance_pos;
-	_kv_guidance_pos = kv_guidance_pos;
-	_kp_guidance_ori = kp_guidance_ori;
-	_kv_guidance_ori = kv_guidance_ori;
-	if (_kp_guidance_pos > _device_limits.max_linear_stiffness) {
-		cout << "Warning: kp_guidance_pos is higher than the device max linear "
-				"stiffness. "
-				"Saturating to the device max linear stiffness."
-			 << endl;
-		_kp_guidance_pos = _device_limits.max_linear_stiffness;
-	}
-	if (_kv_guidance_pos > _device_limits.max_linear_damping) {
-		cout << "Warning: kv_guidance_pos is higher than the device max linear "
-				"damping. "
-				"Saturating to the device max linear damping."
-			 << endl;
-		_kv_guidance_pos = _device_limits.max_linear_damping;
-	}
-	if (_kp_guidance_ori > _device_limits.max_angular_stiffness) {
-		cout
-			<< "Warning: kp_guidance_ori is higher than the device max angular "
-			   "stiffness. "
-			   "Saturating to the device max angular stiffness."
-			<< endl;
-		_kp_guidance_ori = _device_limits.max_angular_stiffness;
-	}
-	if (_kv_guidance_ori > _device_limits.max_angular_damping) {
-		cout
-			<< "Warning: kv_guidance_ori is higher than the device max angular "
-			   "damping. "
-			   "Saturating to the device max angular damping."
-			<< endl;
-		_kv_guidance_ori = _device_limits.max_angular_damping;
-	}
-}
-
-void HapticDeviceController::enablePlaneGuidance(
-	const Vector3d plane_origin_point, const Vector3d plane_normal_direction) {
-	if (plane_normal_direction.norm() < 0.001) {
-		throw std::runtime_error(
-			"Plane normal direction must be non-zero in "
-			"HapticDeviceController::enablePlaneGuidance");
-	}
-	if (_line_guidance_enabled) {
-		cout << "Warning: plane guidance is enabled while line guidance is "
-				"already enabled. Disabling line guidance."
-			 << endl;
-		disableLineGuidance();
-	}
-	if (_device_workspace_virtual_limits_enabled &&
-		(plane_origin_point - _device_home_pose.translation()).norm() >
-			_device_workspace_radius_limit) {
-		cout << "Warning: plane guidance is enabled while the plane origin "
-				"point is outside the device virtual workspace limits. "
-				"Disabling "
-				"device virtual workspace limits."
-			 << endl;
-		disableHapticWorkspaceVirtualLimits();
-	}
-	_plane_guidance_enabled = true;
-	_plane_origin_point = plane_origin_point;
-	_plane_normal_direction =
-		plane_normal_direction / plane_normal_direction.norm();
-}
-
-void HapticDeviceController::enableLineGuidance(
-	const Vector3d line_origin_point, const Vector3d line_direction) {
-	if (line_direction.norm() < 0.001) {
-		throw std::runtime_error(
-			"Line direction must be non-zero in "
-			"HapticDeviceController::enablePlaneGuidance");
-	}
-	if (_plane_guidance_enabled) {
-		cout << "Warning: line guidance is enabled while plane guidance is "
-				"already enabled. Disabling plane guidance."
-			 << endl;
-		disablePlaneGuidance();
-	}
-	if (_device_workspace_virtual_limits_enabled &&
-		(line_origin_point - _device_home_pose.translation()).norm() >
-			_device_workspace_radius_limit) {
-		cout << "Warning: line guidance is enabled while the line origin "
-				"point is outside the device virtual workspace limits. "
-				"Disabling "
-				"device virtual workspace limits."
-			 << endl;
-		disableHapticWorkspaceVirtualLimits();
-	}
-	_line_guidance_enabled = true;
-	_line_origin_point = line_origin_point;
-	_line_direction = line_direction / line_direction.norm();
-}
-
-void HapticDeviceController::enableHapticWorkspaceVirtualLimits(
-	double device_workspace_radius_limit, double device_workspace_angle_limit) {
-	if (device_workspace_radius_limit < 0 || device_workspace_angle_limit < 0) {
-		throw std::runtime_error(
-			"Workspace virtual limits must be positive in "
-			"HapticDeviceController::setHapticWorkspaceVirtualLimits");
-	}
-	if (_plane_guidance_enabled &&
-		(_plane_origin_point - _device_home_pose.translation()).norm() >
-			device_workspace_radius_limit) {
-		cout << "Warning: virtual workspace limits are enabled enabled while "
-				"the plane guidance origin point is outside the device virtual "
-				"workspace limits. Disabling plane guidance."
-			 << endl;
-		disablePlaneGuidance();
-	}
-	if (_line_guidance_enabled &&
-		(_line_origin_point - _device_home_pose.translation()).norm() >
-			device_workspace_radius_limit) {
-		cout << "Warning: virtual workspace limits are enabled enabled while "
-				"the line guidance origin point is outside the device virtual "
-				"workspace limits. Disabling line guidance."
-			 << endl;
-		disableLineGuidance();
-	}
-	_device_workspace_virtual_limits_enabled = true;
-	_device_workspace_radius_limit = device_workspace_radius_limit;
-	_device_workspace_angle_limit = device_workspace_angle_limit;
-}
-
-void HapticDeviceController::setVariableDampingGainsPos(
-	const VectorXd& velocity_thresholds,
-	const VectorXd& variable_damping_gains) {
-	if (velocity_thresholds.size() != variable_damping_gains.size()) {
-		cout << "Warning: velocity thresholds and variable damping gains must "
-				"have the same size in "
-				"HapticDeviceController::setVariableDampingGainsPos. Ignoring "
-				"setting of the variable damping gains."
-			 << endl;
-	}
-	for (int i = 0; i < velocity_thresholds.size(); ++i) {
-		if (velocity_thresholds(i) < 0) {
-			cout << "Warning: velocity thresholds must be positive in "
-					"HapticDeviceController::setVariableDampingGainsPos. "
-					"Ignoring setting of the variable damping gains."
-				 << endl;
-			return;
-		}
-		if (variable_damping_gains(i) < 0) {
-			cout << "Warning: variable damping gains must be positive in "
-					"HapticDeviceController::setVariableDampingGainsPos. "
-					"Ignoring setting of the variable damping gains."
-				 << endl;
-			return;
-		}
-		if (variable_damping_gains(i) > _device_limits.max_linear_damping) {
-			cout << "Warning: variable damping gains must be lower than the "
-					"device max linear damping in "
-					"HapticDeviceController::setVariableDampingGainsPos. "
-					"Ignoring setting of the variable damping gains."
-				 << endl;
-			return;
-		}
-		if (i > 0 && velocity_thresholds(i) <= velocity_thresholds[i - 1]) {
-			cout << "Warning: velocity thresholds must be in strictly "
-					"increasing order in "
-					"HapticDeviceController::setVariableDampingGainsPos. "
-					"Ignoring setting of the variable damping gains."
-				 << endl;
-			return;
 		}
 	}
-	_variable_damping_linvel_thresholds = velocity_thresholds;
-	_variable_damping_gains_pos = variable_damping_gains;
-}
 
-void HapticDeviceController::setVariableDampingGainsOri(
-	const VectorXd& velocity_thresholds,
-	const VectorXd& variable_damping_gains) {
-	if (velocity_thresholds.size() != variable_damping_gains.size()) {
-		cout << "Warning: velocity thresholds and variable damping gains must "
-				"have the same size in "
-				"HapticDeviceController::setVariableDampingGainsOri. Ignoring "
-				"setting of the variable damping gains."
-			 << endl;
-	}
-	for (int i = 0; i < velocity_thresholds.size(); ++i) {
-		if (velocity_thresholds(i) < 0) {
-			cout << "Warning: velocity thresholds must be positive in "
-					"HapticDeviceController::setVariableDampingGainsOri. "
-					"Ignoring setting of the variable damping gains."
-				 << endl;
-			return;
+	void HapticDeviceController::
+		parametrizeProxyMomentFeedbackSpaceFromRobotForceSpace(
+			const Matrix3d &robot_sigma_moment)
+	{
+		if (!robot_sigma_moment.isApprox(robot_sigma_moment.transpose()))
+		{
+			throw std::runtime_error(
+				"Robot sigma moment matrix must be symmetric in "
+				"HapticDeviceController::"
+				"parametrizeProxyMomentFeedbackSpaceFromRobotForceSpace");
 		}
-		if (variable_damping_gains(i) < 0) {
-			cout << "Warning: variable damping gains must be positive in "
-					"HapticDeviceController::setVariableDampingGainsOri. "
-					"Ignoring setting of the variable damping gains."
-				 << endl;
-			return;
+		if (!robot_sigma_moment.isApprox(robot_sigma_moment * robot_sigma_moment))
+		{
+			throw std::runtime_error(
+				"Robot sigma moment matrix must be a projection matrix in "
+				"HapticDeviceController::"
+				"parametrizeProxyMomentFeedbackSpaceFromRobotForceSpace");
 		}
-		if (i > 0 && velocity_thresholds(i) <= velocity_thresholds[i - 1]) {
-			cout << "Warning: velocity thresholds must be in strictly "
-					"increasing order in "
-					"HapticDeviceController::setVariableDampingGainsOri. "
-					"Ignoring setting of the variable damping gains."
+		_sigma_proxy_moment_feedback =
+			_R_world_device.transpose() * robot_sigma_moment * _R_world_device;
+	}
+
+	void HapticDeviceController::setScalingFactors(
+		const double scaling_factor_pos, const double scaling_factor_ori)
+	{
+		if (scaling_factor_pos <= 0 || scaling_factor_ori <= 0)
+		{
+			throw std::runtime_error(
+				"Scaling factors must be positive in "
+				"HapticDeviceController::setScalingFactors");
+		}
+		_scaling_factor_pos = scaling_factor_pos;
+		_scaling_factor_ori = scaling_factor_ori;
+	}
+
+	void HapticDeviceController::setReductionFactorForce(
+		const double reduction_factor_force)
+	{
+		if (reduction_factor_force < 0 || reduction_factor_force > 1)
+		{
+			throw std::runtime_error(
+				"Reduction factors must be between 0 and 1 in "
+				"HapticDeviceController::setReductionFactorForceMoment");
+		}
+		_reduction_factor_force = reduction_factor_force;
+	}
+
+	void HapticDeviceController::setReductionFactorMoment(
+		const double reduction_factor_moment)
+	{
+		if (reduction_factor_moment < 0 || reduction_factor_moment > 1)
+		{
+			throw std::runtime_error(
+				"Reduction factors must be between 0 and 1 in "
+				"HapticDeviceController::setReductionFactorForceMoment");
+		}
+		_reduction_factor_moment = reduction_factor_moment;
+	}
+
+	void HapticDeviceController::setDeviceControlGains(const double kp_pos,
+													   const double kv_pos)
+	{
+		if (kp_pos < 0 || kv_pos < 0)
+		{
+			throw std::runtime_error(
+				"Device control gains must be positive in "
+				"HapticDeviceController::setDeviceControlGains");
+		}
+		_kp_haptic_pos = kp_pos;
+		_kv_haptic_pos = kv_pos;
+
+		if (_kp_haptic_pos > _device_limits.max_linear_stiffness)
+		{
+			cout << "Warning: kp_pos is higher than the device max linear "
+					"stiffness. "
+					"Saturating to the device max linear stiffness."
 				 << endl;
-			return;
+			_kp_haptic_pos = _device_limits.max_linear_stiffness;
+		}
+		if (_kv_haptic_pos > _device_limits.max_linear_damping)
+		{
+			cout << "Warning: kv_pos is higher than the device max linear damping. "
+					"Saturating to the device max linear damping."
+				 << endl;
+			_kv_haptic_pos = _device_limits.max_linear_damping;
 		}
 	}
-	_variable_damping_angvel_thresholds = velocity_thresholds;
-	_variable_damping_gains_ori = variable_damping_gains;
-}
 
-void HapticDeviceController::setAdmittanceFactors(
-	const double device_force_to_robot_delta_position,
-	const double device_moment_to_robot_delta_orientation) {
-	if (device_force_to_robot_delta_position < 0 ||
-		device_moment_to_robot_delta_orientation < 0) {
-		throw std::runtime_error(
-			"Admittance factors must be positive in "
-			"HapticDeviceController::setAdmittanceFactors");
+	void HapticDeviceController::setDeviceControlGains(const double kp_pos,
+													   const double kv_pos,
+													   const double kp_ori,
+													   const double kv_ori)
+	{
+		if (kp_pos < 0 || kv_pos < 0 || kp_ori < 0 || kv_ori < 0)
+		{
+			throw std::runtime_error(
+				"Device control gains must be positive in "
+				"HapticDeviceController::setDeviceControlGains");
+		}
+		_kp_haptic_pos = kp_pos;
+		_kv_haptic_pos = kv_pos;
+		_kp_haptic_ori = kp_ori;
+		_kv_haptic_ori = kv_ori;
+		if (_kp_haptic_pos > _device_limits.max_linear_stiffness)
+		{
+			cout << "Warning: kp_pos is higher than the device max linear "
+					"stiffness. "
+					"Saturating to the device max linear stiffness."
+				 << endl;
+			_kp_haptic_pos = _device_limits.max_linear_stiffness;
+		}
+		if (_kv_haptic_pos > _device_limits.max_linear_damping)
+		{
+			cout << "Warning: kv_pos is higher than the device max linear damping. "
+					"Saturating to the device max linear damping."
+				 << endl;
+			_kv_haptic_pos = _device_limits.max_linear_damping;
+		}
+		if (_kp_haptic_ori > _device_limits.max_angular_stiffness)
+		{
+			cout << "Warning: kp_ori is higher than the device max angular "
+					"stiffness. "
+					"Saturating to the device max angular stiffness."
+				 << endl;
+			_kp_haptic_ori = _device_limits.max_angular_stiffness;
+		}
+		if (_kv_haptic_ori > _device_limits.max_angular_damping)
+		{
+			cout
+				<< "Warning: kv_ori is higher than the device max angular damping. "
+				   "Saturating to the device max angular damping."
+				<< endl;
+			_kv_haptic_ori = _device_limits.max_angular_damping;
+		}
 	}
-	_device_force_to_robot_delta_position =
-		device_force_to_robot_delta_position;
-	_device_moment_to_robot_delta_orientation =
-		device_moment_to_robot_delta_orientation;
-}
 
-void HapticDeviceController::setHomingMaxVelocity(
-	const double homing_max_linvel, const double homing_max_angvel) {
-	if (homing_max_linvel <= 0 || homing_max_angvel <= 0) {
-		throw std::runtime_error(
-			"Homing max velocities must be strictly positive in "
-			"HapticDeviceController::setHomingMaxVelocity");
+	void HapticDeviceController::setHapticGuidanceGains(
+		const double kp_guidance_pos, const double kv_guidance_pos)
+	{
+		if (kp_guidance_pos < 0 || kv_guidance_pos < 0)
+		{
+			throw std::runtime_error(
+				"Guidance gains must be positive in "
+				"HapticDeviceController::setHapticGuidanceGains");
+		}
+		_kp_guidance_pos = kp_guidance_pos;
+		_kv_guidance_pos = kv_guidance_pos;
+		if (_kp_guidance_pos > _device_limits.max_linear_stiffness)
+		{
+			cout << "Warning: kp_guidance_pos is higher than the device max linear "
+					"stiffness. "
+					"Saturating to the device max linear stiffness."
+				 << endl;
+			_kp_guidance_pos = _device_limits.max_linear_stiffness;
+		}
+		if (_kv_guidance_pos > _device_limits.max_linear_damping)
+		{
+			cout << "Warning: kv_guidance_pos is higher than the device max linear "
+					"damping. "
+					"Saturating to the device max linear damping."
+				 << endl;
+			_kv_guidance_pos = _device_limits.max_linear_damping;
+		}
 	}
-	_homing_max_linvel = homing_max_linvel;
-	_homing_max_angvel = homing_max_angvel;
-}
 
-void HapticDeviceController::setForceDeadbandForceMotionController(
-	const double force_deadband) {
-	if (force_deadband < 0) {
-		throw std::runtime_error(
-			"Force deadband must be positive in "
-			"HapticDeviceController::setForceDeadbandForceMotionController");
+	void HapticDeviceController::setHapticGuidanceGains(
+		const double kp_guidance_pos, const double kv_guidance_pos,
+		const double kp_guidance_ori, const double kv_guidance_ori)
+	{
+		if (kp_guidance_pos < 0 || kv_guidance_pos < 0 || kp_guidance_ori < 0 ||
+			kv_guidance_ori < 0)
+		{
+			throw std::runtime_error(
+				"Guidance gains must be positive in "
+				"HapticDeviceController::setHapticGuidanceGains");
+		}
+		_kp_guidance_pos = kp_guidance_pos;
+		_kv_guidance_pos = kv_guidance_pos;
+		_kp_guidance_ori = kp_guidance_ori;
+		_kv_guidance_ori = kv_guidance_ori;
+		if (_kp_guidance_pos > _device_limits.max_linear_stiffness)
+		{
+			cout << "Warning: kp_guidance_pos is higher than the device max linear "
+					"stiffness. "
+					"Saturating to the device max linear stiffness."
+				 << endl;
+			_kp_guidance_pos = _device_limits.max_linear_stiffness;
+		}
+		if (_kv_guidance_pos > _device_limits.max_linear_damping)
+		{
+			cout << "Warning: kv_guidance_pos is higher than the device max linear "
+					"damping. "
+					"Saturating to the device max linear damping."
+				 << endl;
+			_kv_guidance_pos = _device_limits.max_linear_damping;
+		}
+		if (_kp_guidance_ori > _device_limits.max_angular_stiffness)
+		{
+			cout
+				<< "Warning: kp_guidance_ori is higher than the device max angular "
+				   "stiffness. "
+				   "Saturating to the device max angular stiffness."
+				<< endl;
+			_kp_guidance_ori = _device_limits.max_angular_stiffness;
+		}
+		if (_kv_guidance_ori > _device_limits.max_angular_damping)
+		{
+			cout
+				<< "Warning: kv_guidance_ori is higher than the device max angular "
+				   "damping. "
+				   "Saturating to the device max angular damping."
+				<< endl;
+			_kv_guidance_ori = _device_limits.max_angular_damping;
+		}
 	}
-	_force_deadband = force_deadband;
-}
 
-void HapticDeviceController::setMomentDeadbandForceMotionController(
-	const double moment_deadband) {
-	if (moment_deadband < 0) {
-		throw std::runtime_error(
-			"Moment deadband must be positive in "
-			"HapticDeviceController::setMomentDeadbandForceMotionController");
+	void HapticDeviceController::enablePlaneGuidance(
+		const Vector3d plane_origin_point, const Vector3d plane_normal_direction)
+	{
+		if (plane_normal_direction.norm() < 0.001)
+		{
+			throw std::runtime_error(
+				"Plane normal direction must be non-zero in "
+				"HapticDeviceController::enablePlaneGuidance");
+		}
+		if (_line_guidance_enabled)
+		{
+			cout << "Warning: plane guidance is enabled while line guidance is "
+					"already enabled. Disabling line guidance."
+				 << endl;
+			disableLineGuidance();
+		}
+		if (_device_workspace_virtual_limits_enabled &&
+			(plane_origin_point - _device_home_pose.translation()).norm() >
+				_device_workspace_radius_limit)
+		{
+			cout << "Warning: plane guidance is enabled while the plane origin "
+					"point is outside the device virtual workspace limits. "
+					"Disabling "
+					"device virtual workspace limits."
+				 << endl;
+			disableHapticWorkspaceVirtualLimits();
+		}
+		_plane_guidance_enabled = true;
+		_plane_origin_point = plane_origin_point;
+		_plane_normal_direction =
+			plane_normal_direction / plane_normal_direction.norm();
 	}
-	_moment_deadband = moment_deadband;
-}
+
+	void HapticDeviceController::enableLineGuidance(
+		const Vector3d line_origin_point, const Vector3d line_direction)
+	{
+		if (line_direction.norm() < 0.001)
+		{
+			throw std::runtime_error(
+				"Line direction must be non-zero in "
+				"HapticDeviceController::enablePlaneGuidance");
+		}
+		if (_plane_guidance_enabled)
+		{
+			cout << "Warning: line guidance is enabled while plane guidance is "
+					"already enabled. Disabling plane guidance."
+				 << endl;
+			disablePlaneGuidance();
+		}
+		if (_device_workspace_virtual_limits_enabled &&
+			(line_origin_point - _device_home_pose.translation()).norm() >
+				_device_workspace_radius_limit)
+		{
+			cout << "Warning: line guidance is enabled while the line origin "
+					"point is outside the device virtual workspace limits. "
+					"Disabling "
+					"device virtual workspace limits."
+				 << endl;
+			disableHapticWorkspaceVirtualLimits();
+		}
+		_line_guidance_enabled = true;
+		_line_origin_point = line_origin_point;
+		_line_direction = line_direction / line_direction.norm();
+	}
+
+	void HapticDeviceController::enableHapticWorkspaceVirtualLimits(
+		double device_workspace_radius_limit, double device_workspace_angle_limit)
+	{
+		if (device_workspace_radius_limit < 0 || device_workspace_angle_limit < 0)
+		{
+			throw std::runtime_error(
+				"Workspace virtual limits must be positive in "
+				"HapticDeviceController::setHapticWorkspaceVirtualLimits");
+		}
+		if (_plane_guidance_enabled &&
+			(_plane_origin_point - _device_home_pose.translation()).norm() >
+				device_workspace_radius_limit)
+		{
+			cout << "Warning: virtual workspace limits are enabled enabled while "
+					"the plane guidance origin point is outside the device virtual "
+					"workspace limits. Disabling plane guidance."
+				 << endl;
+			disablePlaneGuidance();
+		}
+		if (_line_guidance_enabled &&
+			(_line_origin_point - _device_home_pose.translation()).norm() >
+				device_workspace_radius_limit)
+		{
+			cout << "Warning: virtual workspace limits are enabled enabled while "
+					"the line guidance origin point is outside the device virtual "
+					"workspace limits. Disabling line guidance."
+				 << endl;
+			disableLineGuidance();
+		}
+		_device_workspace_virtual_limits_enabled = true;
+		_device_workspace_radius_limit = device_workspace_radius_limit;
+		_device_workspace_angle_limit = device_workspace_angle_limit;
+	}
+
+	void HapticDeviceController::setVariableDampingGainsPos(
+		const VectorXd &velocity_thresholds,
+		const VectorXd &variable_damping_gains)
+	{
+		if (velocity_thresholds.size() != variable_damping_gains.size())
+		{
+			cout << "Warning: velocity thresholds and variable damping gains must "
+					"have the same size in "
+					"HapticDeviceController::setVariableDampingGainsPos. Ignoring "
+					"setting of the variable damping gains."
+				 << endl;
+		}
+		for (int i = 0; i < velocity_thresholds.size(); ++i)
+		{
+			if (velocity_thresholds(i) < 0)
+			{
+				cout << "Warning: velocity thresholds must be positive in "
+						"HapticDeviceController::setVariableDampingGainsPos. "
+						"Ignoring setting of the variable damping gains."
+					 << endl;
+				return;
+			}
+			if (variable_damping_gains(i) < 0)
+			{
+				cout << "Warning: variable damping gains must be positive in "
+						"HapticDeviceController::setVariableDampingGainsPos. "
+						"Ignoring setting of the variable damping gains."
+					 << endl;
+				return;
+			}
+			if (variable_damping_gains(i) > _device_limits.max_linear_damping)
+			{
+				cout << "Warning: variable damping gains must be lower than the "
+						"device max linear damping in "
+						"HapticDeviceController::setVariableDampingGainsPos. "
+						"Ignoring setting of the variable damping gains."
+					 << endl;
+				return;
+			}
+			if (i > 0 && velocity_thresholds(i) <= velocity_thresholds[i - 1])
+			{
+				cout << "Warning: velocity thresholds must be in strictly "
+						"increasing order in "
+						"HapticDeviceController::setVariableDampingGainsPos. "
+						"Ignoring setting of the variable damping gains."
+					 << endl;
+				return;
+			}
+		}
+		_variable_damping_linvel_thresholds = velocity_thresholds;
+		_variable_damping_gains_pos = variable_damping_gains;
+	}
+
+	void HapticDeviceController::setVariableDampingGainsOri(
+		const VectorXd &velocity_thresholds,
+		const VectorXd &variable_damping_gains)
+	{
+		if (velocity_thresholds.size() != variable_damping_gains.size())
+		{
+			cout << "Warning: velocity thresholds and variable damping gains must "
+					"have the same size in "
+					"HapticDeviceController::setVariableDampingGainsOri. Ignoring "
+					"setting of the variable damping gains."
+				 << endl;
+		}
+		for (int i = 0; i < velocity_thresholds.size(); ++i)
+		{
+			if (velocity_thresholds(i) < 0)
+			{
+				cout << "Warning: velocity thresholds must be positive in "
+						"HapticDeviceController::setVariableDampingGainsOri. "
+						"Ignoring setting of the variable damping gains."
+					 << endl;
+				return;
+			}
+			if (variable_damping_gains(i) < 0)
+			{
+				cout << "Warning: variable damping gains must be positive in "
+						"HapticDeviceController::setVariableDampingGainsOri. "
+						"Ignoring setting of the variable damping gains."
+					 << endl;
+				return;
+			}
+			if (i > 0 && velocity_thresholds(i) <= velocity_thresholds[i - 1])
+			{
+				cout << "Warning: velocity thresholds must be in strictly "
+						"increasing order in "
+						"HapticDeviceController::setVariableDampingGainsOri. "
+						"Ignoring setting of the variable damping gains."
+					 << endl;
+				return;
+			}
+		}
+		_variable_damping_angvel_thresholds = velocity_thresholds;
+		_variable_damping_gains_ori = variable_damping_gains;
+	}
+
+	void HapticDeviceController::setAdmittanceFactors(
+		const double device_force_to_robot_delta_position,
+		const double device_moment_to_robot_delta_orientation)
+	{
+		if (device_force_to_robot_delta_position < 0 ||
+			device_moment_to_robot_delta_orientation < 0)
+		{
+			throw std::runtime_error(
+				"Admittance factors must be positive in "
+				"HapticDeviceController::setAdmittanceFactors");
+		}
+		_device_force_to_robot_delta_position =
+			device_force_to_robot_delta_position;
+		_device_moment_to_robot_delta_orientation =
+			device_moment_to_robot_delta_orientation;
+	}
+
+	void HapticDeviceController::setHomingMaxVelocity(
+		const double homing_max_linvel, const double homing_max_angvel)
+	{
+		if (homing_max_linvel <= 0 || homing_max_angvel <= 0)
+		{
+			throw std::runtime_error(
+				"Homing max velocities must be strictly positive in "
+				"HapticDeviceController::setHomingMaxVelocity");
+		}
+		_homing_max_linvel = homing_max_linvel;
+		_homing_max_angvel = homing_max_angvel;
+	}
+
+	void HapticDeviceController::setForceDeadbandForceMotionController(
+		const double force_deadband)
+	{
+		if (force_deadband < 0)
+		{
+			throw std::runtime_error(
+				"Force deadband must be positive in "
+				"HapticDeviceController::setForceDeadbandForceMotionController");
+		}
+		_force_deadband = force_deadband;
+	}
+
+	void HapticDeviceController::setMomentDeadbandForceMotionController(
+		const double moment_deadband)
+	{
+		if (moment_deadband < 0)
+		{
+			throw std::runtime_error(
+				"Moment deadband must be positive in "
+				"HapticDeviceController::setMomentDeadbandForceMotionController");
+		}
+		_moment_deadband = moment_deadband;
+	}
 
 } /* namespace SaiPrimitives */
