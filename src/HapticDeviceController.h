@@ -133,8 +133,7 @@ namespace SaiPrimitives
 		HapticDeviceController(
 			const DeviceLimits &device_limits, const Affine3d &robot_initial_pose,
 			const Affine3d &device_home_pose = Affine3d::Identity(),
-			const Matrix3d &device_base_rotation_in_world = Matrix3d::Identity(),
-			const Affine3d &T_reference_world = Affine3d::Identity());
+			const Matrix3d &device_base_rotation_in_world = Matrix3d::Identity());
 
 		~HapticDeviceController() = default;
 
@@ -330,15 +329,7 @@ namespace SaiPrimitives
 			return _R_world_device;
 		}
 
-		void setRotationWorldToDeviceBase(const Matrix3d &R_world_device)
-		{
-			_R_world_device = R_world_device;
-		}
-
-		void setTransformationReferenceToWorld(const Affine3d &T_reference_world)
-		{
-			_T_reference_world = T_reference_world;
-		}
+		void setRotationWorldToDeviceBase(const Matrix3d &rotation_world_to_device_base) { _R_world_device = rotation_world_to_device_base; }
 
 		void setHapticControlType(const HapticControlType &haptic_control_type);
 		const HapticControlType &getHapticControlType() const
@@ -355,15 +346,6 @@ namespace SaiPrimitives
 
 		bool getHomed() const { return _device_homed; }
 
-		Affine3d getDeviceHomePose() const { return _device_home_pose; }
-
-		Affine3d getRobotCenterPose() const { return _robot_center_pose; }
-
-		double getForceDeadband() const { return _force_deadband; }
-		double getMomentDeadband() const { return _moment_deadband; }
-
-		void setForceDeadband(const double force_deadband) { _force_deadband = force_deadband; }
-		void setMomentDeadband(const double moment_deadband) { _moment_deadband = moment_deadband; }
 		/**
 		 * @brief sets the space in which the force feedback is computed by the
 		 * proxy method instead of using direct force feedback (used in
@@ -680,9 +662,6 @@ namespace SaiPrimitives
 
 		// Rotation operator from robot world frame to device base frame
 		Matrix3d _R_world_device;
-
-		// Transformation operator from reference frame (control frame) to world frame
-		Affine3d _T_reference_world;
 
 		// Haptic device home pose in device base frame
 		Affine3d _device_home_pose;
