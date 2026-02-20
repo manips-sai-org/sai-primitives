@@ -96,6 +96,12 @@ void MotionForceTask::initialSetup() {
 	// POPC force
 	_POPC_force.reset(new POPCExplicitForceControl(getLoopTimestep()));
 
+	// enable zero-crossing reset
+	enableZeroForceCrossing();
+	enableZeroMomentCrossing();
+	enableZeroPositionCrossing();
+	enableZeroOrientationCrossing();
+
 	// motion
 	_current_position = getConstRobotModel()->positionInWorld(
 		_link_name, _compliant_frame.translation());
@@ -190,13 +196,33 @@ void MotionForceTask::initialSetup() {
 		disableInternalOtg();
 	}
 
+	// get joint dependency and rank of task
+	_joint_dependency = getConstRobotModel()->linkDependencyVector(_link_name);
+	int task_rank = (_pos_range + _ori_range < _joint_dependency.size()) ? 
+					(_pos_range + _ori_range) : _joint_dependency.size();
+
 	// singularity handler
-	_singularity_handler = std::make_unique<SingularityHandler>(
-		getConstRobotModel(), _link_name, _compliant_frame,
-		_pos_range + _ori_range);
-	setSingularityHandlingBounds(6e-3, 6e-2);
+	_singularity_handler = std::make_unique<SingularityHandler>(getConstRobotModel(),
+		      													_link_name,
+																_compliant_frame,
+																task_rank,
+															    _joint_dependency,
+															    getLoopTimestep(), 
+															    false);
+	enableSingularityHandling();
+	setSingularityHandlingBound(DefaultParameters::singularity_bound);
 	setDynamicDecouplingType(DefaultParameters::dynamic_decoupling_type);
-	setBoundedInertiaEstimateThreshold(DefaultParameters::bie_threshold);
+	setBoundedInertiaEstimateThreshold(DefaultParameters::bie_threshold, SingularityHandler::DefaultParameters::singular_bie_threshold);
+	
+	_singularity_pos_exit_tol = DefaultParameters::singularity_pos_exit_tol;
+	_singularity_ori_exit_tol = DefaultParameters::singularity_ori_exit_tol;
+	_singularity_linear_vel_exit_tol = DefaultParameters::singularity_linear_vel_exit_tol;
+	_singularity_angular_vel_exit_tol = DefaultParameters::singularity_angular_vel_exit_tol;
+	_prev_velocity_saturation = false;
+	_prev_is_in_singularity = false;
+	_handle_singularity_exit = false;
+	_singularity_ramp_angular_acceleration = DefaultParameters::singularity_ramp_angular_acceleration;
+	_singularity_ramp_linear_acceleration = DefaultParameters::singularity_ramp_linear_acceleration;
 
 	reInitializeTask();
 }
@@ -237,6 +263,8 @@ void MotionForceTask::reInitializeTask() {
 	_sensed_moment_sensor_frame.setZero();
 
 	resetIntegrators();
+	_prev_force_error.setZero();
+	_prev_moment_error.setZero();
 
 	_task_force.setZero(6);
 	_unit_mass_force.setZero(6);
@@ -325,6 +353,18 @@ VectorXd MotionForceTask::computeTorques() {
 
 	// force related terms
 	if (_closed_loop_force_control) {
+
+		Vector3d curr_force_error = _sensed_force_control_world_frame - _goal_force;
+
+		// handle zero-crossing reset
+		if (_zero_force_crossing_flag) {
+			if (_prev_force_error(0) * curr_force_error(0) < 0) _integrated_force_error(0) = 0;
+			if (_prev_force_error(1) * curr_force_error(1) < 0) _integrated_force_error(1) = 0;
+			if (_prev_force_error(2) * curr_force_error(2) < 0) _integrated_force_error(2) = 0;
+		}
+
+		_prev_force_error = curr_force_error;
+
 		// update the integrated error
 		_integrated_force_error +=
 			sigma_force * (_sensed_force_control_world_frame - goal_force) *
@@ -355,6 +395,18 @@ VectorXd MotionForceTask::computeTorques() {
 
 	// moment related terms
 	if (_closed_loop_moment_control) {
+
+		Vector3d curr_moment_error = _sensed_moment_control_world_frame - goal_moment;
+
+		// handle zero-crossing reset
+		if (_zero_moment_crossing_flag) {
+			if (_prev_moment_error(0) * curr_moment_error(0) < 0) _integrated_moment_error(0) = 0;
+			if (_prev_moment_error(1) * curr_moment_error(1) < 0) _integrated_moment_error(1) = 0;
+			if (_prev_moment_error(2) * curr_moment_error(2) < 0) _integrated_moment_error(2) = 0;
+		}
+
+		_prev_moment_error = curr_moment_error;
+
 		// update the integrated error
 		_integrated_moment_error +=
 			sigma_moment * (_sensed_moment_control_world_frame - goal_moment) *
@@ -380,6 +432,90 @@ VectorXd MotionForceTask::computeTorques() {
 	{
 		moment_feedback_related_force =
 			sigma_moment * (-_kv_moment * _current_angular_velocity);
+	}
+
+	// enable velocity saturation with ramping saturation velocity if exiting a singularity
+	_is_in_singularity = _singularity_handler->getSingularityStatus() && _handle_singularity;
+	
+	if (_singularity_handler->getSingularityTransitionStatus() && 
+			_handle_singularity && !_handle_singularity_exit) {
+
+		_handle_singularity_exit = true;
+
+		// enable velocity saturation if not enabled
+		// if current velocity is different original velocity saturation value, then ramp up or down based on acceleration rates 
+		if (!_use_velocity_saturation_flag) {
+
+			double max_linear_velocity = _current_linear_velocity.norm() * DefaultParameters::singularity_exit_velocity_scaling;
+			double max_angular_velocity = _current_angular_velocity.norm() * DefaultParameters::singularity_exit_velocity_scaling;
+			enableVelocitySaturation(DefaultParameters::linear_saturation_velocity, DefaultParameters::angular_saturation_velocity);  // set default parameters
+
+			// set saturation velocity to current velocity
+			_linear_saturation_velocity = max_linear_velocity;
+			_angular_saturation_velocity = max_angular_velocity;
+			
+			// store previous saturation setting
+			_prev_velocity_saturation = false;
+
+		} else {
+		
+			double max_linear_velocity = _current_linear_velocity.norm() * DefaultParameters::singularity_exit_velocity_scaling;
+			double max_angular_velocity = _current_angular_velocity.norm() * DefaultParameters::singularity_exit_velocity_scaling;
+
+			// set saturation velocity to current velocity
+			_prev_linear_saturation_velocity = _linear_saturation_velocity;
+			_prev_angular_saturation_velocity = _angular_saturation_velocity;
+			_linear_saturation_velocity = max_linear_velocity;
+			_angular_saturation_velocity = max_angular_velocity;
+
+			// store previous saturation setting
+			_prev_velocity_saturation = true;
+		}
+
+		_prev_is_in_singularity = _is_in_singularity;
+
+	} else if (_handle_singularity_exit) {
+
+		// handle exit from velocity saturation ramping
+		if (!_is_in_singularity) {
+			if (goalPositionReached(_singularity_pos_exit_tol) && goalOrientationReached(_singularity_ori_exit_tol)) {
+
+				double linear_vel_error = _current_linear_velocity.norm();
+				double angular_vel_error = _current_angular_velocity.norm();
+				if (!_prev_velocity_saturation) {
+					linear_vel_error = (_current_linear_velocity - _goal_linear_velocity).norm();
+					angular_vel_error = (_current_angular_velocity - _goal_angular_velocity).norm();
+				}
+
+				if (linear_vel_error < _singularity_linear_vel_exit_tol && 
+					angular_vel_error < _singularity_angular_vel_exit_tol) {
+
+					_handle_singularity_exit = false;
+
+					if (_prev_velocity_saturation) {
+						enableVelocitySaturation(_prev_linear_saturation_velocity, _prev_angular_saturation_velocity);
+					} else {
+						disableVelocitySaturation();
+					}
+				}
+
+			}
+		}
+			
+		// compute new saturation velocity from ramp rate
+		const double dt = getLoopTimestep();
+		{
+			double delta = _prev_linear_saturation_velocity - _linear_saturation_velocity;
+			double max_step = _singularity_ramp_linear_acceleration * dt;
+			_linear_saturation_velocity += std::clamp(delta, -max_step, max_step);
+		}
+
+		{
+			double delta = _prev_angular_saturation_velocity - _angular_saturation_velocity;
+			double max_step = _singularity_ramp_angular_acceleration * dt;
+			_angular_saturation_velocity += std::clamp(delta, -max_step, max_step);
+		}
+
 	}
 
 	// motion related terms

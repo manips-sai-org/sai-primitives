@@ -30,6 +30,9 @@ find_package(Eigen3 REQUIRED)
 # include sai-model
 find_package(SAI-MODEL REQUIRED)
 
+# yaml-cpp
+find_package(yaml-cpp REQUIRED)
+
 # include ruckig for OTG
 set(RUCKIG_LOCAL_DIR ${PROJECT_SOURCE_DIR}/ruckig)
 set(RUCKIG_INCLUDE_DIR ${RUCKIG_LOCAL_DIR}/include/)
@@ -38,6 +41,24 @@ find_library(
   PATHS ${RUCKIG_LOCAL_DIR}/build
   NO_DEFAULT_PATH)
 
+# include nlopt for singularity handler
+set(NLOPT_LOCAL_DIR ${PROJECT_SOURCE_DIR}/nlopt)
+set(NLOPT_INCLUDE_DIR ${OPENGJK_LOCAL_DIR}/include/nlopt)
+if(${CMAKE_SYSTEM_NAME} MATCHES Darwin)
+  set(NLOPT_LIBRARIES ${PROJECT_SOURCE_DIR}/nlopt/build/libnlopt.dylib)
+else()
+  set(NLOPT_LIBRARIES ${PROJECT_SOURCE_DIR}/nlopt/build/libnlopt.so)
+endif()
+
+# include openGJK for collision handler
+set(OPENGJK_LOCAL_DIR ${PROJECT_SOURCE_DIR}/openGJK)
+set(OPENGJK_INCLUDE_DIR ${OPENGJK_LOCAL_DIR}/include/openGJK)
+if(${CMAKE_SYSTEM_NAME} MATCHES Darwin)
+  set(OPENGJK_LIBRARIES ${PROJECT_SOURCE_DIR}/openGJK/build/libopengjk_ce.dylib)
+else()
+  set(OPENGJK_LIBRARIES ${PROJECT_SOURCE_DIR}/openGJK/build/libopengjk_ce.so)
+endif()
+
 # add tasks
 set(CONTROLLERS_SOURCE
     ${PROJECT_SOURCE_DIR}/src/RobotController.cpp
@@ -45,8 +66,10 @@ set(CONTROLLERS_SOURCE
     ${PROJECT_SOURCE_DIR}/src/tasks/JointTask.cpp
     ${PROJECT_SOURCE_DIR}/src/tasks/JointLimitAvoidanceTask.cpp
     ${PROJECT_SOURCE_DIR}/src/tasks/SingularityHandler.cpp
+    ${PROJECT_SOURCE_DIR}/src/tasks/ComMotionTask.cpp
     ${PROJECT_SOURCE_DIR}/src/HapticDeviceController.cpp
-    ${PROJECT_SOURCE_DIR}/src/POPCBilateralTeleoperation.cpp)
+    ${PROJECT_SOURCE_DIR}/src/POPCBilateralTeleoperation.cpp
+)
 
 # add helper modules
 set(HELPER_MODULES_SOURCE
@@ -58,20 +81,28 @@ set(HELPER_MODULES_SOURCE
 
 # add header files
 set(SAI-PRIMITIVES_INCLUDE_DIRS ${PROJECT_SOURCE_DIR}/src
-                                 ${RUCKIG_LOCAL_DIR}/include/)
+                                ${RUCKIG_LOCAL_DIR}/include/
+                                ${OPENGJK_LOCAL_DIR}/include/
+                                ${NLOPT_LOCAL_DIR}/include/
+                                  )
 
 # Add the include directory to the include paths
 include_directories(
 	${SAI-PRIMITIVES_INCLUDE_DIRS}
 	${EIGEN3_INCLUDE_DIR}
 	${SAI-MODEL_INCLUDE_DIRS}
-	${RUCKIG_INCLUDE_DIR})
+	${RUCKIG_INCLUDE_DIR}
+  ${OPENGJK_INCLUDE_DIR}
+  ${NLOPT_INCLUDE_DIR}
+  )
 
 # Create the library
 add_library(sai-primitives STATIC ${CONTROLLERS_SOURCE}
                                    ${HELPER_MODULES_SOURCE})
 
-set(SAI-PRIMITIVES_LIBRARIES sai-primitives ${RUCKIG_LIBRARIES})
+set(SAI-PRIMITIVES_LIBRARIES sai-primitives ${RUCKIG_LIBRARIES} 
+                                            ${OPENGJK_LIBRARIES} 
+                                            ${NLOPT_LIBRARIES})
 
 set(SAI-PRIMITIVES_DEFINITIONS ${PROJECT_DEFINITIONS})
 

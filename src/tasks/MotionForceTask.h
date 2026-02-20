@@ -72,6 +72,14 @@ public:
 		static constexpr bool internal_otg_jerk_limited = false;
 		static constexpr double otg_max_linear_jerk = 10.0;
 		static constexpr double otg_max_angular_jerk = 10.0 * M_PI;
+		static constexpr double singularity_pos_exit_tol = 2e-2;
+		static constexpr double singularity_ori_exit_tol = 10 * M_PI / 180;
+		static constexpr double singularity_linear_vel_exit_tol = 1e-3;
+		static constexpr double singularity_angular_vel_exit_tol = 1e-3;
+		static constexpr double singularity_exit_velocity_scaling = 1.0;
+		static constexpr double singularity_ramp_linear_acceleration = 0.2;
+		static constexpr double singularity_ramp_angular_acceleration = M_PI / 3;
+		static constexpr double singularity_bound = 5e-2;
 	};
 
 	//------------------------------------------------
@@ -441,6 +449,25 @@ public:
 		return _angular_saturation_velocity;
 	}
 
+	// Force-related functions
+	void enableForceDampingDecoupling() {
+		_singularity_handler->enableForceDampingDecoupling();
+	}
+	void disableForceDampingDecoupling() {
+		_singularity_handler->disableForceDampingDecoupling();
+	}
+
+	// Integrator-related functions
+    void enableZeroForceCrossing() { _zero_force_crossing_flag = true; }
+    void enableZeroMomentCrossing() { _zero_moment_crossing_flag = true; }
+    void disableZeroForceCrossing() { _zero_force_crossing_flag = false; }
+    void disableZeroMomentCrossing() { _zero_moment_crossing_flag = false; }
+
+	void enableZeroPositionCrossing() { _zero_position_crossing_flag = true; }
+    void enableZeroOrientationCrossing() { _zero_orientation_crossing_flag = true; }
+    void disableZeroPositionCrossing() { _zero_position_crossing_flag = false; }
+    void disableZeroOrientationCrossing() { _zero_orientation_crossing_flag = false; }
+
 	//------------------------------------------------
 	// Methods
 	//------------------------------------------------
@@ -521,6 +548,12 @@ public:
 	 */
 	bool goalOrientationReached(const double tolerance,
 								const bool verbose = false);
+
+	bool goalPoseReached(const double pos_tol, 
+						 const double ori_tol, 
+						 const bool verbose = false) {
+		return goalOrientationReached(pos_tol, verbose) && goalOrientationReached(ori_tol, verbose);
+	}
 
 	// -------- force control related methods --------
 
@@ -676,8 +709,12 @@ public:
 	 *
 	 * @param threshold threshold value
 	 */
-	void setBoundedInertiaEstimateThreshold(const double threshold) {
-		_singularity_handler->setBoundedInertiaEstimateThreshold(threshold);
+	void setBoundedInertiaEstimateThreshold(const double bie_threshold) {
+		_singularity_handler->setBoundedInertiaEstimateThreshold(bie_threshold);
+	}
+
+	void setBoundedInertiaEstimateThreshold(const double bie_threshold, const double sjs_threshold) {
+		_singularity_handler->setBoundedInertiaEstimateThreshold(bie_threshold, sjs_threshold);
 	}
 
 	/**
@@ -685,7 +722,7 @@ public:
 	 *
 	 * @return double threshold value
 	 */
-	double getBoundedInertiaEstimateThreshold() {
+	std::pair<double, double> getBoundedInertiaEstimateThreshold() {
 		return _singularity_handler->getBoundedInertiaEstimateThreshold();
 	}
 
@@ -695,17 +732,8 @@ public:
 	 *
 	 * @param flag true to enforce type 1 handling behavior
 	 */
-	void handleAllSingularitiesAsType1(const bool flag) {
-		_singularity_handler->handleAllSingularitiesAsType1(flag);
-	}
-
-	/**
-	 * @brief Set the desired posture for type 1 singularity handling
-	 *
-	 * @param q_des desired posture
-	 */
-	void setType1Posture(const VectorXd& q_des) {
-		_singularity_handler->setType1Posture(q_des);
+	void handleAllSingularitiesAsTypeOne(const bool flag) {
+		_singularity_handler->handleAllSingularitiesAsTypeOne(flag);
 	}
 
 	/**
@@ -713,6 +741,7 @@ public:
 	 *
 	 */
 	void enableSingularityHandling() {
+		_handle_singularity = true;
 		_singularity_handler->enableSingularityHandling();
 	}
 
@@ -721,37 +750,70 @@ public:
 	 *
 	 */
 	void disableSingularityHandling() {
+		_handle_singularity = false;
 		_singularity_handler->disableSingularityHandling();
 	}
 
 	/**
-	 * @brief Set the singularity bounds for torque blending based on the
-	 * inverse of the condition number The linear blending coefficient \alpha is
-	 * computed as \alpha = (s - _s_min) / (_s_max - _s_min), and is clamped
-	 * between 0 and 1.
+	 * @brief Set the singularity bound based on the eigenvalue of \Lambda^{-1}
 	 *
 	 * @param s_min lower bound
 	 * @param s_max upper bound
 	 */
-	void setSingularityHandlingBounds(const double& s_min,
-									  const double& s_max) {
-		_singularity_handler->setSingularityHandlingBounds(s_min, s_max);
+	void setSingularityHandlingBound(const double s_max) {
+		_singularity_handler->setSingularityHandlingBound(s_max);
 	}
 
 	/**
-	 * @brief Set the gains for the partial joint task for the singularity
+	 * @brief Set the gains for the singular joint space task for the singularity
 	 * strategy
 	 *
-	 * @param kp_type_1 position gain for type 1 strategy
 	 * @param kv_type_1 velocity damping gain for type 1 strategy
 	 * @param kv_type_2 velocity damping gain for type 2 strategy
 	 */
-	void setSingularityHandlingGains(const double& kp_type_1,
-									 const double& kv_type_1,
+	void setSingularityHandlingGains(const double& kv_type_1,
 									 const double& kv_type_2) {
-		_singularity_handler->setSingularityHandlingGains(kp_type_1, kv_type_1,
-														  kv_type_2);
+		_singularity_handler->setSingularityHandlingGains(kv_type_1, kv_type_2);
 	}
+
+	/**
+	 * @brief Return whether exiting a singularity region
+	 * 
+	 */
+	bool isExitingSingularity() {
+		return _singularity_handler->isExitingSingularity();
+	}
+
+	void setSingularityExitInterpolatorTol(const double pos_tol, const double ori_tol) {
+		_singularity_pos_exit_tol = pos_tol;
+		_singularity_ori_exit_tol = ori_tol;
+	}
+
+	void setSingularityVelExitInterpolatorTol(const double linear_vel_tol, const double angular_vel_tol) {
+		_singularity_linear_vel_exit_tol = linear_vel_tol;
+		_singularity_angular_vel_exit_tol = angular_vel_tol;
+	}
+
+	// // -------- override step computation ----------
+	// void enableManualStepPositionError() {
+	// 	_use_user_step_position_flag = true;
+	// }
+	// void disableManualStepPositionError() {
+	// 	_use_user_step_position_flag = false;
+	// }
+	// void setStepPositionError(const Vector3d& user_step_position_error) {
+	// 	_user_step_position_error = user_step_position_error;
+	// }
+
+	// void enableManualStepOrientationError() {
+	// 	_use_user_step_orientation_flag = true;
+	// }
+	// void disableManualStepOrientationError() {
+	// 	_use_user_step_orientation_flag = false;
+	// }
+	// void setStepOrientationError(const Vector3d& user_step_orientation_error) {
+	// 	_user_step_orientation_error = user_step_orientation_error;
+	// }
 
 private:
 	/**
@@ -885,7 +947,34 @@ private:
 	VectorXd _unit_mass_force;
 
 	// singularity handler
+	std::vector<int> _joint_dependency;
 	std::unique_ptr<SingularityHandler> _singularity_handler;
+	bool _handle_singularity;
+	bool _handle_singularity_exit;
+	bool _prev_velocity_saturation;
+	bool _prev_is_in_singularity;
+	bool _is_in_singularity;
+	double _prev_linear_saturation_velocity;
+	double _prev_angular_saturation_velocity;
+	double _singularity_pos_exit_tol;
+	double _singularity_ori_exit_tol;
+	double _singularity_linear_vel_exit_tol;
+	double _singularity_angular_vel_exit_tol;
+	double _singularity_ramp_linear_acceleration;
+	double _singularity_ramp_angular_acceleration;
+
+	// integrator zero crossing reset flags
+	Vector3d _prev_force_error;
+	Vector3d _prev_moment_error;
+	bool _zero_force_crossing_flag;
+    bool _zero_moment_crossing_flag;
+	bool _zero_position_crossing_flag;
+    bool _zero_orientation_crossing_flag;
+
+	// interpolation parameters
+	double _default_linear_saturation_velocity;
+	double _default_angular_saturation_velocity;
+
 };
 
 } /* namespace SaiPrimitives */
