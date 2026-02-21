@@ -143,7 +143,8 @@ void control(shared_ptr<SaiModel::SaiModel> robot,
 	// Full motion force task
 	auto motion_force_task = make_unique<SaiPrimitives::MotionForceTask>(
 		robot, link_name, compliant_frame);
-	motion_force_task->setSingularityHandlingGains(20, 20);
+	motion_force_task->setSingularityHandlingGains(15, 15);
+	motion_force_task->setBoundedInertiaEstimateThreshold(0, 0);
 
 	// // Partial motion force task
 	// vector<Vector3d> controlled_directions_translation = {

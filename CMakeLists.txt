@@ -43,7 +43,7 @@ find_library(
 
 # include nlopt for singularity handler
 set(NLOPT_LOCAL_DIR ${PROJECT_SOURCE_DIR}/nlopt)
-set(NLOPT_INCLUDE_DIR ${OPENGJK_LOCAL_DIR}/include/nlopt)
+set(NLOPT_INCLUDE_DIR ${NLOPT_LOCAL_DIR}/src/api)
 if(${CMAKE_SYSTEM_NAME} MATCHES Darwin)
   set(NLOPT_LIBRARIES ${PROJECT_SOURCE_DIR}/nlopt/build/libnlopt.dylib)
 else()

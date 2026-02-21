@@ -144,6 +144,7 @@ public:
 	const Matrix3d& getCurrentOrientation() const {
 		return _current_orientation;
 	}
+
 	/**
 	 * @brief Get the Current Angular Velocity
 	 *
@@ -151,6 +152,18 @@ public:
 	 */
 	const Vector3d& getCurrentAngularVelocity() const {
 		return _current_angular_velocity;
+	}
+
+	/**
+	 * @brief Get the current pose
+	 * 
+	 * @return Affine3d pose of control frame on robot
+	 */
+	Affine3d getCurrentPose() const {
+		Affine3d pose;
+		pose.linear() = _current_orientation;
+		pose.translation() = _current_position;
+		return pose;
 	}
 
 	/**
