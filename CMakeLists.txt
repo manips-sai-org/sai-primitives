@@ -30,9 +30,6 @@ find_package(Eigen3 REQUIRED)
 # include sai-model
 find_package(SAI-MODEL REQUIRED)
 
-# yaml-cpp
-find_package(yaml-cpp REQUIRED)
-
 # include ruckig for OTG
 set(RUCKIG_LOCAL_DIR ${PROJECT_SOURCE_DIR}/ruckig)
 set(RUCKIG_INCLUDE_DIR ${RUCKIG_LOCAL_DIR}/include/)
