@@ -65,6 +65,7 @@ set(CONTROLLERS_SOURCE
     ${PROJECT_SOURCE_DIR}/src/tasks/MotionForceTask.cpp
     ${PROJECT_SOURCE_DIR}/src/tasks/JointTask.cpp
     ${PROJECT_SOURCE_DIR}/src/tasks/JointLimitAvoidanceTask.cpp
+    ${PROJECT_SOURCE_DIR}/src/tasks/JointHandler.cpp
     ${PROJECT_SOURCE_DIR}/src/tasks/SingularityHandler.cpp
     ${PROJECT_SOURCE_DIR}/src/tasks/ComMotionTask.cpp
     ${PROJECT_SOURCE_DIR}/src/HapticDeviceController.cpp
@@ -83,8 +84,8 @@ set(HELPER_MODULES_SOURCE
 set(SAI-PRIMITIVES_INCLUDE_DIRS ${PROJECT_SOURCE_DIR}/src
                                 ${RUCKIG_LOCAL_DIR}/include/
                                 ${OPENGJK_LOCAL_DIR}/include/
-                                ${NLOPT_LOCAL_DIR}/include/
-                                  )
+                                ${NLOPT_LOCAL_DIR}/build/
+                                )
 
 # Add the include directory to the include paths
 include_directories(
