@@ -331,13 +331,13 @@ namespace SaiPrimitives
 
 		void setRotationWorldToDeviceBase(const Matrix3d &rotation_world_to_device_base) { _R_world_device = rotation_world_to_device_base; }
 
-		void setHapticControlType(const HapticControlType &haptic_control_type);
+		void setHapticControlType(const HapticControlType &haptic_control_type, const bool reset_offset = true);
 		const HapticControlType &getHapticControlType() const
 		{
 			return _haptic_control_type;
 		}
 
-		void enableOrientationTeleop();
+		void enableOrientationTeleop(const bool reset_offset = true);
 		void disableOrientationTeleop() { _orientation_teleop_enabled = false; }
 		bool getOrientationTeleopEnabled() const
 		{
@@ -345,6 +345,8 @@ namespace SaiPrimitives
 		}
 
 		bool getHomed() const { return _device_homed; }
+
+		void setDeviceHomePose(const Affine3d &device_home_pose) { _device_home_pose = device_home_pose; }
 
 		/**
 		 * @brief sets the space in which the force feedback is computed by the
