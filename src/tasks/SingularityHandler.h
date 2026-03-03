@@ -242,6 +242,15 @@ public:
         return _task_range_ns;
     }
 
+    // singular joint space containers
+    MatrixXd getSingularJointSpaceJacobian() {
+        return _posture_projected_jacobian;
+    }
+
+    MatrixXd getSingularJointSpaceLambda() {
+        return _Lambda_sjs;
+    }
+
     // singular containers
     MatrixXd getSingularJacobian() {
         return _projected_jacobian_s;
@@ -465,6 +474,7 @@ private:
     bool _type_1_retracting;
 
     // multi-singularity handling containers 
+    MatrixXd _Lambda_sjs;
     MatrixXd _N_sjs_init;
     int _num_singularities;
     int _prev_num_singularities;

@@ -74,8 +74,8 @@ public:
 		static constexpr double otg_max_angular_jerk = 10.0 * M_PI;
 		static constexpr double singularity_pos_exit_tol = 2e-2;
 		static constexpr double singularity_ori_exit_tol = 10 * M_PI / 180;
-		static constexpr double singularity_linear_vel_exit_tol = 1e-3;
-		static constexpr double singularity_angular_vel_exit_tol = 1e-3;
+		static constexpr double singularity_linear_vel_exit_tol = 1e-2;
+		static constexpr double singularity_angular_vel_exit_tol = 1e-2;
 		static constexpr double singularity_exit_velocity_scaling = 1.0;
 		static constexpr double singularity_ramp_linear_acceleration = 0.2;
 		static constexpr double singularity_ramp_angular_acceleration = M_PI / 3;
@@ -807,6 +807,24 @@ public:
 		_singularity_angular_vel_exit_tol = angular_vel_tol;
 	}
 
+	void setSingularityExitVelocity(const double linear_vel, const double angular_vel) {
+		_singularity_exit_linear_vel = linear_vel;
+		_singularity_exit_angular_vel = angular_vel;
+	}
+
+	void enableSingularityExitInterpolationVelocityCheck() {
+		_singularity_exit_vel_check = true;
+	}
+
+	void disableSingularityExitInterpolationVelocityCheck() {
+		_singularity_exit_vel_check = false;
+	}
+
+	// experimental access
+	SingularityHandler& getSingularityHandler() {
+		return *_singularity_handler;
+	}
+
 	// // -------- override step computation ----------
 	// void enableManualStepPositionError() {
 	// 	_use_user_step_position_flag = true;
@@ -964,17 +982,22 @@ private:
 	std::unique_ptr<SingularityHandler> _singularity_handler;
 	bool _handle_singularity;
 	bool _handle_singularity_exit;
+	bool _singularity_exit_vel_check;
 	bool _prev_velocity_saturation;
 	bool _prev_is_in_singularity;
 	bool _is_in_singularity;
 	double _prev_linear_saturation_velocity;
 	double _prev_angular_saturation_velocity;
+	double _goal_interpolation_linear_velocity;
+	double _goal_interpolation_angular_velocity;
 	double _singularity_pos_exit_tol;
 	double _singularity_ori_exit_tol;
 	double _singularity_linear_vel_exit_tol;
 	double _singularity_angular_vel_exit_tol;
 	double _singularity_ramp_linear_acceleration;
 	double _singularity_ramp_angular_acceleration;
+	double _singularity_exit_linear_vel;
+	double _singularity_exit_angular_vel;
 
 	// integrator zero crossing reset flags
 	Vector3d _prev_force_error;

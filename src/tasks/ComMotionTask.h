@@ -382,6 +382,16 @@ public:
 	VectorXd computeTorques() override;
 
 	/**
+	 * @brief Computes the joint torques associated with this control task, and
+	 * feedforward compensates the disturbances due to the previous tasks.
+	 *
+	 * @param tau_prec the control torques from the frevious tasks in the
+	 * hierarchy
+	 * @return Eigen::VectorXd the joint task torques
+	 */
+	VectorXd computeTorques(const Eigen::VectorXd& tau_prec) override;
+
+	/**
 	 * @brief      reinitializes the desired and goal states to the current robot
 	 *             configuration as well as the integrator terms
 	 */

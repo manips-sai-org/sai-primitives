@@ -516,6 +516,9 @@ SingularityHandler::SingularityHandler(
     }
 
     _nl_opt_data = std::make_unique<NloptData>(DefaultParameters::type_1_step_size_classification_towards_singularity);
+
+    // initialize posture jacobian
+    _posture_projected_jacobian = MatrixXd::Zero(1, _dof);
 }
 
 void SingularityHandler::updateTaskModel(MatrixXd& projected_jacobian, const MatrixXd& N_prec) {
@@ -699,6 +702,7 @@ void SingularityHandler::updateTaskModel(MatrixXd& projected_jacobian, const Mat
         _posture_projected_jacobian = _joint_task_range_s.transpose() * _N_ns * N_prec;
         SaiModel::OpSpaceMatrices op_space_matrices =
             _robot->operationalSpaceMatrices(_posture_projected_jacobian);
+        _Lambda_sjs = op_space_matrices.Lambda;
         _N = op_space_matrices.N * _N_ns;
         _N_sjs_init = _N_ns * N_prec;
     }
@@ -1246,8 +1250,10 @@ VectorXd SingularityHandler::computeTorques(const VectorXd& unit_mass_force, con
                 // Lambda_sjs_modified = Lambda_inv_BIE.inverse();
                 Lambda_sjs_modified = lltInverse(Lambda_inv_BIE);
             } 
-            singular_joint_task_torques -= 
-                (MatrixXd::Identity(_dof, _dof) - op_matrices.N).transpose() * (singular_joint_task_torques + _non_singular_task_torques);  // forward compensation 
+            VectorXd unit_disturbance_force = sjs_jacobian * _robot->MInv() * (singular_joint_task_torques + _non_singular_task_torques);
+            // singular_joint_task_torques -= 
+                // (MatrixXd::Identity(_dof, _dof) - op_matrices.N).transpose() * (singular_joint_task_torques + _non_singular_task_torques);  // forward compensation 
+            singular_joint_task_torques -= sjs_jacobian.transpose() * op_matrices.Lambda * unit_disturbance_force;
             singular_joint_task_torques += 
                 sjs_jacobian.transpose() * Lambda_sjs_modified * _active_singularities[ind].v.transpose() * unit_torques;
             N_prec = op_matrices.N * N_prec;

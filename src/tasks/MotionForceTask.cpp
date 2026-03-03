@@ -221,8 +221,11 @@ void MotionForceTask::initialSetup() {
 	_prev_velocity_saturation = false;
 	_prev_is_in_singularity = false;
 	_handle_singularity_exit = false;
+	_singularity_exit_vel_check = true;
 	_singularity_ramp_angular_acceleration = DefaultParameters::singularity_ramp_angular_acceleration;
 	_singularity_ramp_linear_acceleration = DefaultParameters::singularity_ramp_linear_acceleration;
+	_singularity_exit_linear_vel = DefaultParameters::linear_saturation_velocity;
+	_singularity_exit_angular_vel = DefaultParameters::angular_saturation_velocity;
 
 	reInitializeTask();
 }
@@ -297,9 +300,24 @@ void MotionForceTask::updateTaskModel(const MatrixXd& N_prec) {
 
 VectorXd MotionForceTask::computeTorques(const Eigen::VectorXd& tau_prec) {
 	VectorXd task_torques = computeTorques();
-	VectorXd disturbance_compensation = _projected_jacobian.transpose() *
-										_Lambda * _jacobian *
-										getConstRobotModel()->MInv() * tau_prec;
+	VectorXd disturbance_compensation = VectorXd::Zero(getConstRobotModel()->dof());
+	if (_singularity_handler->getSingularityStatus()) {
+		VectorXd unit_disturbance_force = _jacobian * getConstRobotModel()->MInv() * tau_prec;
+		if (!_singularity_handler->getNonSingularJacobian().isZero()) {
+			disturbance_compensation =
+				_singularity_handler->getNonSingularJacobian().transpose() * _singularity_handler->getNonSingularLambda() *
+				unit_disturbance_force;
+		}
+		if (!_singularity_handler->getSingularJointSpaceJacobian().isZero()) {
+			disturbance_compensation += 
+				_singularity_handler->getSingularJointSpaceJacobian().transpose() * _singularity_handler->getSingularJointSpaceLambda() *
+				unit_disturbance_force;
+		}
+	} else {
+		disturbance_compensation = _projected_jacobian.transpose() *
+											_Lambda * _jacobian *
+											getConstRobotModel()->MInv() * tau_prec;
+	}
 	return task_torques - disturbance_compensation;
 }
 
@@ -444,15 +462,25 @@ VectorXd MotionForceTask::computeTorques() {
 
 		// enable velocity saturation if not enabled
 		// if current velocity is different original velocity saturation value, then ramp up or down based on acceleration rates 
+		// if previously not in velocity saturated mode, keep the exiting velocity as the saturation velocity
 		if (!_use_velocity_saturation_flag) {
 
 			double max_linear_velocity = _current_linear_velocity.norm() * DefaultParameters::singularity_exit_velocity_scaling;
 			double max_angular_velocity = _current_angular_velocity.norm() * DefaultParameters::singularity_exit_velocity_scaling;
-			enableVelocitySaturation(DefaultParameters::linear_saturation_velocity, DefaultParameters::angular_saturation_velocity);  // set default parameters
+			enableVelocitySaturation(max_linear_velocity, max_angular_velocity);
+			
+			// set operating velocity targets if larger than exiting velocity
+			if (max_linear_velocity < _singularity_exit_linear_vel) {
+				_goal_interpolation_linear_velocity = _singularity_exit_linear_vel;
+			} else {
+				_goal_interpolation_linear_velocity = max_linear_velocity;
+			}
 
-			// set saturation velocity to current velocity
-			_linear_saturation_velocity = max_linear_velocity;
-			_angular_saturation_velocity = max_angular_velocity;
+			if (max_angular_velocity < _singularity_exit_angular_vel) {
+				_goal_interpolation_angular_velocity = _singularity_exit_angular_vel;
+			} else {
+				_goal_interpolation_angular_velocity = max_angular_velocity;
+			}
 			
 			// store previous saturation setting
 			_prev_velocity_saturation = false;
@@ -462,12 +490,15 @@ VectorXd MotionForceTask::computeTorques() {
 			double max_linear_velocity = _current_linear_velocity.norm() * DefaultParameters::singularity_exit_velocity_scaling;
 			double max_angular_velocity = _current_angular_velocity.norm() * DefaultParameters::singularity_exit_velocity_scaling;
 
-			// set saturation velocity to current velocity
+			// set operating velocity targets to default velocity 
 			_prev_linear_saturation_velocity = _linear_saturation_velocity;
 			_prev_angular_saturation_velocity = _angular_saturation_velocity;
-			_linear_saturation_velocity = max_linear_velocity;
-			_angular_saturation_velocity = max_angular_velocity;
+			_goal_interpolation_linear_velocity = _prev_linear_saturation_velocity;
+			_goal_interpolation_angular_velocity = _prev_angular_saturation_velocity;
 
+			// set saturation velocity to current velocity
+			enableVelocitySaturation(max_linear_velocity, max_angular_velocity);
+			
 			// store previous saturation setting
 			_prev_velocity_saturation = true;
 		}
@@ -477,21 +508,29 @@ VectorXd MotionForceTask::computeTorques() {
 	} else if (_handle_singularity_exit) {
 
 		// handle exit from velocity saturation ramping
+		bool exit_interpolation = false;
+
 		if (!_is_in_singularity) {
 			if (goalPositionReached(_singularity_pos_exit_tol) && goalOrientationReached(_singularity_ori_exit_tol)) {
 
-				double linear_vel_error = _current_linear_velocity.norm();
-				double angular_vel_error = _current_angular_velocity.norm();
-				if (!_prev_velocity_saturation) {
-					linear_vel_error = (_current_linear_velocity - _goal_linear_velocity).norm();
-					angular_vel_error = (_current_angular_velocity - _goal_angular_velocity).norm();
+				exit_interpolation = true;
+
+				if (_singularity_exit_vel_check) {
+					double linear_vel_error = _current_linear_velocity.norm();
+					double angular_vel_error = _current_angular_velocity.norm();
+					if (!_prev_velocity_saturation) {
+						linear_vel_error = (_current_linear_velocity - _goal_linear_velocity).norm();
+						angular_vel_error = (_current_angular_velocity - _goal_angular_velocity).norm();
+					}
+
+					if (linear_vel_error > _singularity_linear_vel_exit_tol || 
+						angular_vel_error > _singularity_angular_vel_exit_tol) {
+							exit_interpolation = false;
+					}
 				}
 
-				if (linear_vel_error < _singularity_linear_vel_exit_tol && 
-					angular_vel_error < _singularity_angular_vel_exit_tol) {
-
+				if (exit_interpolation) {
 					_handle_singularity_exit = false;
-
 					if (_prev_velocity_saturation) {
 						enableVelocitySaturation(_prev_linear_saturation_velocity, _prev_angular_saturation_velocity);
 					} else {
@@ -501,19 +540,21 @@ VectorXd MotionForceTask::computeTorques() {
 
 			}
 		}
-			
-		// compute new saturation velocity from ramp rate
-		const double dt = getLoopTimestep();
-		{
-			double delta = _prev_linear_saturation_velocity - _linear_saturation_velocity;
-			double max_step = _singularity_ramp_linear_acceleration * dt;
-			_linear_saturation_velocity += std::clamp(delta, -max_step, max_step);
-		}
+		
+		if (!exit_interpolation) {
+			// compute new saturation velocity from ramp rate
+			const double dt = getLoopTimestep();
+			{
+				double delta = _goal_interpolation_linear_velocity - _linear_saturation_velocity;
+				double max_step = _singularity_ramp_linear_acceleration * dt;
+				_linear_saturation_velocity += std::clamp(delta, -max_step, max_step);
+			}
 
-		{
-			double delta = _prev_angular_saturation_velocity - _angular_saturation_velocity;
-			double max_step = _singularity_ramp_angular_acceleration * dt;
-			_angular_saturation_velocity += std::clamp(delta, -max_step, max_step);
+			{
+				double delta = _goal_interpolation_angular_velocity - _angular_saturation_velocity;
+				double max_step = _singularity_ramp_angular_acceleration * dt;
+				_angular_saturation_velocity += std::clamp(delta, -max_step, max_step);
+			}
 		}
 
 	}

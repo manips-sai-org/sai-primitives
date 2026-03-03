@@ -236,6 +236,14 @@ void ComMotionTask::updateTaskModel(const MatrixXd& N_prec) {
 
 }
 
+VectorXd ComMotionTask::computeTorques(const Eigen::VectorXd& tau_prec) {
+	VectorXd task_torques = computeTorques();
+	VectorXd disturbance_compensation = _projected_jacobian.transpose() *
+										_Lambda * _jacobian *
+										getConstRobotModel()->MInv() * tau_prec;
+	return task_torques - disturbance_compensation;
+}
+
 VectorXd ComMotionTask::computeTorques() {
 	VectorXd task_joint_torques = VectorXd::Zero(getConstRobotModel()->dof());
 	MatrixXd Jv = getConstRobotModel()->comJacobian();
