@@ -276,7 +276,8 @@ void MotionForceTask::reInitializeTask() {
 }
 
 void MotionForceTask::updateTaskModel(const MatrixXd& N_prec) {
-	const int robot_dof = getConstRobotModel()->dof();
+	const auto robot = getConstRobotModel();
+	const int robot_dof = robot->dof();
 	if (N_prec.rows() != N_prec.cols()) {
 		throw invalid_argument(
 			"N_prec matrix not square in MotionForceTask::updateTaskModel\n");
@@ -290,8 +291,7 @@ void MotionForceTask::updateTaskModel(const MatrixXd& N_prec) {
 	_N_prec = N_prec;
 
 	_jacobian = _partial_task_projection *
-				getConstRobotModel()->JWorldFrame(
-					_link_name, _compliant_frame.translation());
+				robot->JWorldFrame(_link_name, _compliant_frame.translation());
 	_projected_jacobian = _jacobian * _N_prec;
 
 	_singularity_handler->updateTaskModel(_projected_jacobian, _N_prec);
@@ -299,49 +299,54 @@ void MotionForceTask::updateTaskModel(const MatrixXd& N_prec) {
 }
 
 VectorXd MotionForceTask::computeTorques(const Eigen::VectorXd& tau_prec) {
+	const auto robot = getConstRobotModel();
+	const MatrixXd M_inv = robot->MInv();
+
 	VectorXd task_torques = computeTorques();
-	VectorXd disturbance_compensation = VectorXd::Zero(getConstRobotModel()->dof());
+	VectorXd disturbance_compensation = VectorXd::Zero(robot->dof());
 	if (_singularity_handler->getSingularityStatus()) {
-		VectorXd unit_disturbance_force = _jacobian * getConstRobotModel()->MInv() * tau_prec;
-		if (!_singularity_handler->getNonSingularJacobian().isZero()) {
+		VectorXd unit_disturbance_force = _jacobian * M_inv * tau_prec;
+		const auto& non_singular_jacobian = _singularity_handler->getNonSingularJacobian();
+		const auto& non_singular_lambda = _singularity_handler->getNonSingularLambda();
+		if (!non_singular_jacobian.isZero()) {
 			disturbance_compensation =
-				_singularity_handler->getNonSingularJacobian().transpose() * _singularity_handler->getNonSingularLambda() *
+				non_singular_jacobian.transpose() * non_singular_lambda *
 				unit_disturbance_force;
 		}
-		if (!_singularity_handler->getSingularJointSpaceJacobian().isZero()) {
+		const auto& singular_joint_jacobian = _singularity_handler->getSingularJointSpaceJacobian();
+		const auto& singular_joint_lambda = _singularity_handler->getSingularJointSpaceLambda();
+		if (!singular_joint_jacobian.isZero()) {
 			disturbance_compensation += 
-				_singularity_handler->getSingularJointSpaceJacobian().transpose() * _singularity_handler->getSingularJointSpaceLambda() *
+				singular_joint_jacobian.transpose() * singular_joint_lambda *
 				unit_disturbance_force;
 		}
 	} else {
 		disturbance_compensation = _projected_jacobian.transpose() *
 											_Lambda * _jacobian *
-											getConstRobotModel()->MInv() * tau_prec;
+											M_inv * tau_prec;
 	}
 	return task_torques - disturbance_compensation;
 }
 
 VectorXd MotionForceTask::computeTorques() {
-	VectorXd task_joint_torques = VectorXd::Zero(getConstRobotModel()->dof());
+	const auto robot = getConstRobotModel();
+	const int dof = robot->dof();
+	VectorXd task_joint_torques = VectorXd::Zero(dof);
 	_jacobian = _partial_task_projection *
-				getConstRobotModel()->JWorldFrame(
-					_link_name, _compliant_frame.translation());
+				robot->JWorldFrame(_link_name, _compliant_frame.translation());
 	_projected_jacobian = _jacobian * _N_prec;
 
 	// update controller state
-	_current_position = getConstRobotModel()->positionInWorld(
-		_link_name, _compliant_frame.translation());
-	_current_orientation = getConstRobotModel()->rotationInWorld(
-		_link_name, _compliant_frame.rotation());
+	_current_position =
+		robot->positionInWorld(_link_name, _compliant_frame.translation());
+	_current_orientation =
+		robot->rotationInWorld(_link_name, _compliant_frame.rotation());
 
 	_orientation_error =
 		SaiModel::orientationError(_goal_orientation, _current_orientation);
-	_current_linear_velocity =
-		_jacobian.block(0, 0, 3, getConstRobotModel()->dof()) *
-		getConstRobotModel()->dq();
-	_current_angular_velocity =
-		_jacobian.block(3, 0, 3, getConstRobotModel()->dof()) *
-		getConstRobotModel()->dq();
+	const VectorXd& dq = robot->dq();
+	_current_linear_velocity = _jacobian.topRows(3) * dq;
+	_current_angular_velocity = _jacobian.bottomRows(3) * dq;
 
 	if (_pos_range + _ori_range == 0) {
 		// there is no controllable degree of freedom for the task, just return
@@ -361,13 +366,6 @@ VectorXd MotionForceTask::computeTorques() {
 	Vector3d position_related_force = Vector3d::Zero();
 	Vector3d moment_feedback_related_force = Vector3d::Zero();
 	Vector3d orientation_related_force = Vector3d::Zero();
-
-	Matrix3d kp_pos =
-		_current_orientation * _kp_pos * _current_orientation.transpose();
-	Matrix3d kv_pos =
-		_current_orientation * _kv_pos * _current_orientation.transpose();
-	Matrix3d ki_pos =
-		_current_orientation * _ki_pos * _current_orientation.transpose();
 
 	// force related terms
 	if (_closed_loop_force_control) {
@@ -645,7 +643,8 @@ VectorXd MotionForceTask::computeTorques() {
 	}
 
 	// compute task force
-	VectorXd force_moment_contribution(6), position_orientation_contribution(6);
+	Matrix<double, 6, 1> force_moment_contribution;
+	Matrix<double, 6, 1> position_orientation_contribution;
 	force_moment_contribution.head(3) = force_feedback_related_force;
 	force_moment_contribution.tail(3) = moment_feedback_related_force;
 
@@ -654,7 +653,8 @@ VectorXd MotionForceTask::computeTorques() {
 
 	_unit_mass_force = position_orientation_contribution;
 
-	VectorXd feedforward_force_moment = VectorXd::Zero(6);
+	Matrix<double, 6, 1> feedforward_force_moment =
+		Matrix<double, 6, 1>::Zero();
 	feedforward_force_moment.head(3) = sigma_force * goal_force;
 	feedforward_force_moment.tail(3) = sigma_moment * goal_moment;
 

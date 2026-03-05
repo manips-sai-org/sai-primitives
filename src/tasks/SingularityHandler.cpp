@@ -40,8 +40,8 @@ namespace {
         return max_val;
     }
 
-    MatrixXd collectColumns(const VectorXd& M, const std::vector<int>& cols) {
-        VectorXd result(M.size());
+    VectorXd collectColumns(const VectorXd& M, const std::vector<int>& cols) {
+        VectorXd result(cols.size());
         for (size_t i = 0; i < cols.size(); ++i) {
             result(i) = M(cols[i]);
         }
@@ -137,7 +137,7 @@ namespace {
 
     std::vector<int> sortSingularityIndices(const std::vector<SaiPrimitives::Singularity>& singularities) {
         std::vector<double> singular_values;
-        for (auto singularity : singularities) {
+        for (const auto& singularity : singularities) {
             singular_values.push_back(singularity.sigma);
         }
         return argsort(singular_values);
@@ -154,7 +154,7 @@ namespace {
 
     VectorXd vectorFromBasis(const std::vector<double>& coefficients, const MatrixXd& basis) {
         VectorXd result = VectorXd::Zero(basis.rows());
-        for (int i = 0; i < coefficients.size(); ++i) {
+        for (size_t i = 0; i < coefficients.size(); ++i) {
             result += coefficients[i] * basis.col(i);
         }
         return result;
@@ -169,7 +169,7 @@ namespace {
 
     MatrixXd stabilizedInverse(const MatrixXd& A, const double lambda = 1e-6) {
         MatrixXd AtA = A.transpose() * A;
-        MatrixXd identity = MatrixXd::Identity(A.rows(), A.cols());
+        MatrixXd identity = MatrixXd::Identity(AtA.rows(), AtA.cols());
         // add a small epsilon (lambda^2) to the diagonal to ensure invertibility
         return (AtA + lambda * lambda * identity).ldlt().solve(A.transpose());
     }
@@ -526,9 +526,10 @@ void SingularityHandler::updateTaskModel(MatrixXd& projected_jacobian, const Mat
     // task range decomposition
     _N_prec = N_prec;
     _projected_jacobian = projected_jacobian;
+    const MatrixXd M_inv = _robot->MInv();
 
     // compute eigen-decomposition of task inertia matrix 
-    _eig_solver.compute(projected_jacobian * _robot->MInv() * projected_jacobian.transpose());
+    _eig_solver.compute(projected_jacobian * M_inv * projected_jacobian.transpose());
     _eig_values = _eig_solver.eigenvalues().reverse();  // switch to descending order 
     _eig_vectors = _eig_solver.eigenvectors().rowwise().reverse();
 
@@ -563,7 +564,7 @@ void SingularityHandler::updateTaskModel(MatrixXd& projected_jacobian, const Mat
         _projected_jacobian_s = _task_range_s.transpose() * projected_jacobian;
         _Lambda_s = SaiModel::computePseudoInverse(
                                   _projected_jacobian_s *
-                                  _robot->MInv() * 
+                                  M_inv *
                                   _projected_jacobian_s.transpose(), _s_abs_tol);
         _svd_s_singular = _svd_s;
         _eig_s_singular = _eig_values;
@@ -630,7 +631,7 @@ void SingularityHandler::updateTaskModel(MatrixXd& projected_jacobian, const Mat
                 // _Lambda_s = SaiModel::computePseudoInverse(_projected_jacobian_s * _robot->MInv() * _projected_jacobian_s.transpose(), _s_abs_tol);
                 _projected_jacobian_s = _task_range_s.transpose() * projected_jacobian;
                 // _Lambda_s = (_projected_jacobian_s * _robot->MInv() * _projected_jacobian_s.transpose()).inverse();
-                _Lambda_s = lltInverse(_projected_jacobian_s * _robot->MInv() * _projected_jacobian_s.transpose());
+                _Lambda_s = lltInverse(_projected_jacobian_s * M_inv * _projected_jacobian_s.transpose());
                 _svd_s_singular = _svd_s.tail(_task_rank - i);
                 _eig_s_singular = _eig_values.tail(_task_rank - i);
 
@@ -723,7 +724,7 @@ void SingularityHandler::updateTaskModel(MatrixXd& projected_jacobian, const Mat
 
         case BOUNDED_INERTIA_ESTIMATES: {
             MatrixXd M_BIE = _robot->M();
-            MatrixXd M_BIE_SINGULARITY = _robot->M();
+            MatrixXd M_BIE_SINGULARITY = M_BIE;
             for (int i = 0; i < _dof; i++) {
                 if (M_BIE(i, i) < _bie_threshold) {
                     M_BIE(i, i) = _bie_threshold;
@@ -808,7 +809,7 @@ void SingularityHandler::classifySingularity(
     if (_degenerate_indices.size() > 0) {
 
         // store degenerate task ranges 
-        for (auto group : _degenerate_indices) {
+        for (const auto& group : _degenerate_indices) {
             _degenerate_singular_task_range.push_back(collectColumns(singular_task_range, group));
             _degenerate_singular_joint_task_range.push_back(collectColumns(singular_joint_task_range, group));
             _degenerate_singular_values.push_back(collectColumns(_svd_s_singular, group));
@@ -816,7 +817,7 @@ void SingularityHandler::classifySingularity(
         }
 
         int group_id = 0;
-        for (auto group : _degenerate_indices) {
+        for (const auto& group : _degenerate_indices) {
 
             // run minimization
             MatrixXd curr_singular_task_range = _degenerate_singular_task_range[group_id];
@@ -917,7 +918,7 @@ void SingularityHandler::classifySingularity(
 
             // assign singularities
             // type 1 singularities 
-            for (int i = 0; i < curr_type_1_singular_task_range.size(); ++i) {
+            for (size_t i = 0; i < curr_type_1_singular_task_range.size(); ++i) {
                 // recompute dsdq for type 1 singularities 
                 VectorXd dsdq = VectorXd::Zero(_dof);
                 for (int j = 0; j < _dof; ++j) {
@@ -953,8 +954,8 @@ void SingularityHandler::classifySingularity(
             _active_singularities.push_back(
                 Singularity(curr_type_1_singular_task_range[i], 
                             curr_type_1_singular_joint_task_range[i], 
-                            _degenerate_singular_values[group_id](i),  // assign same value for all
-                            _degenerate_eigen_values[group_id](i),
+                            _degenerate_singular_values[group_id](static_cast<int>(i)),  // assign same value for all
+                            _degenerate_eigen_values[group_id](static_cast<int>(i)),
                             dsdq_toward_singularity,
                             u_toward_singularity,
                             SingularityType::TYPE_1_SINGULARITY,
@@ -962,7 +963,7 @@ void SingularityHandler::classifySingularity(
             }
 
             // type 2 singularities 
-            for (int i = 0; i < curr_type_2_singular_task_range.size(); ++i) {
+            for (size_t i = 0; i < curr_type_2_singular_task_range.size(); ++i) {
 
                 // recompute dsdq for type 2 singularities 
                 VectorXd dsdq = VectorXd::Zero(_dof);
@@ -974,10 +975,10 @@ void SingularityHandler::classifySingularity(
                 VectorXd dsdq_toward_singularity = dsdq;  // placeholder
 
                 _active_singularities.push_back(
-                    Singularity(curr_type_2_singular_task_range[i], 
+                                Singularity(curr_type_2_singular_task_range[i], 
                                 curr_type_2_singular_joint_task_range[i], 
-                                _degenerate_singular_values[group_id](i + curr_type_1_singular_task_range.size()),  // assign same value
-                                _degenerate_eigen_values[group_id](i + curr_type_1_singular_task_range.size()),
+                                _degenerate_singular_values[group_id](static_cast<int>(i + curr_type_1_singular_task_range.size())),  // assign same value
+                                _degenerate_eigen_values[group_id](static_cast<int>(i + curr_type_1_singular_task_range.size())),
                                 dsdq_toward_singularity,
                                 u_toward_singularity,
                                 SingularityType::TYPE_2_SINGULARITY,
@@ -1056,7 +1057,7 @@ VectorXd SingularityHandler::computeTorques(const VectorXd& unit_mass_force, con
     if (_verbose) {
         if (_is_in_singularity && _enforce_handling_strategy) {
             int i = 0;
-            for (auto singularity : _active_singularities) {
+            for (const auto& singularity : _active_singularities) {
                 std::cout << "Singularity " << i << ": " << singularity.type << "\n";
                 std::cout << "u: " << singularity.u.transpose() << "\n";
                 std::cout << "v: " << singularity.v.transpose() << "\n";
@@ -1132,10 +1133,21 @@ VectorXd SingularityHandler::computeTorques(const VectorXd& unit_mass_force, con
         Matrix3d curr_ori = _robot->rotation(_link_name, _compliant_frame.linear());
         VectorXd unit_torques = VectorXd::Zero(_dof);
         VectorXd singular_joint_task_torques = VectorXd::Zero(_dof);
+        const MatrixXd M_inv = _robot->MInv();
+        const VectorXd& dq = _robot->dq();
 
-        VectorXd normalized_force_moment = unit_mass_force.normalized();
+        const VectorXd total_force_moment = unit_mass_force + force_related_terms;
+        VectorXd normalized_force_moment = VectorXd::Zero(unit_mass_force.size());
+        const double unit_mass_force_norm = unit_mass_force.norm();
+        if (unit_mass_force_norm > 1e-12) {
+            normalized_force_moment = unit_mass_force / unit_mass_force_norm;
+        }
         if (_enable_force_damping_decoupling) {
-            normalized_force_moment = (unit_mass_force + force_related_terms).normalized();
+            normalized_force_moment = total_force_moment;
+            const double n = normalized_force_moment.norm();
+            if (n > 1e-12) {
+                normalized_force_moment /= n;
+            }
         }
 
         MatrixXd N_prec = _N_sjs_init;
@@ -1146,7 +1158,7 @@ VectorXd SingularityHandler::computeTorques(const VectorXd& unit_mass_force, con
             // compute saturated singular joint space torque
             MatrixXd curr_projected_jacobian = _active_singularities[ind].u.transpose() * _projected_jacobian * _N_ns;
             MatrixXd curr_lambda = 
-                lltInverse(curr_projected_jacobian * _robot->MInv() * curr_projected_jacobian.transpose());
+                lltInverse(curr_projected_jacobian * M_inv * curr_projected_jacobian.transpose());
                 // SaiModel::computePseudoInverse(curr_projected_jacobian * _robot->MInv() * curr_projected_jacobian.transpose(), _type_1_search_tol);
                 // (curr_projected_jacobian * _robot->MInv() * curr_projected_jacobian.transpose()).inverse();
             VectorXd singular_torque_component = 
@@ -1159,13 +1171,13 @@ VectorXd SingularityHandler::computeTorques(const VectorXd& unit_mass_force, con
 
             // use Tikhonov regularization for nan torques for approximate joint acceleration vector
             if (singular_torque_component.array().isNaN().any()) {
-                curr_lambda = stabilizedInverse(curr_projected_jacobian * _robot->MInv() * curr_projected_jacobian.transpose());
+                curr_lambda = stabilizedInverse(curr_projected_jacobian * M_inv * curr_projected_jacobian.transpose());
                 singular_torque_component = 
                     curr_projected_jacobian.transpose() * curr_lambda * _active_singularities[ind].u.transpose() * unit_mass_force + 
                     curr_projected_jacobian.transpose() * _active_singularities[ind].u.transpose() * force_related_terms;
             }
 
-            VectorXd singular_unit_acceleration_component = _robot->MInv() * singular_torque_component;
+            VectorXd singular_unit_acceleration_component = M_inv * singular_torque_component;
 
             // handle each singularity type
             if (_active_singularities[ind].type == TYPE_1_SINGULARITY || _enforce_type_1_strategy) {
@@ -1205,7 +1217,7 @@ VectorXd SingularityHandler::computeTorques(const VectorXd& unit_mass_force, con
 
                     VectorXd dq_des = - _active_singularities[ind].dsdq;
                     dq_des = vel_scaling * _type_1_max_vel_towards_singularity * dq_des.normalized();
-                    unit_torques = - _kv_type_1 * (_robot->dq() - dq_des);
+                    unit_torques = - _kv_type_1 * (dq - dq_des);
 
                 } else {
 
@@ -1222,7 +1234,7 @@ VectorXd SingularityHandler::computeTorques(const VectorXd& unit_mass_force, con
 
                     VectorXd dq_des = _active_singularities[ind].dsdq;
                     dq_des = vel_scaling * _type_1_max_vel_away_from_singularity * dq_des.normalized();
-                    unit_torques = - _kv_type_1 * (_robot->dq() - dq_des);
+                    unit_torques = - _kv_type_1 * (dq - dq_des);
 
                 }
 
@@ -1237,7 +1249,7 @@ VectorXd SingularityHandler::computeTorques(const VectorXd& unit_mass_force, con
   
                 VectorXd dq_des = 
                     _type_2_max_vel * weighted_force_dotted_singular_direction * singular_unit_acceleration_component.normalized();
-                unit_torques = - _kv_type_2 * (_robot->dq() - dq_des);
+                unit_torques = - _kv_type_2 * (dq - dq_des);
 
             }
 
@@ -1250,7 +1262,7 @@ VectorXd SingularityHandler::computeTorques(const VectorXd& unit_mass_force, con
                 // Lambda_sjs_modified = Lambda_inv_BIE.inverse();
                 Lambda_sjs_modified = lltInverse(Lambda_inv_BIE);
             } 
-            VectorXd unit_disturbance_force = sjs_jacobian * _robot->MInv() * (singular_joint_task_torques + _non_singular_task_torques);
+            VectorXd unit_disturbance_force = sjs_jacobian * M_inv * (singular_joint_task_torques + _non_singular_task_torques);
             // singular_joint_task_torques -= 
                 // (MatrixXd::Identity(_dof, _dof) - op_matrices.N).transpose() * (singular_joint_task_torques + _non_singular_task_torques);  // forward compensation 
             singular_joint_task_torques -= sjs_jacobian.transpose() * op_matrices.Lambda * unit_disturbance_force;

@@ -131,7 +131,7 @@ public:
 
     void updateTaskModel(MatrixXd& projected_jacobian, const MatrixXd& N_prec);
     VectorXd computeTorques(const VectorXd& unit_mass_force, const VectorXd& force_related_terms);
-    MatrixXd getNullspace() { return _N; };
+    const MatrixXd& getNullspace() const { return _N; };
 
     void setSingularityHandlingBound(const double s_max) {
         _s_max = s_max;
@@ -225,98 +225,98 @@ public:
     }
 
     // getters
-	std::pair<double, double> getBoundedInertiaEstimateThreshold() {
+    std::pair<double, double> getBoundedInertiaEstimateThreshold() const {
 		return std::make_pair(_bie_threshold, _singular_bie_threshold);
 	}
 
     // non-singular containers
-    MatrixXd getNonSingularJacobian() {
+    const MatrixXd& getNonSingularJacobian() const {
         return _projected_jacobian_ns;
     }
 
-    MatrixXd getNonSingularLambda() {
+    const MatrixXd& getNonSingularLambda() const {
         return _Lambda_ns_modified;
     }
 
-    MatrixXd getNonSingularTaskRange() {
+    const MatrixXd& getNonSingularTaskRange() const {
         return _task_range_ns;
     }
 
     // singular joint space containers
-    MatrixXd getSingularJointSpaceJacobian() {
+    const MatrixXd& getSingularJointSpaceJacobian() const {
         return _posture_projected_jacobian;
     }
 
-    MatrixXd getSingularJointSpaceLambda() {
+    const MatrixXd& getSingularJointSpaceLambda() const {
         return _Lambda_sjs;
     }
 
     // singular containers
-    MatrixXd getSingularJacobian() {
+    const MatrixXd& getSingularJacobian() const {
         return _projected_jacobian_s;
     }
 
-    MatrixXd getSingularTaskRange() {
+    const MatrixXd& getSingularTaskRange() const {
         return _task_range_s;
     }
 
-    MatrixXd getSingularJointTaskRange() {
+    const MatrixXd& getSingularJointTaskRange() const {
         return _joint_task_range_s;
     }
 
-    MatrixXd getSingularLambda() {
+    const MatrixXd& getSingularLambda() const {
         return _Lambda_s_modified;
     }
 
     // values 
-    VectorXd getSingularValues() {
+    const VectorXd& getSingularValues() const {
         return _svd_s;
     }
 
-    VectorXd getSingularEigenValues() {
+    const VectorXd& getSingularEigenValues() const {
         return _eig_values;
     }
 
-    VectorXd getBlendingVector() {
+    const VectorXd& getBlendingVector() const {
         return _alpha_vec;
     }
 
     // torques
-    VectorXd getNonSingularTaskTorques() {
+    const VectorXd& getNonSingularTaskTorques() const {
         return _non_singular_task_torques;
     }
 
-    VectorXd getSingularTaskTorques() {
+    const VectorXd& getSingularTaskTorques() const {
         return _singular_task_torques;
     }
     
-    VectorXd getJointSingularityHandlingTorques() {
+    const VectorXd& getJointSingularityHandlingTorques() const {
         return _joint_strategy_torques;
     }
 
     // flags 
-    bool isFullySingularTask() {
+    bool isFullySingularTask() const {
         return _fully_singular_task;
     }
 
-    bool isExitingSingularity() {
+    bool isExitingSingularity() const {
         return _handle_singularity_exit;
     }
 
-    bool getSingularityStatus() {
+    bool getSingularityStatus() const {
         return _is_in_singularity;
     }
 
-    int getNumSingularities() {
+    int getNumSingularities() const {
         return _num_singularities;
     }
 
-    bool getSingularityTransitionStatus() {
+    bool getSingularityTransitionStatus() const {
         return _singularity_exit_transition;
     }
 
     // experimental
-    VectorXd getUnmodifiedSingularTaskTorques() {
+    const VectorXd& getUnmodifiedSingularTaskTorques() const {
         return _unmodified_singular_task_torques;
     }
 
@@ -330,11 +330,11 @@ public:
         return classification;
     }
 
-    std::vector<Singularity> getActiveSingularities() {
+    const std::vector<Singularity>& getActiveSingularities() const {
         return _active_singularities;
     }
 
-    double getType2Alignment() {
+    double getType2Alignment() const {
         return _force_dotted_singular_direction;
     }
 
