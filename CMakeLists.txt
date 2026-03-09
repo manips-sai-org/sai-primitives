@@ -4,6 +4,7 @@ project(SAI-PRIMITIVES)
 set(PROJECT_VERSION 0.1.0)
 
 option(BUILD_EXAMPLES "Build examples" ON)
+option(BUILD_PYTHON_BINDINGS "Build python bindings with pybind11" OFF)
 
 set(CMAKE_CXX_FLAGS "-std=c++17 -I/usr/include -I/usr/local/include -fPIC")
 if(${CMAKE_SYSTEM_NAME} MATCHES Darwin)
@@ -130,4 +131,9 @@ write_basic_package_version_file(
 # add examples
 if(BUILD_EXAMPLES)
   add_subdirectory(${PROJECT_SOURCE_DIR}/examples)
+endif()
+
+# add python bindings
+if(BUILD_PYTHON_BINDINGS)
+  add_subdirectory(${PROJECT_SOURCE_DIR}/python)
 endif()
