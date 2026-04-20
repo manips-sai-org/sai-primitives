@@ -230,7 +230,7 @@ void JointTask::updateTaskModel(const MatrixXd& N_prec) {
 	_N_prec = N_prec;
 	_projected_jacobian = _joint_selection * _N_prec;
 
-	_current_task_range = SaiModel::matrixRangeBasis(_projected_jacobian);
+	_current_task_range = SaiModel::matrixRangeBasis(_projected_jacobian, DefaultParameters::singularity_bound);
 	if (_current_task_range.norm() == 0) {
 		// there is no controllable degree of freedom for the task, just
 		// return should maybe print a warning here

@@ -42,6 +42,7 @@ public:
 		static constexpr double otg_max_jerk = 10.0 * M_PI;
 		static constexpr bool use_velocity_saturation = false;
 		static constexpr double saturation_velocity = M_PI / 3.0;
+		static constexpr double singularity_bound = 5e-2;
 	};
 
 	/**
