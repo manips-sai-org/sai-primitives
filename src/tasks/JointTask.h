@@ -392,6 +392,11 @@ public:
 	bool goalPositionReached(const double& tol = 1e-2);
 
 	/**
+	 * @brief		Returns the position error
+	 */
+	VectorXd getPositionError();
+
+	/**
 	 * @brief	Reset integrator error
 	 */
 	void resetIntegrators() { _integrated_position_error.setZero(); }

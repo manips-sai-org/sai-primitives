@@ -440,4 +440,8 @@ bool JointTask::goalPositionReached(const double& tol) {
 	}
 }
 
+VectorXd JointTask::getPositionError() {
+	return _current_position - _goal_position;
+}
+
 } /* namespace SaiPrimitives */

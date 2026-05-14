@@ -1076,6 +1076,9 @@ VectorXd SingularityHandler::computeTorques(const VectorXd& unit_mass_force, con
     _unmodified_singular_task_torques = VectorXd::Zero(_dof);
 
     if (!_is_in_singularity || !_enforce_handling_strategy) {
+        if (_fully_singular_task) {
+            return _non_singular_task_torques;
+        }
         if (_enable_force_damping_decoupling) {
             _non_singular_task_torques = _projected_jacobian_ns.transpose() * 
                                             _Lambda_ns_modified * _task_range_ns.transpose() * (unit_mass_force + force_related_terms);
