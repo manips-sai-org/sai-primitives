@@ -230,7 +230,7 @@ void JointTask::updateTaskModel(const MatrixXd& N_prec) {
 	_N_prec = N_prec;
 	_projected_jacobian = _joint_selection * _N_prec;
 
-	_current_task_range = SaiModel::matrixRangeBasis(_projected_jacobian);
+	_current_task_range = SaiModel::matrixRangeBasis(_projected_jacobian, DefaultParameters::singularity_bound);
 	if (_current_task_range.norm() == 0) {
 		// there is no controllable degree of freedom for the task, just
 		// return should maybe print a warning here
@@ -329,13 +329,8 @@ VectorXd JointTask::computeTorques() {
 		_desired_velocity =
 			-_kp * kv_inverse * (_current_position - _desired_position) -
 			_ki * kv_inverse * _integrated_position_error;
-		for (int i = 0; i < getConstRobotModel()->dof(); i++) {
-			if (_desired_velocity(i) > _saturation_velocity(i)) {
-				_desired_velocity(i) = _saturation_velocity(i);
-			} else if (_desired_velocity(i) < -_saturation_velocity(i)) {
-				_desired_velocity(i) = -_saturation_velocity(i);
-			}
-		}
+		_desired_velocity = _desired_velocity.cwiseMin(_saturation_velocity)
+								.cwiseMax(-_saturation_velocity);
 		partial_joint_task_torques =
 			-_kv * (_current_velocity - _desired_velocity);
 	} else {
