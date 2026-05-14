@@ -17,6 +17,8 @@
 #include "tasks/JointLimitAvoidanceTask.h"
 #include "tasks/JointTask.h"
 #include "tasks/MotionForceTask.h"
+#include "tasks/CentroidalAngularMomentumTask.h"
+#include "tasks/MomentumTask.h"
 #include "tasks/TemplateTask.h"
 
 namespace SaiPrimitives {
@@ -84,6 +86,14 @@ public:
 	/// @brief get a motion force task by name, throws an error if no motion
 	/// force task with that name exists
 	std::shared_ptr<MotionForceTask> getMotionForceTaskByName(
+		const std::string& task_name);
+	/// @brief get a centroidal angular momentum task by name, throws an error
+	/// if no centroidal angular momentum task with that name exists
+	std::shared_ptr<CentroidalAngularMomentumTask>
+	getCentroidalAngularMomentumTaskByName(const std::string& task_name);
+	/// @brief get a momentum task by name, throws an error if no momentum task
+	/// with that name exists
+	std::shared_ptr<MomentumTask> getMomentumTaskByName(
 		const std::string& task_name);
 
 	/// @brief get the task names in the order they are stored in the controller

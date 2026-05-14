@@ -2,8 +2,11 @@
 #include "tasks/JointLimitAvoidanceTask.h"
 #include "tasks/MotionForceTask.h"
 #include "tasks/ComLinearMotionTask.h"
+#include "tasks/CentroidalAngularMomentumTask.h"
+#include "tasks/MomentumTask.h"
 #include "tasks/TemplateTask.h"
 
 #include "POPCBilateralTeleoperation.h"
 #include "RobotController.h"
 #include "HapticDeviceController.h"
+

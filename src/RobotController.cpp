@@ -158,4 +158,41 @@ std::shared_ptr<MotionForceTask> RobotController::getMotionForceTaskByName(
 								" not found in RobotController::GetTaskByName");
 }
 
+std::shared_ptr<CentroidalAngularMomentumTask>
+RobotController::getCentroidalAngularMomentumTaskByName(
+	const std::string& task_name) {
+	for (auto& task : _tasks) {
+		if (task->getTaskName() == task_name) {
+			if (task->getTaskType() !=
+				TaskType::CENTROIDAL_ANGULAR_MOMENTUM_TASK) {
+				throw std::invalid_argument(
+					"Task " + task_name +
+					" is not a CentroidalAngularMomentumTask, and cannot be "
+					"casted as such in RobotController::GetTaskByName");
+			}
+			return std::dynamic_pointer_cast<CentroidalAngularMomentumTask>(
+				task);
+		}
+	}
+	throw std::invalid_argument("Task " + task_name +
+								" not found in RobotController::GetTaskByName");
+}
+
+std::shared_ptr<MomentumTask> RobotController::getMomentumTaskByName(
+	const std::string& task_name) {
+	for (auto& task : _tasks) {
+		if (task->getTaskName() == task_name) {
+			if (task->getTaskType() != TaskType::MOMENTUM_TASK) {
+				throw std::invalid_argument("Task " + task_name +
+											" is not a MomentumTask, and "
+											"cannot be casted as such in "
+											"RobotController::GetTaskByName");
+			}
+			return std::dynamic_pointer_cast<MomentumTask>(task);
+		}
+	}
+	throw std::invalid_argument("Task " + task_name +
+								" not found in RobotController::GetTaskByName");
+}
+
 } /* namespace SaiPrimitives */
