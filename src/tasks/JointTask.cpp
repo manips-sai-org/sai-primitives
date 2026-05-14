@@ -350,6 +350,13 @@ VectorXd JointTask::computeTorques() {
 		_M_partial_modified * _current_task_range.transpose() *
 			partial_joint_task_torques;
 
+	{
+		// debug
+		std::cout << "error norm: " << (_current_position - _desired_position).norm() << "\n";
+		std::cout << "mass matrix norm: " << _M_partial_modified.norm() << "\n";
+		std::cout << "unit mass torques norm: " << partial_joint_task_torques.norm() << "\n";
+	}
+
 	// return projected task torques
 	return _projected_jacobian.transpose() * _current_task_range *
 		   partial_joint_task_torques_in_range_space;

@@ -9,8 +9,10 @@
 #include "POPCBilateralTeleoperation.h"
 #include "RobotController.h"
 #include "tasks/ComMotionTask.h"
+#include "tasks/CentroidalAngularMomentumTask.h"
 #include "tasks/JointTask.h"
 #include "tasks/MotionForceTask.h"
+#include "tasks/MomentumTask.h"
 #include "tasks/TemplateTask.h"
 
 namespace py = pybind11;
@@ -66,6 +68,9 @@ PYBIND11_MODULE(sai_primitives_py, m) {
 		.value("JOINT_LIMIT_AVOIDANCE_TASK", TaskType::JOINT_LIMIT_AVOIDANCE_TASK)
 		.value("JOINT_TASK", TaskType::JOINT_TASK)
 		.value("MOTION_FORCE_TASK", TaskType::MOTION_FORCE_TASK)
+		.value("CENTROIDAL_ANGULAR_MOMENTUM_TASK",
+			   TaskType::CENTROIDAL_ANGULAR_MOMENTUM_TASK)
+		.value("MOMENTUM_TASK", TaskType::MOMENTUM_TASK)
 		.export_values();
 
 	py::class_<TemplateTask, std::shared_ptr<TemplateTask>>(m, "TemplateTask")
@@ -180,6 +185,150 @@ PYBIND11_MODULE(sai_primitives_py, m) {
 		.def("goalPositionReached", &JointTask::goalPositionReached,
 			 py::arg("tol") = 1e-2)
 		.def("resetIntegrators", &JointTask::resetIntegrators);
+
+	py::class_<CentroidalAngularMomentumTask, TemplateTask,
+			   std::shared_ptr<CentroidalAngularMomentumTask>>(
+		m, "CentroidalAngularMomentumTask")
+		.def(py::init([&](const py::object& robot_obj,
+						 const std::string& task_name,
+						 double loop_timestep) {
+				 auto robot = robot_from_py(robot_obj);
+				 return std::make_shared<CentroidalAngularMomentumTask>(
+					 robot, task_name, loop_timestep);
+			 }),
+			 py::arg("robot"),
+			 py::arg("task_name") = "centroidal_angular_momentum_task",
+			 py::arg("loop_timestep") = 0.001)
+		.def("updateTaskModel", &CentroidalAngularMomentumTask::updateTaskModel,
+			 py::arg("N_prec"))
+		.def("computeTorques",
+			 py::overload_cast<>(&CentroidalAngularMomentumTask::computeTorques))
+		.def("computeTorques",
+			 py::overload_cast<const Eigen::VectorXd&>(
+				 &CentroidalAngularMomentumTask::computeTorques),
+			 py::arg("tau_prec"))
+		.def("reInitializeTask",
+			 &CentroidalAngularMomentumTask::reInitializeTask)
+		.def("getTaskNullspace",
+			 &CentroidalAngularMomentumTask::getTaskNullspace)
+		.def("getPreviousTasksNullspace",
+			 &CentroidalAngularMomentumTask::getPreviousTasksNullspace)
+		.def("getTaskAndPreviousNullspace",
+			 &CentroidalAngularMomentumTask::getTaskAndPreviousNullspace)
+		.def("getCurrentMomentum",
+			 &CentroidalAngularMomentumTask::getCurrentMomentum)
+		.def("setGoalMomentum",
+			 &CentroidalAngularMomentumTask::setGoalMomentum,
+			 py::arg("goal_momentum"))
+		.def("getGoalMomentum",
+			 &CentroidalAngularMomentumTask::getGoalMomentum)
+		.def("setGoalMomentumVelocity",
+			 &CentroidalAngularMomentumTask::setGoalMomentumVelocity,
+			 py::arg("goal_momentum_velocity"))
+		.def("getGoalMomentumVelocity",
+			 &CentroidalAngularMomentumTask::getGoalMomentumVelocity)
+		.def("getDesiredMomentumVelocity",
+			 &CentroidalAngularMomentumTask::getDesiredMomentumVelocity)
+		.def("getMomentumError",
+			 &CentroidalAngularMomentumTask::getMomentumError)
+		.def("setGains",
+			 py::overload_cast<double>(
+				 &CentroidalAngularMomentumTask::setGains),
+			 py::arg("kp"))
+		.def("setGains",
+			 py::overload_cast<const Eigen::Vector3d&>(
+				 &CentroidalAngularMomentumTask::setGains),
+			 py::arg("kp"))
+		.def("getGains", &CentroidalAngularMomentumTask::getGains)
+		.def("setDynamicDecouplingType",
+			 &CentroidalAngularMomentumTask::setDynamicDecouplingType,
+			 py::arg("type"))
+		.def("setBoundedInertiaEstimateThreshold",
+			 &CentroidalAngularMomentumTask::setBoundedInertiaEstimateThreshold,
+			 py::arg("threshold"))
+		.def("getBoundedInertiaEstimateThreshold",
+			 &CentroidalAngularMomentumTask::getBoundedInertiaEstimateThreshold)
+		.def("getJacobian", &CentroidalAngularMomentumTask::getJacobian)
+		.def("getKineticEnergyGradient",
+			 &CentroidalAngularMomentumTask::getKineticEnergyGradient)
+		.def("computeKineticEnergyGradient",
+			 &CentroidalAngularMomentumTask::computeKineticEnergyGradient);
+
+	py::class_<MomentumTask, TemplateTask, std::shared_ptr<MomentumTask>>(
+		m, "MomentumTask")
+		.def(py::init([&](const py::object& robot_obj,
+						 const std::string& link_name,
+						 const std::string& task_name,
+						 double loop_timestep) {
+				 auto robot = robot_from_py(robot_obj);
+				 return std::make_shared<MomentumTask>(
+					 robot, link_name, Eigen::Affine3d::Identity(), task_name,
+					 loop_timestep);
+			 }),
+			 py::arg("robot"), py::arg("link_name"),
+			 py::arg("task_name") = "momentum_task",
+			 py::arg("loop_timestep") = 0.001)
+		.def(py::init([&](const py::object& robot_obj,
+						 const std::string& link_name,
+						 const Eigen::Affine3d& compliant_frame,
+						 const std::string& task_name,
+						 double loop_timestep) {
+				 auto robot = robot_from_py(robot_obj);
+				 return std::make_shared<MomentumTask>(
+					 robot, link_name, compliant_frame, task_name,
+					 loop_timestep);
+			 }),
+			 py::arg("robot"), py::arg("link_name"),
+			 py::arg("compliant_frame"),
+			 py::arg("task_name") = "momentum_task",
+			 py::arg("loop_timestep") = 0.001)
+		.def("updateTaskModel", &MomentumTask::updateTaskModel,
+			 py::arg("N_prec"))
+		.def("computeTorques",
+			 py::overload_cast<>(&MomentumTask::computeTorques))
+		.def("computeTorques",
+			 py::overload_cast<const Eigen::VectorXd&>(
+				 &MomentumTask::computeTorques),
+			 py::arg("tau_prec"))
+		.def("reInitializeTask", &MomentumTask::reInitializeTask)
+		.def("getTaskNullspace", &MomentumTask::getTaskNullspace)
+		.def("getPreviousTasksNullspace",
+			 &MomentumTask::getPreviousTasksNullspace)
+		.def("getTaskAndPreviousNullspace",
+			 &MomentumTask::getTaskAndPreviousNullspace)
+		.def("getLinkName", &MomentumTask::getLinkName)
+		.def("getCompliantFrame", &MomentumTask::getCompliantFrame)
+		.def("getCurrentMomentum", &MomentumTask::getCurrentMomentum)
+		.def("setGoalMomentum", &MomentumTask::setGoalMomentum,
+			 py::arg("goal_momentum"))
+		.def("getGoalMomentum", &MomentumTask::getGoalMomentum)
+		.def("setGoalMomentumVelocity",
+			 &MomentumTask::setGoalMomentumVelocity,
+			 py::arg("goal_momentum_velocity"))
+		.def("getGoalMomentumVelocity",
+			 &MomentumTask::getGoalMomentumVelocity)
+		.def("getDesiredMomentumVelocity",
+			 &MomentumTask::getDesiredMomentumVelocity)
+		.def("getMomentumError", &MomentumTask::getMomentumError)
+		.def("setGains",
+			 py::overload_cast<double>(&MomentumTask::setGains),
+			 py::arg("kp"))
+		.def("setGains",
+			 py::overload_cast<const Eigen::VectorXd&>(&MomentumTask::setGains),
+			 py::arg("kp"))
+		.def("getGains", &MomentumTask::getGains)
+		.def("setDynamicDecouplingType",
+			 &MomentumTask::setDynamicDecouplingType, py::arg("type"))
+		.def("setBoundedInertiaEstimateThreshold",
+			 &MomentumTask::setBoundedInertiaEstimateThreshold,
+			 py::arg("threshold"))
+		.def("getBoundedInertiaEstimateThreshold",
+			 &MomentumTask::getBoundedInertiaEstimateThreshold)
+		.def("getJacobian", &MomentumTask::getJacobian)
+		.def("getKineticEnergyGradient",
+			 &MomentumTask::getKineticEnergyGradient)
+		.def("computeKineticEnergyGradient",
+			 &MomentumTask::computeKineticEnergyGradient);
 
 	py::class_<MotionForceTask, TemplateTask, std::shared_ptr<MotionForceTask>>(
 		m, "MotionForceTask")
@@ -749,6 +898,11 @@ PYBIND11_MODULE(sai_primitives_py, m) {
 			 py::arg("task_name"))
 		.def("getMotionForceTaskByName",
 			 &RobotController::getMotionForceTaskByName, py::arg("task_name"))
+		.def("getCentroidalAngularMomentumTaskByName",
+			 &RobotController::getCentroidalAngularMomentumTaskByName,
+			 py::arg("task_name"))
+		.def("getMomentumTaskByName", &RobotController::getMomentumTaskByName,
+			 py::arg("task_name"))
 		.def("getTaskNames", &RobotController::getTaskNames);
 
 	py::enum_<HapticControlType>(m, "HapticControlType")

@@ -1,6 +1,8 @@
 #include "tasks/JointTask.h"
 #include "tasks/JointLimitAvoidanceTask.h"
 #include "tasks/MotionForceTask.h"
+#include "tasks/CentroidalAngularMomentumTask.h"
+#include "tasks/MomentumTask.h"
 #include "tasks/TemplateTask.h"
 
 #include "POPCBilateralTeleoperation.h"

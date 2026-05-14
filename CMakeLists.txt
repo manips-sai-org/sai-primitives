@@ -66,6 +66,8 @@ set(CONTROLLERS_SOURCE
     ${PROJECT_SOURCE_DIR}/src/tasks/JointHandler.cpp
     ${PROJECT_SOURCE_DIR}/src/tasks/SingularityHandler.cpp
     ${PROJECT_SOURCE_DIR}/src/tasks/ComMotionTask.cpp
+    ${PROJECT_SOURCE_DIR}/src/tasks/CentroidalAngularMomentumTask.cpp
+    ${PROJECT_SOURCE_DIR}/src/tasks/MomentumTask.cpp
     ${PROJECT_SOURCE_DIR}/src/HapticDeviceController.cpp
     ${PROJECT_SOURCE_DIR}/src/POPCBilateralTeleoperation.cpp
 )
