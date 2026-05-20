@@ -197,8 +197,8 @@ void control(shared_ptr<SaiModel::SaiModel> robot,
 				motion_force_task->setGoalForce(10.0 * Vector3d::UnitZ());
 				motion_force_task->setGoalMoment(Vector3d::Zero());
 
-				motion_force_task->setForceControlGains(0.7, 5.0, 1.5);
-				motion_force_task->setMomentControlGains(0.7, 4.0, 1.5);
+				motion_force_task->setForceControlGains(0.7, 10.0, 1.5);
+				motion_force_task->setMomentControlGains(0.7, 10.0, 1.5);
 
 				// change the state of the state machine
 				state = CONTACT_CONTROL;

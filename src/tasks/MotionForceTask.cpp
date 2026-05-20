@@ -95,6 +95,7 @@ void MotionForceTask::initialSetup() {
 
 	// POPC force
 	_POPC_force.reset(new POPCExplicitForceControl(getLoopTimestep()));
+	disablePassivity();  // stylistic choice
 
 	// enable zero-crossing reset
 	enableZeroForceCrossing();
@@ -366,6 +367,8 @@ VectorXd MotionForceTask::computeTorques() {
 	Vector3d position_related_force = Vector3d::Zero();
 	Vector3d moment_feedback_related_force = Vector3d::Zero();
 	Vector3d orientation_related_force = Vector3d::Zero();
+	Vector3d force_damping_related_force = Vector3d::Zero();
+	Vector3d moment_damping_related_force = Vector3d::Zero();
 
 	// force related terms
 	if (_closed_loop_force_control) {
@@ -397,15 +400,21 @@ VectorXd MotionForceTask::computeTorques() {
 		}
 
 		// compute the final contribution
-		force_feedback_related_force =
-			_POPC_force->computePassivitySaturatedForce(
-				sigma_force * goal_force,
-				sigma_force * _sensed_force_control_world_frame,
-				sigma_force * force_feedback_term,
-				sigma_force * _current_linear_velocity, _kv_force, _kff_force);
+		if (_POPC_force->isEnabled()) {
+			force_feedback_related_force =
+				_POPC_force->computePassivitySaturatedForce(
+					sigma_force * goal_force,
+					sigma_force * _sensed_force_control_world_frame,
+					sigma_force * force_feedback_term,
+					sigma_force * _current_linear_velocity, _kv_force, _kff_force);
+		} else {
+			force_feedback_related_force = force_feedback_term;
+			force_damping_related_force =
+				sigma_force * (-_kv_force * _current_linear_velocity);
+		}		
 	} else	// open loop force control
 	{
-		force_feedback_related_force =
+		force_damping_related_force =
 			sigma_force * (-_kv_force * _current_linear_velocity);
 	}
 
@@ -443,10 +452,14 @@ VectorXd MotionForceTask::computeTorques() {
 		// compute the final contribution
 		moment_feedback_related_force =
 			sigma_moment *
-			(moment_feedback_term - _kv_moment * _current_angular_velocity);
+			(moment_feedback_term);
+
+		moment_damping_related_force =
+			sigma_moment * (-_kv_moment * _current_angular_velocity);
+
 	} else	// open loop moment control
 	{
-		moment_feedback_related_force =
+		moment_damping_related_force =
 			sigma_moment * (-_kv_moment * _current_angular_velocity);
 	}
 
@@ -648,8 +661,8 @@ VectorXd MotionForceTask::computeTorques() {
 	force_moment_contribution.head(3) = force_feedback_related_force;
 	force_moment_contribution.tail(3) = moment_feedback_related_force;
 
-	position_orientation_contribution.head(3) = position_related_force;
-	position_orientation_contribution.tail(3) = orientation_related_force;
+	position_orientation_contribution.head(3) = position_related_force + force_damping_related_force;
+	position_orientation_contribution.tail(3) = orientation_related_force + moment_damping_related_force;
 
 	_unit_mass_force = position_orientation_contribution;
 

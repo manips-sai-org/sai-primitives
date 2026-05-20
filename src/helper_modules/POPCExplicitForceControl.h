@@ -23,6 +23,9 @@ public:
     void reInitialize();
     void enable();
     void disable();
+	bool isEnabled() {
+		return _is_enabled;
+	}
 
 	Vector3d computePassivitySaturatedForce(
 		const Vector3d& fd, const Vector3d& fs,
