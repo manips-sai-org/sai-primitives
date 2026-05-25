@@ -228,6 +228,8 @@ void MotionForceTask::initialSetup() {
 	_singularity_exit_linear_vel = DefaultParameters::linear_saturation_velocity;
 	_singularity_exit_angular_vel = DefaultParameters::angular_saturation_velocity;
 
+	_remove_floating_base_dependency = false;
+
 	reInitializeTask();
 }
 
@@ -291,8 +293,13 @@ void MotionForceTask::updateTaskModel(const MatrixXd& N_prec) {
 
 	_N_prec = N_prec;
 
-	_jacobian = _partial_task_projection *
-				robot->JWorldFrame(_link_name, _compliant_frame.translation());
+	MatrixXd J_task = robot->JWorldFrame(_link_name, _compliant_frame.translation());
+	if (_remove_floating_base_dependency) {
+		J_task.block(0, 0, J_task.rows(), 6).setZero();  
+	}
+
+	_jacobian = _partial_task_projection * J_task;
+				
 	_projected_jacobian = _jacobian * _N_prec;
 
 	_singularity_handler->updateTaskModel(_projected_jacobian, _N_prec);

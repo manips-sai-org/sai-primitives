@@ -825,6 +825,10 @@ public:
 		return *_singularity_handler;
 	}
 
+	void removeFloatingBaseDependency() {
+		_remove_floating_base_dependency = true;
+	}
+
 	// // -------- override step computation ----------
 	// void enableManualStepPositionError() {
 	// 	_use_user_step_position_flag = true;
@@ -1010,6 +1014,9 @@ private:
 	// interpolation parameters
 	double _default_linear_saturation_velocity;
 	double _default_angular_saturation_velocity;
+
+	// floating base
+	bool _remove_floating_base_dependency;
 
 };
 
