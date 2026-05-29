@@ -1,14 +1,14 @@
 /**
- * @file CentroidalAngularMomentumTask.h
+ * @file CentroidalLinearMomentumTask.h
  *
- *      This class creates a centroidal angular momentum tracking task using the
- * angular centroidal momentum matrix returned by SaiModel.
+ *      This class creates a centroidal linear momentum tracking task using the
+ * linear centroidal momentum matrix returned by SaiModel.
  *
  * @author William Chong (wmchong@stanford.edu)
  */
 
-#ifndef SAI_PRIMITIVES_CENTROIDAL_ANGULAR_MOMENTUM_TASK_H_
-#define SAI_PRIMITIVES_CENTROIDAL_ANGULAR_MOMENTUM_TASK_H_
+#ifndef SAI_PRIMITIVES_CENTROIDAL_LINEAR_MOMENTUM_TASK_H_
+#define SAI_PRIMITIVES_CENTROIDAL_LINEAR_MOMENTUM_TASK_H_
 
 #include <Eigen/Dense>
 #include <memory>
@@ -24,7 +24,7 @@ using namespace std;
 
 namespace SaiPrimitives {
 
-class CentroidalAngularMomentumTask : public TemplateTask {
+class CentroidalLinearMomentumTask : public TemplateTask {
 public:
 	struct DefaultParameters {
 		static constexpr double kp = 50.0;
@@ -34,9 +34,9 @@ public:
 		static constexpr double task_range_basis_tol = 1e-2;
 	};
 
-	CentroidalAngularMomentumTask(
+	CentroidalLinearMomentumTask(
 		std::shared_ptr<SaiModel::SaiModel>& robot,
-		const std::string& task_name = "centroidal_angular_momentum_task",
+		const std::string& task_name = "centroidal_linear_momentum_task",
 		const double loop_timestep = 0.001);
 
 	void updateTaskModel(const MatrixXd& N_prec) override;
@@ -110,4 +110,4 @@ private:
 
 } /* namespace SaiPrimitives */
 
-#endif /* SAI_PRIMITIVES_CENTROIDAL_ANGULAR_MOMENTUM_TASK_H_ */
+#endif /* SAI_PRIMITIVES_CENTROIDAL_LINEAR_MOMENTUM_TASK_H_ */

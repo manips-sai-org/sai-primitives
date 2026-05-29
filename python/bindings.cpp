@@ -10,6 +10,7 @@
 #include "RobotController.h"
 #include "tasks/ComMotionTask.h"
 #include "tasks/CentroidalAngularMomentumTask.h"
+#include "tasks/CentroidalLinearMomentumTask.h"
 #include "tasks/JointTask.h"
 #include "tasks/MotionForceTask.h"
 #include "tasks/MomentumTask.h"
@@ -70,6 +71,8 @@ PYBIND11_MODULE(sai_primitives_py, m) {
 		.value("MOTION_FORCE_TASK", TaskType::MOTION_FORCE_TASK)
 		.value("CENTROIDAL_ANGULAR_MOMENTUM_TASK",
 			   TaskType::CENTROIDAL_ANGULAR_MOMENTUM_TASK)
+		.value("CENTROIDAL_LINEAR_MOMENTUM_TASK",
+			   TaskType::CENTROIDAL_LINEAR_MOMENTUM_TASK)
 		.value("MOMENTUM_TASK", TaskType::MOMENTUM_TASK)
 		.export_values();
 
@@ -227,8 +230,6 @@ PYBIND11_MODULE(sai_primitives_py, m) {
 			 py::arg("goal_momentum_velocity"))
 		.def("getGoalMomentumVelocity",
 			 &CentroidalAngularMomentumTask::getGoalMomentumVelocity)
-		.def("getDesiredMomentumVelocity",
-			 &CentroidalAngularMomentumTask::getDesiredMomentumVelocity)
 		.def("getMomentumError",
 			 &CentroidalAngularMomentumTask::getMomentumError)
 		.def("setGains",
@@ -248,11 +249,69 @@ PYBIND11_MODULE(sai_primitives_py, m) {
 			 py::arg("threshold"))
 		.def("getBoundedInertiaEstimateThreshold",
 			 &CentroidalAngularMomentumTask::getBoundedInertiaEstimateThreshold)
-		.def("getJacobian", &CentroidalAngularMomentumTask::getJacobian)
-		.def("getKineticEnergyGradient",
-			 &CentroidalAngularMomentumTask::getKineticEnergyGradient)
-		.def("computeKineticEnergyGradient",
-			 &CentroidalAngularMomentumTask::computeKineticEnergyGradient);
+		.def("getJacobian", &CentroidalAngularMomentumTask::getJacobian);
+
+	py::class_<CentroidalLinearMomentumTask, TemplateTask,
+			   std::shared_ptr<CentroidalLinearMomentumTask>>(
+		m, "CentroidalLinearMomentumTask")
+		.def(py::init([&](const py::object& robot_obj,
+						 const std::string& task_name,
+						 double loop_timestep) {
+				 auto robot = robot_from_py(robot_obj);
+				 return std::make_shared<CentroidalLinearMomentumTask>(
+					 robot, task_name, loop_timestep);
+			 }),
+			 py::arg("robot"),
+			 py::arg("task_name") = "centroidal_linear_momentum_task",
+			 py::arg("loop_timestep") = 0.001)
+		.def("updateTaskModel", &CentroidalLinearMomentumTask::updateTaskModel,
+			 py::arg("N_prec"))
+		.def("computeTorques",
+			 py::overload_cast<>(&CentroidalLinearMomentumTask::computeTorques))
+		.def("computeTorques",
+			 py::overload_cast<const Eigen::VectorXd&>(
+				 &CentroidalLinearMomentumTask::computeTorques),
+			 py::arg("tau_prec"))
+		.def("reInitializeTask",
+			 &CentroidalLinearMomentumTask::reInitializeTask)
+		.def("getTaskNullspace",
+			 &CentroidalLinearMomentumTask::getTaskNullspace)
+		.def("getPreviousTasksNullspace",
+			 &CentroidalLinearMomentumTask::getPreviousTasksNullspace)
+		.def("getTaskAndPreviousNullspace",
+			 &CentroidalLinearMomentumTask::getTaskAndPreviousNullspace)
+		.def("getCurrentMomentum",
+			 &CentroidalLinearMomentumTask::getCurrentMomentum)
+		.def("setGoalMomentum",
+			 &CentroidalLinearMomentumTask::setGoalMomentum,
+			 py::arg("goal_momentum"))
+		.def("getGoalMomentum",
+			 &CentroidalLinearMomentumTask::getGoalMomentum)
+		.def("setGoalMomentumVelocity",
+			 &CentroidalLinearMomentumTask::setGoalMomentumVelocity,
+			 py::arg("goal_momentum_velocity"))
+		.def("getGoalMomentumVelocity",
+			 &CentroidalLinearMomentumTask::getGoalMomentumVelocity)
+		.def("getMomentumError",
+			 &CentroidalLinearMomentumTask::getMomentumError)
+		.def("setGains",
+			 py::overload_cast<double>(
+				 &CentroidalLinearMomentumTask::setGains),
+			 py::arg("kp"))
+		.def("setGains",
+			 py::overload_cast<const Eigen::Vector3d&>(
+				 &CentroidalLinearMomentumTask::setGains),
+			 py::arg("kp"))
+		.def("getGains", &CentroidalLinearMomentumTask::getGains)
+		.def("setDynamicDecouplingType",
+			 &CentroidalLinearMomentumTask::setDynamicDecouplingType,
+			 py::arg("type"))
+		.def("setBoundedInertiaEstimateThreshold",
+			 &CentroidalLinearMomentumTask::setBoundedInertiaEstimateThreshold,
+			 py::arg("threshold"))
+		.def("getBoundedInertiaEstimateThreshold",
+			 &CentroidalLinearMomentumTask::getBoundedInertiaEstimateThreshold)
+		.def("getJacobian", &CentroidalLinearMomentumTask::getJacobian);
 
 	py::class_<MomentumTask, TemplateTask, std::shared_ptr<MomentumTask>>(
 		m, "MomentumTask")
@@ -900,6 +959,9 @@ PYBIND11_MODULE(sai_primitives_py, m) {
 			 &RobotController::getMotionForceTaskByName, py::arg("task_name"))
 		.def("getCentroidalAngularMomentumTaskByName",
 			 &RobotController::getCentroidalAngularMomentumTaskByName,
+			 py::arg("task_name"))
+		.def("getCentroidalLinearMomentumTaskByName",
+			 &RobotController::getCentroidalLinearMomentumTaskByName,
 			 py::arg("task_name"))
 		.def("getMomentumTaskByName", &RobotController::getMomentumTaskByName,
 			 py::arg("task_name"))

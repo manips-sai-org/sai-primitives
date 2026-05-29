@@ -1,10 +1,10 @@
 /**
- * @file CentroidalAngularMomentumTask.cpp
+ * @file CentroidalLinearMomentumTask.cpp
  *
  * @author William Chong (wmchong@stanford.edu)
  */
 
-#include "CentroidalAngularMomentumTask.h"
+#include "CentroidalLinearMomentumTask.h"
 
 #include <stdexcept>
 
@@ -13,16 +13,16 @@ using namespace std;
 
 namespace SaiPrimitives {
 
-CentroidalAngularMomentumTask::CentroidalAngularMomentumTask(
+CentroidalLinearMomentumTask::CentroidalLinearMomentumTask(
 	std::shared_ptr<SaiModel::SaiModel>& robot, const std::string& task_name,
 	const double loop_timestep)
 	: TemplateTask(robot, task_name,
-				   TaskType::CENTROIDAL_ANGULAR_MOMENTUM_TASK,
+				   TaskType::CENTROIDAL_LINEAR_MOMENTUM_TASK,
 				   loop_timestep) {
 	initialSetup();
 }
 
-void CentroidalAngularMomentumTask::initialSetup() {
+void CentroidalLinearMomentumTask::initialSetup() {
 	const int robot_dof = getConstRobotModel()->dof();
 
 	setGains(DefaultParameters::kp);
@@ -41,7 +41,7 @@ void CentroidalAngularMomentumTask::initialSetup() {
 	reInitializeTask();
 }
 
-void CentroidalAngularMomentumTask::reInitializeTask() {
+void CentroidalLinearMomentumTask::reInitializeTask() {
 	updateJacobian();
 	_current_momentum = _jacobian * getConstRobotModel()->dq();
 	_goal_momentum = _current_momentum;
@@ -49,37 +49,37 @@ void CentroidalAngularMomentumTask::reInitializeTask() {
 	_momentum_error.setZero();
 }
 
-void CentroidalAngularMomentumTask::setGoalMomentum(
+void CentroidalLinearMomentumTask::setGoalMomentum(
 	const Vector3d& goal_momentum) {
 	_goal_momentum = goal_momentum;
 }
 
-void CentroidalAngularMomentumTask::setGoalMomentumVelocity(
+void CentroidalLinearMomentumTask::setGoalMomentumVelocity(
 	const Vector3d& goal_momentum_velocity) {
 	_goal_momentum_velocity = goal_momentum_velocity;
 }
 
-void CentroidalAngularMomentumTask::setGains(const double kp) {
+void CentroidalLinearMomentumTask::setGains(const double kp) {
 	if (kp < 0.0) {
 		throw invalid_argument(
 			"gain must be positive or zero in "
-			"CentroidalAngularMomentumTask::setGains\n");
+			"CentroidalLinearMomentumTask::setGains\n");
 	}
 	_are_gains_isotropic = true;
 	_kp = kp * Matrix3d::Identity();
 }
 
-void CentroidalAngularMomentumTask::setGains(const Vector3d& kp) {
+void CentroidalLinearMomentumTask::setGains(const Vector3d& kp) {
 	if (kp.minCoeff() < 0.0) {
 		throw invalid_argument(
 			"all gains must be positive or zero in "
-			"CentroidalAngularMomentumTask::setGains\n");
+			"CentroidalLinearMomentumTask::setGains\n");
 	}
 	_are_gains_isotropic = false;
 	_kp = kp.asDiagonal();
 }
 
-vector<PIDGains> CentroidalAngularMomentumTask::getGains() const {
+vector<PIDGains> CentroidalLinearMomentumTask::getGains() const {
 	if (_are_gains_isotropic) {
 		return vector<PIDGains>(1, PIDGains(_kp(0, 0), 0.0, 0.0));
 	}
@@ -89,23 +89,24 @@ vector<PIDGains> CentroidalAngularMomentumTask::getGains() const {
 		PIDGains(_kp(2, 2), 0.0, 0.0)};
 }
 
-void CentroidalAngularMomentumTask::updateJacobian() {
-	_jacobian = getConstRobotModel()->getCentroidalMomentumMatrix().topRows(3);
+void CentroidalLinearMomentumTask::updateJacobian() {
+	_jacobian =
+		getConstRobotModel()->getCentroidalMomentumMatrix().bottomRows(3);
 	_projected_jacobian = _jacobian * _N_prec;
 }
 
-void CentroidalAngularMomentumTask::updateTaskModel(const MatrixXd& N_prec) {
+void CentroidalLinearMomentumTask::updateTaskModel(const MatrixXd& N_prec) {
 	const auto robot = getConstRobotModel();
 	const int robot_dof = robot->dof();
 	if (N_prec.rows() != N_prec.cols()) {
 		throw invalid_argument(
 			"N_prec matrix not square in "
-			"CentroidalAngularMomentumTask::updateTaskModel\n");
+			"CentroidalLinearMomentumTask::updateTaskModel\n");
 	}
 	if (N_prec.rows() != robot_dof) {
 		throw invalid_argument(
 			"N_prec matrix size not consistent with robot dof in "
-			"CentroidalAngularMomentumTask::updateTaskModel\n");
+			"CentroidalLinearMomentumTask::updateTaskModel\n");
 	}
 
 	_N_prec = N_prec;
@@ -128,7 +129,7 @@ void CentroidalAngularMomentumTask::updateTaskModel(const MatrixXd& N_prec) {
 	updateDynamicDecoupling();
 }
 
-void CentroidalAngularMomentumTask::updateDynamicDecoupling() {
+void CentroidalLinearMomentumTask::updateDynamicDecoupling() {
 	const auto robot = getConstRobotModel();
 	const MatrixXd task_jacobian =
 		_current_task_range.transpose() * _projected_jacobian;
@@ -165,18 +166,18 @@ void CentroidalAngularMomentumTask::updateDynamicDecoupling() {
 		default: {
 			throw invalid_argument(
 				"Dynamic decoupling type not recognized in "
-				"CentroidalAngularMomentumTask::updateDynamicDecoupling\n");
+				"CentroidalLinearMomentumTask::updateDynamicDecoupling\n");
 		}
 	}
 }
 
-VectorXd CentroidalAngularMomentumTask::computeTorques(
+VectorXd CentroidalLinearMomentumTask::computeTorques(
 	const Eigen::VectorXd& tau_prec) {
 	const auto robot = getConstRobotModel();
 	if (tau_prec.size() != robot->dof()) {
 		throw invalid_argument(
 			"tau_prec vector size not consistent with robot dof in "
-			"CentroidalAngularMomentumTask::computeTorques\n");
+			"CentroidalLinearMomentumTask::computeTorques\n");
 	}
 
 	VectorXd task_torques = computeTorques();
@@ -191,7 +192,7 @@ VectorXd CentroidalAngularMomentumTask::computeTorques(
 	return task_torques - disturbance_compensation;
 }
 
-VectorXd CentroidalAngularMomentumTask::computeTorques() {
+VectorXd CentroidalLinearMomentumTask::computeTorques() {
 	const auto robot = getConstRobotModel();
 	const int robot_dof = robot->dof();
 	updateJacobian();
@@ -204,9 +205,10 @@ VectorXd CentroidalAngularMomentumTask::computeTorques() {
 	_momentum_error = _current_momentum - _goal_momentum;
 
 	VectorXd task_joint_torques =
-		_projected_jacobian.transpose() * _current_task_range * 
+		_projected_jacobian.transpose() * _current_task_range *
 		_Lambda_modified * _current_task_range.transpose() *
-		(-robot->getCentroidalInertiaMatrixDotQDot().head<3>() + _goal_momentum_velocity - _kp * _momentum_error);
+		(-robot->getCentroidalInertiaMatrixDotQDot().tail<3>() +
+		 _goal_momentum_velocity - _kp * _momentum_error);
 
 	return task_joint_torques;
 }

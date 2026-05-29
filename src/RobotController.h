@@ -18,6 +18,7 @@
 #include "tasks/JointTask.h"
 #include "tasks/MotionForceTask.h"
 #include "tasks/CentroidalAngularMomentumTask.h"
+#include "tasks/CentroidalLinearMomentumTask.h"
 #include "tasks/MomentumTask.h"
 #include "tasks/TemplateTask.h"
 
@@ -91,6 +92,10 @@ public:
 	/// if no centroidal angular momentum task with that name exists
 	std::shared_ptr<CentroidalAngularMomentumTask>
 	getCentroidalAngularMomentumTaskByName(const std::string& task_name);
+	/// @brief get a centroidal linear momentum task by name, throws an error
+	/// if no centroidal linear momentum task with that name exists
+	std::shared_ptr<CentroidalLinearMomentumTask>
+	getCentroidalLinearMomentumTaskByName(const std::string& task_name);
 	/// @brief get a momentum task by name, throws an error if no momentum task
 	/// with that name exists
 	std::shared_ptr<MomentumTask> getMomentumTaskByName(
