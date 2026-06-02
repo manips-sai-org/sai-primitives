@@ -1,4 +1,4 @@
-// Only with Ruckig Pro
+// Tracking interface example
 
 #include <cmath>
 #include <iostream>
@@ -49,6 +49,7 @@ int main() {
     input.max_velocity = {0.8};
     input.max_acceleration = {2.0};
     input.max_jerk = {5.0};
+    otg.setTargetLimits({0.8}, {2.0});
 
     // Optional minimum and maximum position
     input.min_position = {-2.5};

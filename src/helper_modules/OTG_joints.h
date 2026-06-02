@@ -12,6 +12,7 @@
 
 #include <Eigen/Dense>
 #include <ruckig/ruckig.hpp>
+#include <ruckig/trackig.hpp>
 
 #include <memory>
 
@@ -123,12 +124,86 @@ public:
 									const VectorXd& goal_velocity);
 
 	/**
+	 * @brief      Sets the goal position, velocity and acceleration
+	 *
+	 * @param[in]  goal_position      The goal position
+	 * @param[in]  goal_velocity      The goal velocity
+	 * @param[in]  goal_acceleration  The goal acceleration
+	 */
+	void setGoalPositionVelocityAndAcceleration(
+		const VectorXd& goal_position,
+		const VectorXd& goal_velocity,
+		const VectorXd& goal_acceleration);
+
+	/**
 	 * @brief      Sets the goal position and zero target velocity
 	 *
 	 * @param[in]  goal_position  The goal position
 	 */
 	void setGoalPosition(const VectorXd& goal_position) {
 		setGoalPositionAndVelocity(goal_position, VectorXd::Zero(_dim));
+	}
+
+	/**
+	 * @brief      Enables Ruckig's tracking interface for the internal OTG.
+	 *
+	 * @param[in]  reactiveness       Prediction scaling in [0, 1]
+	 * @param[in]  look_ahead_cycles  Initial number of control cycles to look ahead
+	 * @param[in]  max_iterations     Maximum candidate trajectories per update
+	 * @param[in]  mode               Tracking mode
+	 */
+	void enableTrackingMode(
+		const double reactiveness = 1.0,
+		const size_t look_ahead_cycles = 1,
+		const size_t max_iterations = 8,
+		const TrackigMode mode = TrackigMode::Optimized);
+
+	/// @brief Disables Ruckig tracking mode and uses regular Ruckig OTG.
+	void disableTrackingMode();
+
+	/// @brief Getter for Ruckig tracking mode status.
+	bool getTrackingModeEnabled() const { return _tracking_mode_enabled; }
+
+	/**
+	 * @brief Sets symmetric velocity and acceleration limits for tracking targets.
+	 *
+	 * These limits are applied to the target state passed to Ruckig Trackig before
+	 * computing the next trajectory. Values must be positive or zero.
+	 */
+	void setTrackingTargetLimits(const VectorXd& max_velocity,
+								 const VectorXd& max_acceleration);
+
+	/**
+	 * @brief Sets symmetric scalar velocity and acceleration limits for tracking
+	 * targets.
+	 */
+	void setTrackingTargetLimits(const double max_velocity,
+								 const double max_acceleration) {
+		setTrackingTargetLimits(max_velocity * VectorXd::Ones(_dim),
+								max_acceleration * VectorXd::Ones(_dim));
+	}
+
+	/// @brief Uses the regular OTG limits for tracking targets.
+	void disableTrackingTargetLimits();
+
+	/// @brief Getter for explicit tracking target velocity limits status.
+	bool getTrackingTargetVelocityLimitsEnabled() const {
+		return _trackig->getTargetVelocityLimitsEnabled();
+	}
+
+	/// @brief Getter for explicit tracking target acceleration limits status.
+	bool getTrackingTargetAccelerationLimitsEnabled() const {
+		return _trackig->getTargetAccelerationLimitsEnabled();
+	}
+
+	/// @brief Getter for explicit tracking target velocity limits.
+	VectorXd getTrackingTargetVelocityLimits() const {
+		return _trackig->getTargetVelocityLimits();
+	}
+
+	/// @brief Getter for explicit tracking target acceleration limits.
+	VectorXd getTrackingTargetAccelerationLimits() const {
+		return _trackig->getTargetAccelerationLimits();
 	}
 
 	/**
@@ -179,9 +254,15 @@ private:
 	VectorXd _goal_position_eigen;
 	/// @brief the goal velocity as an Eigen vector
 	VectorXd _goal_velocity_eigen;
+	/// @brief the goal acceleration as an Eigen vector
+	VectorXd _goal_acceleration_eigen;
 
 	/// @brief the ruckig trajectory generator
 	std::unique_ptr<Ruckig<DynamicDOFs, EigenVector>> _otg;
+	/// @brief the ruckig tracking trajectory generator
+	std::unique_ptr<Trackig<DynamicDOFs, EigenVector>> _trackig;
+	/// @brief flag to use Ruckig Trackig instead of regular Ruckig
+	bool _tracking_mode_enabled = false;
 	/// @brief the input parameter for the ruckig trajectory generator
 	InputParameter<DynamicDOFs, EigenVector> _input {0};
 	/// @brief the output parameter for the ruckig trajectory generator

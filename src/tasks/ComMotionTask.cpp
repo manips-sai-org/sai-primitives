@@ -360,10 +360,11 @@ VectorXd ComMotionTask::computeTorques() {
 	Vector3d tmp_desired_angular_acceleration = _goal_angular_acceleration;
 
 	if (_use_internal_otg_flag) {
-		_otg->setGoalPositionAndLinearVelocity(_goal_position,
-											   _goal_linear_velocity);
-		_otg->setGoalOrientationAndAngularVelocity(_goal_orientation,
-												   _goal_angular_velocity);
+		_otg->setGoalPositionLinearVelocityAndAcceleration(
+			_goal_position, _goal_linear_velocity, _goal_linear_acceleration);
+		_otg->setGoalOrientationAngularVelocityAndAcceleration(
+			_goal_orientation, _goal_angular_velocity,
+			_goal_angular_acceleration);
 		_otg->update();
 
 		tmp_desired_position = _otg->getNextPosition();

@@ -167,6 +167,33 @@ PYBIND11_MODULE(sai_primitives_py, m) {
 			 py::arg("max_jerk"))
 		.def("disableInternalOtg", &JointTask::disableInternalOtg)
 		.def("getInternalOtgEnabled", &JointTask::getInternalOtgEnabled)
+		.def("enableInternalOtgTrackingMode",
+			 [](JointTask& task, const double reactiveness,
+				const size_t look_ahead_cycles, const size_t max_iterations) {
+				 task.enableInternalOtgTrackingMode(
+					 reactiveness, look_ahead_cycles, max_iterations);
+			 },
+			 py::arg("reactiveness") = 1.0,
+			 py::arg("look_ahead_cycles") = 1,
+			 py::arg("max_iterations") = 8)
+		.def("disableInternalOtgTrackingMode",
+			 &JointTask::disableInternalOtgTrackingMode)
+		.def("getInternalOtgTrackingModeEnabled",
+			 &JointTask::getInternalOtgTrackingModeEnabled)
+		.def("setInternalOtgTrackingTargetLimits",
+			 py::overload_cast<const Eigen::VectorXd&, const Eigen::VectorXd&>(
+				 &JointTask::setInternalOtgTrackingTargetLimits),
+			 py::arg("max_velocity"), py::arg("max_acceleration"))
+		.def("setInternalOtgTrackingTargetLimits",
+			 py::overload_cast<double, double>(
+				 &JointTask::setInternalOtgTrackingTargetLimits),
+			 py::arg("max_velocity"), py::arg("max_acceleration"))
+		.def("disableInternalOtgTrackingTargetLimits",
+			 &JointTask::disableInternalOtgTrackingTargetLimits)
+		.def("getInternalOtgTrackingTargetVelocityLimitsEnabled",
+			 &JointTask::getInternalOtgTrackingTargetVelocityLimitsEnabled)
+		.def("getInternalOtgTrackingTargetAccelerationLimitsEnabled",
+			 &JointTask::getInternalOtgTrackingTargetAccelerationLimitsEnabled)
 		.def("enableVelocitySaturation",
 			 py::overload_cast<const Eigen::VectorXd&>(
 				 &JointTask::enableVelocitySaturation),
@@ -593,6 +620,34 @@ PYBIND11_MODULE(sai_primitives_py, m) {
 			 py::arg("max_angular_acceleration"), py::arg("max_angular_jerk"))
 		.def("disableInternalOtg", &MotionForceTask::disableInternalOtg)
 		.def("getInternalOtgEnabled", &MotionForceTask::getInternalOtgEnabled)
+		.def("enableInternalOtgTrackingMode",
+			 [](MotionForceTask& task, const double reactiveness,
+				const size_t look_ahead_cycles, const size_t max_iterations) {
+				 task.enableInternalOtgTrackingMode(
+					 reactiveness, look_ahead_cycles, max_iterations);
+			 },
+			 py::arg("reactiveness") = 1.0,
+			 py::arg("look_ahead_cycles") = 1,
+			 py::arg("max_iterations") = 8)
+		.def("disableInternalOtgTrackingMode",
+			 &MotionForceTask::disableInternalOtgTrackingMode)
+		.def("getInternalOtgTrackingModeEnabled",
+			 &MotionForceTask::getInternalOtgTrackingModeEnabled)
+		.def("setInternalOtgTrackingTargetLimits",
+			 &MotionForceTask::setInternalOtgTrackingTargetLimits,
+			 py::arg("max_linear_velocity"),
+			 py::arg("max_linear_acceleration"),
+			 py::arg("max_angular_velocity"),
+			 py::arg("max_angular_acceleration"))
+		.def("disableInternalOtgTrackingTargetLimits",
+			 &MotionForceTask::disableInternalOtgTrackingTargetLimits)
+		.def("getInternalOtgTrackingTargetVelocityLimitsEnabled",
+			 &MotionForceTask::getInternalOtgTrackingTargetVelocityLimitsEnabled)
+		.def("getInternalOtgTrackingTargetAccelerationLimitsEnabled",
+			 [](const MotionForceTask& task) {
+				 return task
+					 .getInternalOtgTrackingTargetAccelerationLimitsEnabled();
+			 })
 		.def("enableVelocitySaturation", &MotionForceTask::enableVelocitySaturation,
 			 py::arg("linear_vel_sat") = 0.3,
 			 py::arg("angular_vel_sat") = M_PI / 3.0)
@@ -876,6 +931,34 @@ PYBIND11_MODULE(sai_primitives_py, m) {
 			 py::arg("max_angular_acceleration"), py::arg("max_angular_jerk"))
 		.def("disableInternalOtg", &ComMotionTask::disableInternalOtg)
 		.def("getInternalOtgEnabled", &ComMotionTask::getInternalOtgEnabled)
+		.def("enableInternalOtgTrackingMode",
+			 [](ComMotionTask& task, const double reactiveness,
+				const size_t look_ahead_cycles, const size_t max_iterations) {
+				 task.enableInternalOtgTrackingMode(
+					 reactiveness, look_ahead_cycles, max_iterations);
+			 },
+			 py::arg("reactiveness") = 1.0,
+			 py::arg("look_ahead_cycles") = 1,
+			 py::arg("max_iterations") = 8)
+		.def("disableInternalOtgTrackingMode",
+			 &ComMotionTask::disableInternalOtgTrackingMode)
+		.def("getInternalOtgTrackingModeEnabled",
+			 &ComMotionTask::getInternalOtgTrackingModeEnabled)
+		.def("setInternalOtgTrackingTargetLimits",
+			 &ComMotionTask::setInternalOtgTrackingTargetLimits,
+			 py::arg("max_linear_velocity"),
+			 py::arg("max_linear_acceleration"),
+			 py::arg("max_angular_velocity"),
+			 py::arg("max_angular_acceleration"))
+		.def("disableInternalOtgTrackingTargetLimits",
+			 &ComMotionTask::disableInternalOtgTrackingTargetLimits)
+		.def("getInternalOtgTrackingTargetVelocityLimitsEnabled",
+			 &ComMotionTask::getInternalOtgTrackingTargetVelocityLimitsEnabled)
+		.def("getInternalOtgTrackingTargetAccelerationLimitsEnabled",
+			 [](const ComMotionTask& task) {
+				 return task
+					 .getInternalOtgTrackingTargetAccelerationLimitsEnabled();
+			 })
 		.def("enableVelocitySaturation", &ComMotionTask::enableVelocitySaturation,
 			 py::arg("linear_vel_sat") = 0.3,
 			 py::arg("angular_vel_sat") = M_PI / 3.0)

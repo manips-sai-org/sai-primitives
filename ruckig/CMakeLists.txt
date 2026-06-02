@@ -31,6 +31,7 @@ add_library(ruckig
   src/ruckig/position-second-step2.cpp
   src/ruckig/position-third-step1.cpp
   src/ruckig/position-third-step2.cpp
+  src/ruckig/trackig.cpp
   src/ruckig/velocity-second-step1.cpp
   src/ruckig/velocity-second-step2.cpp
   src/ruckig/velocity-third-step1.cpp
@@ -70,7 +71,7 @@ if(BUILD_EXAMPLES)
   if(BUILD_CLOUD_CLIENT)
     list(APPEND EXAMPLES_LIST 03_waypoints 04_waypoints_online 08_per_section_minimum_duration 10_dynamic_dofs_waypoints)
   else()
-    list(APPEND EXAMPLES_LIST 12_custom_vector_type 13_custom_vector_type_dynamic_dofs)
+    list(APPEND EXAMPLES_LIST 12_custom_vector_type 13_custom_vector_type_dynamic_dofs 14_tracking)
     if(TARGET Eigen3::Eigen)
       list(APPEND EXAMPLES_LIST 11_eigen_vector_type)
     endif()

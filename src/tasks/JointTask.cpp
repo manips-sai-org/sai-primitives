@@ -311,7 +311,8 @@ VectorXd JointTask::computeTorques() {
 
 	// compute next state from trajectory generation
 	if (_use_internal_otg_flag) {
-		_otg->setGoalPositionAndVelocity(_goal_position, _goal_velocity);
+		_otg->setGoalPositionVelocityAndAcceleration(
+			_goal_position, _goal_velocity, _goal_acceleration);
 		_otg->update();
 
 		_desired_position = _otg->getNextPosition();

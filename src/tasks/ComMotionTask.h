@@ -328,6 +328,56 @@ public:
 
 	const OTG_6dof_cartesian& getInternalOtg() const { return *_otg; }
 
+	/**
+	 * @brief Enables Ruckig tracking mode for the internal OTG.
+	 *
+	 * In tracking mode, goal pose, velocity and acceleration are passed to
+	 * Ruckig Trackig to generate the desired motion target.
+	 */
+	void enableInternalOtgTrackingMode(
+		const double reactiveness = 1.0,
+		const size_t look_ahead_cycles = 1,
+		const size_t max_iterations = 8,
+		const TrackigMode mode = TrackigMode::Optimized) {
+		_otg->enableTrackingMode(reactiveness, look_ahead_cycles,
+								 max_iterations, mode);
+	}
+
+	/// @brief Disables Ruckig tracking mode for the internal OTG.
+	void disableInternalOtgTrackingMode() { _otg->disableTrackingMode(); }
+
+	/// @brief Getter for Ruckig tracking mode on the internal OTG.
+	bool getInternalOtgTrackingModeEnabled() const {
+		return _otg->getTrackingModeEnabled();
+	}
+
+	/**
+	 * @brief Sets target linear/angular velocity and acceleration limits for
+	 * internal OTG tracking mode.
+	 */
+	void setInternalOtgTrackingTargetLimits(
+		const double max_linear_velocity,
+		const double max_linear_acceleration,
+		const double max_angular_velocity,
+		const double max_angular_acceleration) {
+		_otg->setTrackingTargetLimits(
+			max_linear_velocity, max_linear_acceleration,
+			max_angular_velocity, max_angular_acceleration);
+	}
+
+	/// @brief Uses the regular internal OTG limits for tracking targets.
+	void disableInternalOtgTrackingTargetLimits() {
+		_otg->disableTrackingTargetLimits();
+	}
+
+	bool getInternalOtgTrackingTargetVelocityLimitsEnabled() const {
+		return _otg->getTrackingTargetVelocityLimitsEnabled();
+	}
+
+	bool getInternalOtgTrackingTargetAccelerationLimitsEnabled() const {
+		return _otg->getTrackingTargetAccelerationLimitsEnabled();
+	}
+
 	// Velocity saturation flag and saturation values
 	void enableVelocitySaturation(const double linear_vel_sat = 0.3,
 								  const double angular_vel_sat = M_PI / 3);
