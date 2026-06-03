@@ -121,7 +121,10 @@ public:
 	void enableInternalOtgJerkLimited(const double max_linear_velocity,
 									  const double max_linear_acceleration,
 									  const double max_linear_jerk);
-	void disableInternalOtg() { _use_internal_otg_flag = false; }
+	void disableInternalOtg() {
+		_use_internal_otg_flag = false;
+		_otg->disableTrackingMode();
+	}
 	bool getInternalOtgEnabled() const { return _use_internal_otg_flag; }
 	const OTG_6dof_cartesian& getInternalOtg() const { return *_otg; }
 

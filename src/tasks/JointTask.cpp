@@ -6,6 +6,9 @@
 
 #include "JointTask.h"
 
+#include <algorithm>
+#include <cmath>
+#include <limits>
 #include <stdexcept>
 
 using namespace Eigen;
@@ -84,6 +87,13 @@ void JointTask::initialSetup() {
 	} else {
 		disableInternalOtg();
 	}
+	_automatic_otg_tracking_switch_enabled = false;
+	_automatic_otg_tracking_switch_active = false;
+	_automatic_otg_tracking_switch_goal_initialized = false;
+	_automatic_otg_tracking_streamed_goal_counter = 0;
+	_automatic_otg_tracking_stable_goal_counter = 0;
+	_automatic_otg_tracking_previous_goal_position =
+		VectorXd::Zero(_task_dof);
 
 	reInitializeTask();
 }
@@ -104,6 +114,13 @@ void JointTask::reInitializeTask() {
 	_integrated_position_error.setZero(_task_dof);
 
 	_otg->reInitialize(_current_position);
+	if (_automatic_otg_tracking_switch_active) {
+		_otg->disableTrackingMode();
+	}
+	_automatic_otg_tracking_switch_active = false;
+	_automatic_otg_tracking_switch_goal_initialized = false;
+	_automatic_otg_tracking_streamed_goal_counter = 0;
+	_automatic_otg_tracking_stable_goal_counter = 0;
 }
 
 void JointTask::setGoalPosition(const VectorXd& goal_position) {
@@ -311,6 +328,7 @@ VectorXd JointTask::computeTorques() {
 
 	// compute next state from trajectory generation
 	if (_use_internal_otg_flag) {
+		updateAutomaticInternalOtgTrackingModeSwitch();
 		_otg->setGoalPositionVelocityAndAcceleration(
 			_goal_position, _goal_velocity, _goal_acceleration);
 		_otg->update();
@@ -406,6 +424,127 @@ void JointTask::enableInternalOtgJerkLimited(const VectorXd& max_velocity,
 	_otg->setMaxAcceleration(max_acceleration);
 	_otg->setMaxJerk(max_jerk);
 	_use_internal_otg_flag = true;
+}
+
+void JointTask::enableAutomaticInternalOtgTrackingModeSwitch(
+	const double max_streamed_goal_position_delta,
+	const double goal_update_tolerance, const double stable_goal_duration,
+	const size_t min_consecutive_streamed_goals,
+	const double tracking_reactiveness,
+	const size_t tracking_look_ahead_cycles,
+	const size_t tracking_max_iterations, const TrackigMode tracking_mode) {
+	if (max_streamed_goal_position_delta <= 0.0) {
+		throw std::invalid_argument(
+			"max streamed goal position delta must be positive in "
+			"JointTask::enableAutomaticInternalOtgTrackingModeSwitch\n");
+	}
+	if (goal_update_tolerance < 0.0 || stable_goal_duration < 0.0) {
+		throw std::invalid_argument(
+			"goal update tolerance and stable goal duration must be positive "
+			"or zero in "
+			"JointTask::enableAutomaticInternalOtgTrackingModeSwitch\n");
+	}
+	if (min_consecutive_streamed_goals == 0 ||
+		tracking_look_ahead_cycles == 0 || tracking_max_iterations == 0) {
+		throw std::invalid_argument(
+			"min consecutive streamed goals, look-ahead cycles and max "
+			"iterations must be positive in "
+			"JointTask::enableAutomaticInternalOtgTrackingModeSwitch\n");
+	}
+	if (tracking_reactiveness < 0.0 || tracking_reactiveness > 1.0) {
+		throw std::invalid_argument(
+			"tracking reactiveness must be in [0, 1] in "
+			"JointTask::enableAutomaticInternalOtgTrackingModeSwitch\n");
+	}
+
+	_automatic_otg_tracking_switch_params.max_streamed_goal_position_delta =
+		max_streamed_goal_position_delta;
+	_automatic_otg_tracking_switch_params.goal_update_tolerance =
+		goal_update_tolerance;
+	_automatic_otg_tracking_switch_params.stable_goal_duration =
+		stable_goal_duration;
+	_automatic_otg_tracking_switch_params.min_consecutive_streamed_goals =
+		min_consecutive_streamed_goals;
+	_automatic_otg_tracking_switch_params.tracking_reactiveness =
+		tracking_reactiveness;
+	_automatic_otg_tracking_switch_params.tracking_look_ahead_cycles =
+		tracking_look_ahead_cycles;
+	_automatic_otg_tracking_switch_params.tracking_max_iterations =
+		tracking_max_iterations;
+	_automatic_otg_tracking_switch_params.tracking_mode = tracking_mode;
+
+	_automatic_otg_tracking_switch_enabled = true;
+	_automatic_otg_tracking_switch_active = false;
+	_automatic_otg_tracking_switch_goal_initialized = false;
+	_automatic_otg_tracking_streamed_goal_counter = 0;
+	_automatic_otg_tracking_stable_goal_counter = 0;
+}
+
+void JointTask::disableAutomaticInternalOtgTrackingModeSwitch() {
+	_automatic_otg_tracking_switch_enabled = false;
+	if (_automatic_otg_tracking_switch_active) {
+		_otg->disableTrackingMode();
+	}
+	_automatic_otg_tracking_switch_active = false;
+	_automatic_otg_tracking_switch_goal_initialized = false;
+	_automatic_otg_tracking_streamed_goal_counter = 0;
+	_automatic_otg_tracking_stable_goal_counter = 0;
+}
+
+void JointTask::updateAutomaticInternalOtgTrackingModeSwitch() {
+	if (!_automatic_otg_tracking_switch_enabled) {
+		return;
+	}
+
+	if (!_automatic_otg_tracking_switch_goal_initialized) {
+		_automatic_otg_tracking_previous_goal_position = _goal_position;
+		_automatic_otg_tracking_switch_goal_initialized = true;
+		return;
+	}
+
+	const auto& params = _automatic_otg_tracking_switch_params;
+	const double goal_delta =
+		(_goal_position - _automatic_otg_tracking_previous_goal_position)
+			.norm();
+	const bool goal_changed = goal_delta > params.goal_update_tolerance;
+	const size_t stable_cycles = static_cast<size_t>(std::ceil(
+		params.stable_goal_duration /
+		std::max(getLoopTimestep(), std::numeric_limits<double>::epsilon())));
+
+	if (goal_changed) {
+		_automatic_otg_tracking_stable_goal_counter = 0;
+		_automatic_otg_tracking_previous_goal_position = _goal_position;
+
+		if (goal_delta <= params.max_streamed_goal_position_delta) {
+			++_automatic_otg_tracking_streamed_goal_counter;
+		} else {
+			_automatic_otg_tracking_streamed_goal_counter = 0;
+			if (_automatic_otg_tracking_switch_active) {
+				_otg->disableTrackingMode();
+				_automatic_otg_tracking_switch_active = false;
+			}
+			return;
+		}
+	} else {
+		_automatic_otg_tracking_streamed_goal_counter = 0;
+		++_automatic_otg_tracking_stable_goal_counter;
+		if (_automatic_otg_tracking_switch_active &&
+			_automatic_otg_tracking_stable_goal_counter >= stable_cycles) {
+			_otg->disableTrackingMode();
+			_automatic_otg_tracking_switch_active = false;
+		}
+		return;
+	}
+
+	if (!_automatic_otg_tracking_switch_active &&
+		_automatic_otg_tracking_streamed_goal_counter >=
+			params.min_consecutive_streamed_goals) {
+		_otg->enableTrackingMode(params.tracking_reactiveness,
+								 params.tracking_look_ahead_cycles,
+								 params.tracking_max_iterations,
+								 params.tracking_mode);
+		_automatic_otg_tracking_switch_active = true;
+	}
 }
 
 void JointTask::enableVelocitySaturation(const double saturation_velocity) {

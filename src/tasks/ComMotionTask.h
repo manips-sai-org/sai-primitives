@@ -322,7 +322,10 @@ public:
 									  const double max_angular_acceleration,
 									  const double max_angular_jerk);
 
-	void disableInternalOtg() { _use_internal_otg_flag = false; }
+	void disableInternalOtg() {
+		_use_internal_otg_flag = false;
+		_otg->disableTrackingMode();
+	}
 
 	bool getInternalOtgEnabled() const { return _use_internal_otg_flag; }
 

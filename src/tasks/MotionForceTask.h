@@ -441,7 +441,14 @@ public:
 									  const double max_angular_acceleration,
 									  const double max_angular_jerk);
 
-	void disableInternalOtg() { _use_internal_otg_flag = false; }
+	void disableInternalOtg() {
+		_use_internal_otg_flag = false;
+		_otg->disableTrackingMode();
+		_automatic_otg_tracking_switch_active = false;
+		_automatic_otg_tracking_switch_goal_initialized = false;
+		_automatic_otg_tracking_streamed_goal_counter = 0;
+		_automatic_otg_tracking_stable_goal_counter = 0;
+	}
 
 	bool getInternalOtgEnabled() const { return _use_internal_otg_flag; }
 
@@ -495,6 +502,36 @@ public:
 
 	bool getInternalOtgTrackingTargetAccelerationLimitsEnabled() const {
 		return _otg->getTrackingTargetAccelerationLimitsEnabled();
+	}
+
+	/**
+	 * @brief Enables an automatic switch between regular internal OTG and
+	 * Ruckig tracking mode.
+	 *
+	 * The task enters tracking mode after several consecutive small pose-goal
+	 * updates, and returns to regular OTG after the goal has remained stable for
+	 * the requested duration. Large pose jumps keep regular OTG behavior.
+	 */
+	void enableAutomaticInternalOtgTrackingModeSwitch(
+		const double max_streamed_goal_position_delta = 2e-2,
+		const double max_streamed_goal_orientation_delta = 5.0 * M_PI / 180.0,
+		const double goal_update_position_tolerance = 1e-5,
+		const double goal_update_orientation_tolerance = 1e-4,
+		const double stable_goal_duration = 0.15,
+		const size_t min_consecutive_streamed_goals = 3,
+		const double tracking_reactiveness = 0.5,
+		const size_t tracking_look_ahead_cycles = 8,
+		const size_t tracking_max_iterations = 8,
+		const TrackigMode tracking_mode = TrackigMode::Optimized);
+
+	/**
+	 * @brief Disables the automatic switch. If the switch had entered tracking
+	 * mode, this returns the internal OTG to regular mode.
+	 */
+	void disableAutomaticInternalOtgTrackingModeSwitch();
+
+	bool getAutomaticInternalOtgTrackingModeSwitchEnabled() const {
+		return _automatic_otg_tracking_switch_enabled;
 	}
 
 	// Velocity saturation flag and saturation values
@@ -907,6 +944,20 @@ private:
 	 *
 	 */
 	void initialSetup();
+	void updateAutomaticInternalOtgTrackingModeSwitch();
+
+	struct AutomaticOtgTrackingModeSwitchParams {
+		double max_streamed_goal_position_delta = 2e-2;
+		double max_streamed_goal_orientation_delta = 5.0 * M_PI / 180.0;
+		double goal_update_position_tolerance = 1e-5;
+		double goal_update_orientation_tolerance = 1e-4;
+		double stable_goal_duration = 0.15;
+		size_t min_consecutive_streamed_goals = 3;
+		double tracking_reactiveness = 0.5;
+		size_t tracking_look_ahead_cycles = 8;
+		size_t tracking_max_iterations = 8;
+		TrackigMode tracking_mode = TrackigMode::Optimized;
+	};
 
 	// the goal state is the state the controller tries to reach. If OTG is on,
 	// the actual desired state at each timestep will be interpolated between
@@ -961,6 +1012,18 @@ private:
 	// trajectory
 	bool _use_internal_otg_flag;
 	std::unique_ptr<OTG_6dof_cartesian> _otg;
+
+	// automatic switch from regular OTG to tracking mode for high-frequency
+	// small goal streams
+	bool _automatic_otg_tracking_switch_enabled;
+	bool _automatic_otg_tracking_switch_active;
+	bool _automatic_otg_tracking_switch_goal_initialized;
+	size_t _automatic_otg_tracking_streamed_goal_counter;
+	size_t _automatic_otg_tracking_stable_goal_counter;
+	Vector3d _automatic_otg_tracking_previous_goal_position;
+	Matrix3d _automatic_otg_tracking_previous_goal_orientation;
+	AutomaticOtgTrackingModeSwitchParams
+		_automatic_otg_tracking_switch_params;
 
 	Eigen::VectorXd _task_force;
 	Eigen::MatrixXd _N_prec;

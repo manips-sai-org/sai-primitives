@@ -6,6 +6,9 @@
 
 #include "MotionForceTask.h"
 
+#include <algorithm>
+#include <cmath>
+#include <limits>
 #include <stdexcept>
 
 using namespace std;
@@ -196,6 +199,13 @@ void MotionForceTask::initialSetup() {
 	} else {
 		disableInternalOtg();
 	}
+	_automatic_otg_tracking_switch_enabled = false;
+	_automatic_otg_tracking_switch_active = false;
+	_automatic_otg_tracking_switch_goal_initialized = false;
+	_automatic_otg_tracking_streamed_goal_counter = 0;
+	_automatic_otg_tracking_stable_goal_counter = 0;
+	_automatic_otg_tracking_previous_goal_position = _current_position;
+	_automatic_otg_tracking_previous_goal_orientation = _current_orientation;
 
 	// get joint dependency and rank of task
 	_joint_dependency = getConstRobotModel()->linkDependencyVector(_link_name);
@@ -276,6 +286,13 @@ void MotionForceTask::reInitializeTask() {
 	_unit_mass_force.setZero(6);
 
 	_otg->reInitialize(_current_position, _current_orientation);
+	if (_automatic_otg_tracking_switch_active) {
+		_otg->disableTrackingMode();
+	}
+	_automatic_otg_tracking_switch_active = false;
+	_automatic_otg_tracking_switch_goal_initialized = false;
+	_automatic_otg_tracking_streamed_goal_counter = 0;
+	_automatic_otg_tracking_stable_goal_counter = 0;
 }
 
 void MotionForceTask::updateTaskModel(const MatrixXd& N_prec) {
@@ -587,6 +604,7 @@ VectorXd MotionForceTask::computeTorques() {
 	_desired_angular_acceleration = _goal_angular_acceleration;
 
 	if (_use_internal_otg_flag) {
+		updateAutomaticInternalOtgTrackingModeSwitch();
 		_otg->setGoalPositionLinearVelocityAndAcceleration(
 			_goal_position, _goal_linear_velocity, _goal_linear_acceleration);
 		_otg->setGoalOrientationAngularVelocityAndAcceleration(
@@ -733,6 +751,150 @@ void MotionForceTask::enableInternalOtgJerkLimited(
 	_otg->setMaxAngularAcceleration(max_angular_acceleration);
 	_otg->setMaxJerk(max_linear_jerk, max_angular_jerk);
 	_use_internal_otg_flag = true;
+}
+
+void MotionForceTask::enableAutomaticInternalOtgTrackingModeSwitch(
+	const double max_streamed_goal_position_delta,
+	const double max_streamed_goal_orientation_delta,
+	const double goal_update_position_tolerance,
+	const double goal_update_orientation_tolerance,
+	const double stable_goal_duration,
+	const size_t min_consecutive_streamed_goals,
+	const double tracking_reactiveness,
+	const size_t tracking_look_ahead_cycles,
+	const size_t tracking_max_iterations,
+	const TrackigMode tracking_mode) {
+	if (max_streamed_goal_position_delta <= 0.0 ||
+		max_streamed_goal_orientation_delta <= 0.0) {
+		throw std::invalid_argument(
+			"max streamed goal position and orientation deltas must be "
+			"positive in "
+			"MotionForceTask::enableAutomaticInternalOtgTrackingModeSwitch\n");
+	}
+	if (goal_update_position_tolerance < 0.0 ||
+		goal_update_orientation_tolerance < 0.0 ||
+		stable_goal_duration < 0.0) {
+		throw std::invalid_argument(
+			"goal update tolerances and stable goal duration must be positive "
+			"or zero in "
+			"MotionForceTask::enableAutomaticInternalOtgTrackingModeSwitch\n");
+	}
+	if (min_consecutive_streamed_goals == 0 ||
+		tracking_look_ahead_cycles == 0 || tracking_max_iterations == 0) {
+		throw std::invalid_argument(
+			"min consecutive streamed goals, look-ahead cycles and max "
+			"iterations must be positive in "
+			"MotionForceTask::enableAutomaticInternalOtgTrackingModeSwitch\n");
+	}
+	if (tracking_reactiveness < 0.0 || tracking_reactiveness > 1.0) {
+		throw std::invalid_argument(
+			"tracking reactiveness must be in [0, 1] in "
+			"MotionForceTask::enableAutomaticInternalOtgTrackingModeSwitch\n");
+	}
+
+	_automatic_otg_tracking_switch_params.max_streamed_goal_position_delta =
+		max_streamed_goal_position_delta;
+	_automatic_otg_tracking_switch_params.max_streamed_goal_orientation_delta =
+		max_streamed_goal_orientation_delta;
+	_automatic_otg_tracking_switch_params.goal_update_position_tolerance =
+		goal_update_position_tolerance;
+	_automatic_otg_tracking_switch_params.goal_update_orientation_tolerance =
+		goal_update_orientation_tolerance;
+	_automatic_otg_tracking_switch_params.stable_goal_duration =
+		stable_goal_duration;
+	_automatic_otg_tracking_switch_params.min_consecutive_streamed_goals =
+		min_consecutive_streamed_goals;
+	_automatic_otg_tracking_switch_params.tracking_reactiveness =
+		tracking_reactiveness;
+	_automatic_otg_tracking_switch_params.tracking_look_ahead_cycles =
+		tracking_look_ahead_cycles;
+	_automatic_otg_tracking_switch_params.tracking_max_iterations =
+		tracking_max_iterations;
+	_automatic_otg_tracking_switch_params.tracking_mode = tracking_mode;
+
+	_automatic_otg_tracking_switch_enabled = true;
+	_automatic_otg_tracking_switch_active = false;
+	_automatic_otg_tracking_switch_goal_initialized = false;
+	_automatic_otg_tracking_streamed_goal_counter = 0;
+	_automatic_otg_tracking_stable_goal_counter = 0;
+}
+
+void MotionForceTask::disableAutomaticInternalOtgTrackingModeSwitch() {
+	_automatic_otg_tracking_switch_enabled = false;
+	if (_automatic_otg_tracking_switch_active) {
+		_otg->disableTrackingMode();
+	}
+	_automatic_otg_tracking_switch_active = false;
+	_automatic_otg_tracking_switch_goal_initialized = false;
+	_automatic_otg_tracking_streamed_goal_counter = 0;
+	_automatic_otg_tracking_stable_goal_counter = 0;
+}
+
+void MotionForceTask::updateAutomaticInternalOtgTrackingModeSwitch() {
+	if (!_automatic_otg_tracking_switch_enabled) {
+		return;
+	}
+
+	if (!_automatic_otg_tracking_switch_goal_initialized) {
+		_automatic_otg_tracking_previous_goal_position = _goal_position;
+		_automatic_otg_tracking_previous_goal_orientation = _goal_orientation;
+		_automatic_otg_tracking_switch_goal_initialized = true;
+		return;
+	}
+
+	const auto& params = _automatic_otg_tracking_switch_params;
+	const double position_delta =
+		(_goal_position - _automatic_otg_tracking_previous_goal_position)
+			.norm();
+	const double orientation_delta =
+		SaiModel::orientationError(
+			_goal_orientation,
+			_automatic_otg_tracking_previous_goal_orientation).norm();
+	const bool goal_changed =
+		position_delta > params.goal_update_position_tolerance ||
+		orientation_delta > params.goal_update_orientation_tolerance;
+	const bool small_streamed_goal =
+		position_delta <= params.max_streamed_goal_position_delta &&
+		orientation_delta <= params.max_streamed_goal_orientation_delta;
+	const size_t stable_cycles = static_cast<size_t>(std::ceil(
+		params.stable_goal_duration /
+		std::max(getLoopTimestep(), std::numeric_limits<double>::epsilon())));
+
+	if (goal_changed) {
+		_automatic_otg_tracking_stable_goal_counter = 0;
+		_automatic_otg_tracking_previous_goal_position = _goal_position;
+		_automatic_otg_tracking_previous_goal_orientation = _goal_orientation;
+
+		if (small_streamed_goal) {
+			++_automatic_otg_tracking_streamed_goal_counter;
+		} else {
+			_automatic_otg_tracking_streamed_goal_counter = 0;
+			if (_automatic_otg_tracking_switch_active) {
+				_otg->disableTrackingMode();
+				_automatic_otg_tracking_switch_active = false;
+			}
+			return;
+		}
+	} else {
+		_automatic_otg_tracking_streamed_goal_counter = 0;
+		++_automatic_otg_tracking_stable_goal_counter;
+		if (_automatic_otg_tracking_switch_active &&
+			_automatic_otg_tracking_stable_goal_counter >= stable_cycles) {
+			_otg->disableTrackingMode();
+			_automatic_otg_tracking_switch_active = false;
+		}
+		return;
+	}
+
+	if (!_automatic_otg_tracking_switch_active &&
+		_automatic_otg_tracking_streamed_goal_counter >=
+			params.min_consecutive_streamed_goals) {
+		_otg->enableTrackingMode(params.tracking_reactiveness,
+								 params.tracking_look_ahead_cycles,
+								 params.tracking_max_iterations,
+								 params.tracking_mode);
+		_automatic_otg_tracking_switch_active = true;
+	}
 }
 
 Vector3d MotionForceTask::getPositionError() const {
