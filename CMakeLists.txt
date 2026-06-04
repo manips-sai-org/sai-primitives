@@ -74,6 +74,12 @@ set(CONTROLLERS_SOURCE
     ${PROJECT_SOURCE_DIR}/src/POPCBilateralTeleoperation.cpp
 )
 
+# add estimators
+set(ESTIMATORS_SOURCE
+    ${PROJECT_SOURCE_DIR}/src/estimators/ActiveObserver.cpp
+    ${PROJECT_SOURCE_DIR}/src/estimators/LatencyAwareContactRenderer.cpp
+)
+
 # add helper modules
 set(HELPER_MODULES_SOURCE
     ${PROJECT_SOURCE_DIR}/src/helper_modules/POPCExplicitForceControl.cpp
@@ -101,6 +107,7 @@ include_directories(
 
 # Create the library
 add_library(sai-primitives STATIC ${CONTROLLERS_SOURCE}
+                                   ${ESTIMATORS_SOURCE}
                                    ${HELPER_MODULES_SOURCE})
 
 set(SAI-PRIMITIVES_LIBRARIES sai-primitives ${RUCKIG_LIBRARIES} 

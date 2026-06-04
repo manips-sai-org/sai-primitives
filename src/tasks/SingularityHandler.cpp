@@ -11,12 +11,65 @@
 
 #include "SingularityHandler.h"
 
+#include <cmath>
+
 namespace {
+    constexpr double kNormalizationTol = 1e-12;
+
     const std::vector<std::string> singularity_labels = 
         {"No Singularity", "Type 1 Singularity", "Type 2 Singularity"};
 
     int sign(double x) {
         return (x > 0) - (x < 0);
+    }
+
+    bool safeNormalize(VectorXd& v, const double tol = kNormalizationTol) {
+        const double norm = v.norm();
+        if (!std::isfinite(norm) || norm <= tol) {
+            v.setZero();
+            return false;
+        }
+        v /= norm;
+        return true;
+    }
+
+    VectorXd safeNormalized(const VectorXd& v, const double tol = kNormalizationTol) {
+        VectorXd result = v;
+        safeNormalize(result, tol);
+        return result;
+    }
+
+    VectorXd safeNormalizedOr(
+        const VectorXd& v,
+        const VectorXd& fallback,
+        const double tol = kNormalizationTol) {
+
+        VectorXd result = v;
+        if (safeNormalize(result, tol)) {
+            return result;
+        }
+
+        result = fallback;
+        if (result.size() == v.size() && safeNormalize(result, tol)) {
+            return result;
+        }
+
+        return VectorXd::Zero(v.size());
+    }
+
+    double safeNormalizedDot(
+        const VectorXd& a,
+        const VectorXd& b,
+        const double tol = kNormalizationTol) {
+
+        const double a_norm = a.norm();
+        const double b_norm = b.norm();
+        if (!std::isfinite(a_norm) || !std::isfinite(b_norm) ||
+            a_norm <= tol || b_norm <= tol) {
+            return 0.0;
+        }
+
+        return a.dot(b) / (a_norm * b_norm);
     }
 
     VectorXd saturateBox(
@@ -110,9 +163,10 @@ namespace {
         double tol = 1e-9) {
         
         const int n = B.rows();
+        const VectorXd unit_u = safeNormalized(u, tol);
 
         MatrixXd Bproj =
-            (MatrixXd::Identity(n, n) - u * u.transpose()) * B;
+            (MatrixXd::Identity(n, n) - unit_u * unit_u.transpose()) * B;
 
         JacobiSVD<MatrixXd> svd(
             Bproj, ComputeThinU);
@@ -273,8 +327,10 @@ VectorXd SingularityHandler::getInitialVector(
 
         VectorXd u = U * coeff;
         VectorXd v = V * coeff;
-        u.normalize();
-        v.normalize();
+        if (!safeNormalize(u) || !safeNormalize(v)) {
+            deviation(i) = std::numeric_limits<double>::infinity();
+            continue;
+        }
 
         deviation(i) =
             std::abs(v.dot(getProjectedHessian(kinematic_hessian, u) * v));
@@ -318,7 +374,9 @@ double SingularityHandler::objective(
 
     // compute u vector
     VectorXd u = vectorFromBasis(x, data.singular_task_range);
-    u.normalize();
+    if (!safeNormalize(u)) {
+        return 0.0;
+    }
 
     if (data.flag_zero_value) {
         // use forward kinematics to compute u at zero singular value
@@ -336,7 +394,9 @@ double SingularityHandler::objective(
 
         // project onto singular direction
         u = data.singular_task_range * (data.singular_task_range.transpose() * u);
-        u.normalize();
+        if (!safeNormalize(u)) {
+            return 0.0;
+        }
     }
 
     // compute objective function
@@ -392,7 +452,7 @@ std::pair<VectorXd, VectorXd> SingularityHandler::getTowardSingularityDirection(
         if (sign(pos_dev) == sign(neg_dev)) {
 
             // align the u_toward_singularity opposite to pos_delta direction
-            if (u_toward.dot(pos_delta.normalized()) > 0) {
+            if (safeNormalizedDot(u_toward, pos_delta) > 0) {
                 u_toward = - u_toward;
             }
 
@@ -410,12 +470,12 @@ std::pair<VectorXd, VectorXd> SingularityHandler::getTowardSingularityDirection(
     // case 2: bidirection search yields different signs
     // take the direction with largest deviation if the signs aren't the same
     if (std::abs(pos_dev) > std::abs(neg_dev)) {
-        if (u_toward.dot(pos_delta.normalized()) > 0.0) {
+        if (safeNormalizedDot(u_toward, pos_delta) > 0.0) {
             u_toward = - u_toward;
         }
         return {u_toward, dsdq};
     } else {
-        if (u_toward.dot(neg_delta.normalized()) > 0.0) {
+        if (safeNormalizedDot(u_toward, neg_delta) > 0.0) {
             u_toward = - u_toward;
         }
         return {u_toward, dsdq};
@@ -538,9 +598,6 @@ void SingularityHandler::updateTaskModel(MatrixXd& projected_jacobian, const Mat
     _svd_U = _svd_solver.matrixU();
     _svd_s = _svd_solver.singularValues();  // descending order 
     _svd_V = _svd_solver.matrixV();   
-
-    // compute jacobian derivatives 
-    _dJdq = _robot->getJacobianDerivative(_link_name, _compliant_frame.translation());  // dof x (6 x dof)
 
     // compute singular task range 
     _fully_singular_task = false;
@@ -771,6 +828,13 @@ void SingularityHandler::updateTaskModel(MatrixXd& projected_jacobian, const Mat
         }
 	}
 
+    // Jacobian derivatives are only needed for singularity classification.
+    if (_is_in_singularity && _enforce_handling_strategy) {
+        _dJdq = _robot->getJacobianDerivative(_link_name, _compliant_frame.translation());  // dof x (6 x dof)
+    } else {
+        _dJdq.clear();
+    }
+
     classifySingularity(projected_jacobian, _task_range_s, _joint_task_range_s);
 }
 
@@ -859,12 +923,16 @@ void SingularityHandler::classifySingularity(
                 }
 
                 // compute (u, v)
-                VectorXd v_proj = vectorFromBasis(sjs_coefficients, curr_singular_joint_task_range).normalized();
+                VectorXd v_proj = safeNormalizedOr(
+                    vectorFromBasis(sjs_coefficients, curr_singular_joint_task_range),
+                    curr_singular_joint_task_range.col(0));
                 VectorXd u_proj = curr_singular_task_range.col(0);  // placeholder
 
                 if (_degenerate_singular_values[group_id].maxCoeff() > _type_1_search_tol) {
                     // matching u_proj from coefficients
-                    u_proj = vectorFromBasis(sjs_coefficients, curr_singular_task_range).normalized();
+                    u_proj = safeNormalizedOr(
+                        vectorFromBasis(sjs_coefficients, curr_singular_task_range),
+                        curr_singular_task_range.col(0));
                 } else {
                     // get u_proj from the deviation, as {u, v} are individually rotated
                     _robot->setQ(curr_q + _type_1_step_size_classification_towards_singularity * v_proj);
@@ -873,7 +941,9 @@ void SingularityHandler::classifySingularity(
                     u_proj.tail(3) = SaiModel::orientationError(_robot->rotation(_link_name, _compliant_frame.linear()), curr_ori);
 
                     // project u_proj into the current task range
-                    u_proj = (curr_singular_task_range * curr_singular_task_range.transpose() * u_proj).normalized();
+                    u_proj = safeNormalizedOr(
+                        curr_singular_task_range * curr_singular_task_range.transpose() * u_proj,
+                        curr_singular_task_range.col(0));
                 }
 
                 // process vectors
@@ -946,7 +1016,7 @@ void SingularityHandler::classifySingularity(
                     VectorXd delta_vector(6);
                     delta_vector.head(3) = _robot->position(_link_name, _compliant_frame.translation()) - curr_pos;
                     delta_vector.tail(3) = SaiModel::orientationError(_robot->rotation(_link_name, _compliant_frame.linear()), curr_ori);
-                    if (delta_vector.normalized().dot(u) < 0) {
+                    if (safeNormalizedDot(delta_vector, u) < 0) {
                         u_toward_singularity = - u;
                     }
                 }
@@ -1029,7 +1099,7 @@ void SingularityHandler::classifySingularity(
                 VectorXd delta_vector(6);
                 delta_vector.head(3) = _robot->position(_link_name, _compliant_frame.translation()) - curr_pos;
                 delta_vector.tail(3) = SaiModel::orientationError(_robot->rotation(_link_name, _compliant_frame.linear()), curr_ori);
-                if (delta_vector.normalized().dot(u) < 0) {
+                if (safeNormalizedDot(delta_vector, u) < 0) {
                     u_toward_singularity = - u;
                 }
 
@@ -1186,8 +1256,9 @@ VectorXd SingularityHandler::computeTorques(const VectorXd& unit_mass_force, con
             if (_active_singularities[ind].type == TYPE_1_SINGULARITY || _enforce_type_1_strategy) {
 
                 // compute alignment 
-                double singular_alignment = 
-                    singular_unit_acceleration_component.normalized().dot(_active_singularities[ind].dsdq.normalized());
+                double singular_alignment = safeNormalizedDot(
+                    singular_unit_acceleration_component,
+                    _active_singularities[ind].dsdq);
 
                 // joint-space classification of control towards/away from singularity
                 bool is_moving_towards_singularity = singular_alignment < 0;
@@ -1219,7 +1290,7 @@ VectorXd SingularityHandler::computeTorques(const VectorXd& unit_mass_force, con
                     double vel_scaling = std::min(scale_factor_singular_alignment, std::min(force_scaling, condition_number_scaling));
 
                     VectorXd dq_des = - _active_singularities[ind].dsdq;
-                    dq_des = vel_scaling * _type_1_max_vel_towards_singularity * dq_des.normalized();
+                    dq_des = vel_scaling * _type_1_max_vel_towards_singularity * safeNormalized(dq_des);
                     unit_torques = - _kv_type_1 * (dq - dq_des);
 
                 } else {
@@ -1236,7 +1307,7 @@ VectorXd SingularityHandler::computeTorques(const VectorXd& unit_mass_force, con
                         std::min(std::clamp(curr_singular_task_force / _max_force_norm, 0.0, 1.0), scale_factor_singular_alignment);
 
                     VectorXd dq_des = _active_singularities[ind].dsdq;
-                    dq_des = vel_scaling * _type_1_max_vel_away_from_singularity * dq_des.normalized();
+                    dq_des = vel_scaling * _type_1_max_vel_away_from_singularity * safeNormalized(dq_des);
                     unit_torques = - _kv_type_1 * (dq - dq_des);
 
                 }
@@ -1251,7 +1322,8 @@ VectorXd SingularityHandler::computeTorques(const VectorXd& unit_mass_force, con
                     // std::clamp((1 - exp(-_type_2_vel_ramp_factor * force_dotted_singular_direction)) / (1 - exp(-_type_2_vel_ramp_factor)), 0.0, 1.0);
   
                 VectorXd dq_des = 
-                    _type_2_max_vel * weighted_force_dotted_singular_direction * singular_unit_acceleration_component.normalized();
+                    _type_2_max_vel * weighted_force_dotted_singular_direction *
+                    safeNormalized(singular_unit_acceleration_component);
                 unit_torques = - _kv_type_2 * (dq - dq_des);
 
             }

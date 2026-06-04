@@ -214,11 +214,15 @@ class Trackig {
 
         InputParameter<DOFs, CustomVector> tracking_input = input;
 
+        const TargetState<DOFs, CustomVector> limited_target_state =
+            apply_target_limits(target_state, tracking_input);
+
         bool valid_prediction {true};
         TargetState<DOFs, CustomVector> predicted_target =
-            prediction_model(prediction_time, target_state, valid_prediction);
+            prediction_model(prediction_time, limited_target_state,
+                             valid_prediction);
         if (!valid_prediction) {
-            predicted_target = target_state;
+            predicted_target = limited_target_state;
         }
         predicted_target = apply_target_limits(predicted_target, tracking_input);
 

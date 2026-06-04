@@ -38,6 +38,16 @@ const string link_name = "end-effector";
 VectorXd ui_torques;
 VectorXd control_torques;
 mutex mutex_torques;
+mutex mutex_interpolation_state_label;
+
+struct InterpolationStateLabel {
+	string text = "initializing";
+	bool internal_otg_enabled = false;
+	bool tracking_mode_enabled = false;
+};
+
+InterpolationStateLabel displayed_interpolation_state_label;
+const string interpolation_state_label_name = "interpolation_state";
 
 struct PoseReference {
 	Vector3d position;
@@ -99,6 +109,63 @@ PoseReference desiredPoseTrajectory(const double time,
 	return reference;
 }
 
+string interpolationStateLabel(
+	const SaiPrimitives::MotionForceTask& motion_force_task) {
+	if (!motion_force_task.getInternalOtgEnabled()) {
+		return "direct task goal, internal OTG disabled";
+	}
+	if (motion_force_task.getInternalOtgTrackingModeEnabled()) {
+		return "Ruckig Trackig tracking interpolation";
+	}
+	return "regular Ruckig OTG interpolation";
+}
+
+InterpolationStateLabel interpolationStateLabelDisplay(
+	const SaiPrimitives::MotionForceTask& motion_force_task) {
+	return {
+		interpolationStateLabel(motion_force_task),
+		motion_force_task.getInternalOtgEnabled(),
+		motion_force_task.getInternalOtgTrackingModeEnabled()};
+}
+
+void publishInterpolationStateLabel(
+	const SaiPrimitives::MotionForceTask& motion_force_task) {
+	lock_guard<mutex> lock(mutex_interpolation_state_label);
+	displayed_interpolation_state_label =
+		interpolationStateLabelDisplay(motion_force_task);
+}
+
+void addInterpolationStateLabel(
+	const shared_ptr<SaiGraphics::SaiGraphics>& graphics) {
+	graphics->addOverlayLabel(
+		interpolation_state_label_name,
+		"Interpolation: initializing", "camera", 20, 40, 1.0);
+}
+
+void updateInterpolationStateLabel(
+	const shared_ptr<SaiGraphics::SaiGraphics>& graphics) {
+
+	InterpolationStateLabel label_state;
+	{
+		lock_guard<mutex> lock(mutex_interpolation_state_label);
+		label_state = displayed_interpolation_state_label;
+	}
+
+	if (!label_state.internal_otg_enabled) {
+		graphics->updateOverlayLabel(
+			interpolation_state_label_name,
+			"Interpolation: " + label_state.text, 0.86, 0.86, 0.86);
+	} else if (label_state.tracking_mode_enabled) {
+		graphics->updateOverlayLabel(
+			interpolation_state_label_name,
+			"Interpolation: " + label_state.text, 1.0, 0.55, 0.0);
+	} else {
+		graphics->updateOverlayLabel(
+			interpolation_state_label_name,
+			"Interpolation: " + label_state.text, 0.0, 0.65, 1.0);
+	}
+}
+
 }  // namespace
 
 void control(shared_ptr<SaiModel::SaiModel> robot,
@@ -119,6 +186,7 @@ int main(int argc, char** argv) {
 	auto graphics = make_shared<SaiGraphics::SaiGraphics>(world_file);
 	graphics->addUIForceInteraction(robot_name);
 	graphics->showLinkFrame(true, robot_name, link_name, 0.18);
+	addInterpolationStateLabel(graphics);
 
 	auto sim = make_shared<SaiSimulation::SaiSimulation>(world_file);
 
@@ -136,6 +204,7 @@ int main(int argc, char** argv) {
 
 	while (graphics->isWindowOpen()) {
 		graphics->updateRobotGraphics(robot_name, robot->q());
+		updateInterpolationStateLabel(graphics);
 		graphics->renderGraphicsWorld();
 		{
 			lock_guard<mutex> lock(mutex_torques);
@@ -210,9 +279,12 @@ void control(shared_ptr<SaiModel::SaiModel> robot,
 			lock_guard<mutex> lock(mutex_torques);
 			control_torques = robot_controller->computeControlTorques();
 		}
+		publishInterpolationStateLabel(*motion_force_task);
 
 		if (timer.elapsedCycles() % 1000 == 0) {
 			cout << "time: " << time << endl;
+			cout << "interpolation state: "
+				 << interpolationStateLabel(*motion_force_task) << endl;
 			cout << "tracking mode: "
 				 << motion_force_task->getInternalOtgTrackingModeEnabled()
 				 << endl;

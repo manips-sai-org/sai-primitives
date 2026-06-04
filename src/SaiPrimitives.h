@@ -7,6 +7,9 @@
 #include "tasks/MomentumTask.h"
 #include "tasks/TemplateTask.h"
 
+#include "estimators/ActiveObserver.h"
+#include "estimators/LatencyAwareContactRenderer.h"
+
 #include "POPCBilateralTeleoperation.h"
 #include "RobotController.h"
 #include "HapticDeviceController.h"
