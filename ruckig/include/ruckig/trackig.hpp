@@ -161,15 +161,49 @@ class Trackig {
         const InputParameter<DOFs, CustomVector>& input) const {
         TargetState<DOFs, CustomVector> limited_target = target_state;
 
-        for (size_t dof = 0; dof < degrees_of_freedom; ++dof) {
-            const double velocity_max = target_velocity_limit_enabled ?
-                target_velocity_limit[dof] : input.max_velocity[dof];
-            const double velocity_min = target_velocity_limit_enabled ?
-                -target_velocity_limit[dof] :
-                (input.min_velocity ? input.min_velocity.value()[dof] : -input.max_velocity[dof]);
+        if (target_velocity_limit_enabled) {
+            const auto scale_velocity_norm = [&](const size_t begin,
+                                                 const size_t end) {
+                double normalized_velocity_norm_squared {0.0};
+                for (size_t dof = begin; dof < end; ++dof) {
+                    const double velocity_limit = target_velocity_limit[dof];
+                    if (velocity_limit == 0.0) {
+                        limited_target.velocity[dof] = 0.0;
+                        continue;
+                    }
 
-            limited_target.velocity[dof] = std::clamp(
-                limited_target.velocity[dof], velocity_min, velocity_max);
+                    const double normalized_velocity =
+                        limited_target.velocity[dof] / velocity_limit;
+                    normalized_velocity_norm_squared +=
+                        normalized_velocity * normalized_velocity;
+                }
+
+                if (normalized_velocity_norm_squared > 1.0) {
+                    const double velocity_scale =
+                        1.0 / std::sqrt(normalized_velocity_norm_squared);
+                    for (size_t dof = begin; dof < end; ++dof) {
+                        limited_target.velocity[dof] *= velocity_scale;
+                    }
+                }
+            };
+
+            if (degrees_of_freedom == 6) {
+                scale_velocity_norm(0, 3);
+                scale_velocity_norm(3, 6);
+            } else {
+                scale_velocity_norm(0, degrees_of_freedom);
+            }
+        }
+
+        for (size_t dof = 0; dof < degrees_of_freedom; ++dof) {
+            if (!target_velocity_limit_enabled) {
+                const double velocity_max = input.max_velocity[dof];
+                const double velocity_min = input.min_velocity ?
+                    input.min_velocity.value()[dof] : -input.max_velocity[dof];
+
+                limited_target.velocity[dof] = std::clamp(
+                    limited_target.velocity[dof], velocity_min, velocity_max);
+            }
 
             const double acceleration_max = target_acceleration_limit_enabled ?
                 target_acceleration_limit[dof] : input.max_acceleration[dof];
